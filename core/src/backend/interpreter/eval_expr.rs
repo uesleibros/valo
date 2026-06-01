@@ -129,10 +129,6 @@ impl Interpreter {
                     || name.eq_ignore_ascii_case("Err")
                 {
                     Ok(Value::Empty)
-                } else if let Some(constant) = crate::runtime::vba::vba_constant(name) {
-                    Ok(constant.value())
-                } else if let Some(value) = self.enum_members.get(&super::values::key(name)) {
-                    Ok(Value::Int64(*value))
                 } else {
                     match frame.get(name, expr.span) {
                         Ok(value) => Ok(value),
@@ -163,6 +159,12 @@ impl Interpreter {
                                 || self.has_declared_function(name)
                             {
                                 return self.call_function(name, &[], &[], frame, expr.span);
+                            }
+                            if let Some(constant) = crate::runtime::vba::vba_constant(name) {
+                                return Ok(constant.value());
+                            }
+                            if let Some(value) = self.enum_members.get(&super::values::key(name)) {
+                                return Ok(Value::Int64(*value));
                             }
 
                             Err(error)

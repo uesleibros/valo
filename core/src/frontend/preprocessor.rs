@@ -115,121 +115,69 @@ fn join_line_continuations(source: &str) -> String {
 
 fn builtin_constants() -> HashMap<String, ConstValue> {
     let mut constants = HashMap::new();
-    constants.insert(key("VALO"), ConstValue::Boolean(true));
-    constants.insert(key("Valo"), ConstValue::Boolean(true));
-    constants.insert(key("ValoRuntime"), ConstValue::Boolean(true));
-    constants.insert(key("Debug"), ConstValue::Boolean(cfg!(debug_assertions)));
-    constants.insert(key("Release"), ConstValue::Boolean(!cfg!(debug_assertions)));
-    constants.insert(
-        key("Windows"),
-        ConstValue::Boolean(cfg!(target_os = "windows")),
-    );
-    constants.insert(key("Linux"), ConstValue::Boolean(cfg!(target_os = "linux")));
-    constants.insert(key("MacOS"), ConstValue::Boolean(cfg!(target_os = "macos")));
-    constants.insert(
-        key("Android"),
-        ConstValue::Boolean(cfg!(target_os = "android")),
-    );
-    constants.insert(key("IOS"), ConstValue::Boolean(cfg!(target_os = "ios")));
-    constants.insert(
-        key("FreeBSD"),
-        ConstValue::Boolean(cfg!(target_os = "freebsd")),
-    );
-    constants.insert(
-        key("OpenBSD"),
-        ConstValue::Boolean(cfg!(target_os = "openbsd")),
-    );
-    constants.insert(
-        key("NetBSD"),
-        ConstValue::Boolean(cfg!(target_os = "netbsd")),
-    );
-    constants.insert(
-        key("DragonFly"),
-        ConstValue::Boolean(cfg!(target_os = "dragonfly")),
-    );
-    constants.insert(
-        key("Solaris"),
-        ConstValue::Boolean(cfg!(target_os = "solaris")),
-    );
-    constants.insert(
-        key("Illumos"),
-        ConstValue::Boolean(cfg!(target_os = "illumos")),
-    );
-    constants.insert(key("Haiku"), ConstValue::Boolean(cfg!(target_os = "haiku")));
-    constants.insert(
-        key("Wasm"),
-        ConstValue::Boolean(cfg!(target_arch = "wasm32") || cfg!(target_arch = "wasm64")),
-    );
-    constants.insert(key("Unix"), ConstValue::Boolean(cfg!(unix)));
-    constants.insert(key("X86"), ConstValue::Boolean(cfg!(target_arch = "x86")));
-    constants.insert(
-        key("X64"),
-        ConstValue::Boolean(cfg!(target_arch = "x86_64")),
-    );
-    constants.insert(key("Arm"), ConstValue::Boolean(cfg!(target_arch = "arm")));
-    constants.insert(
-        key("Arm64"),
-        ConstValue::Boolean(cfg!(target_arch = "aarch64")),
-    );
-    constants.insert(key("Armv7"), ConstValue::Boolean(false));
-    constants.insert(
-        key("RiscV32"),
-        ConstValue::Boolean(cfg!(target_arch = "riscv32")),
-    );
-    constants.insert(
-        key("RiscV64"),
-        ConstValue::Boolean(cfg!(target_arch = "riscv64")),
-    );
-    constants.insert(
-        key("Wasm32"),
-        ConstValue::Boolean(cfg!(target_arch = "wasm32")),
-    );
-    constants.insert(
-        key("Wasm64"),
-        ConstValue::Boolean(cfg!(target_arch = "wasm64")),
-    );
-    constants.insert(
-        key("S390x"),
-        ConstValue::Boolean(cfg!(target_arch = "s390x")),
-    );
-    constants.insert(
-        key("PowerPC"),
-        ConstValue::Boolean(cfg!(target_arch = "powerpc")),
-    );
-    constants.insert(
-        key("PowerPC64"),
-        ConstValue::Boolean(cfg!(target_arch = "powerpc64")),
-    );
-    constants.insert(
-        key("Mips"),
-        ConstValue::Boolean(cfg!(target_arch = "mips") || cfg!(target_arch = "mips32r6")),
-    );
-    constants.insert(
-        key("Mips64"),
-        ConstValue::Boolean(cfg!(target_arch = "mips64") || cfg!(target_arch = "mips64r6")),
-    );
-    constants.insert(
-        key("LoongArch64"),
-        ConstValue::Boolean(cfg!(target_arch = "loongarch64")),
-    );
-    constants.insert(key("VBA7"), ConstValue::Boolean(true));
-    constants.insert(key("VBA6"), ConstValue::Boolean(false));
-    constants.insert(
-        key("Win32"),
-        ConstValue::Boolean(cfg!(target_os = "windows") && cfg!(target_arch = "x86")),
-    );
-    constants.insert(
-        key("Win64"),
-        ConstValue::Boolean(cfg!(target_os = "windows") && cfg!(target_arch = "x86_64")),
-    );
-    constants.insert(key("Mac"), ConstValue::Boolean(cfg!(target_os = "macos")));
-    constants.insert(
-        key("Mac64"),
-        ConstValue::Boolean(
+    let bool_constants = [
+        ("Valo", true),
+        ("ValoRuntime", true),
+        ("Debug", cfg!(debug_assertions)),
+        ("Release", !cfg!(debug_assertions)),
+        ("Windows", cfg!(target_os = "windows")),
+        ("Linux", cfg!(target_os = "linux")),
+        ("MacOS", cfg!(target_os = "macos")),
+        ("Android", cfg!(target_os = "android")),
+        ("IOS", cfg!(target_os = "ios")),
+        ("FreeBSD", cfg!(target_os = "freebsd")),
+        ("OpenBSD", cfg!(target_os = "openbsd")),
+        ("NetBSD", cfg!(target_os = "netbsd")),
+        ("DragonFly", cfg!(target_os = "dragonfly")),
+        ("Solaris", cfg!(target_os = "solaris")),
+        ("Illumos", cfg!(target_os = "illumos")),
+        ("Haiku", cfg!(target_os = "haiku")),
+        (
+            "Wasm",
+            cfg!(target_arch = "wasm32") || cfg!(target_arch = "wasm64"),
+        ),
+        ("Unix", cfg!(unix)),
+        ("X86", cfg!(target_arch = "x86")),
+        ("X64", cfg!(target_arch = "x86_64")),
+        ("Arm", cfg!(target_arch = "arm")),
+        ("Arm64", cfg!(target_arch = "aarch64")),
+        ("Armv7", false),
+        ("RiscV32", cfg!(target_arch = "riscv32")),
+        ("RiscV64", cfg!(target_arch = "riscv64")),
+        ("Wasm32", cfg!(target_arch = "wasm32")),
+        ("Wasm64", cfg!(target_arch = "wasm64")),
+        ("S390x", cfg!(target_arch = "s390x")),
+        ("PowerPC", cfg!(target_arch = "powerpc")),
+        ("PowerPC64", cfg!(target_arch = "powerpc64")),
+        (
+            "Mips",
+            cfg!(target_arch = "mips") || cfg!(target_arch = "mips32r6"),
+        ),
+        (
+            "Mips64",
+            cfg!(target_arch = "mips64") || cfg!(target_arch = "mips64r6"),
+        ),
+        ("LoongArch64", cfg!(target_arch = "loongarch64")),
+        ("VBA7", true),
+        ("VBA6", false),
+        ("Win16", false),
+        ("Win32", cfg!(target_os = "windows")),
+        (
+            "Win64",
+            cfg!(target_os = "windows")
+                && (cfg!(target_arch = "x86_64") || cfg!(target_arch = "aarch64")),
+        ),
+        ("Mac", cfg!(target_os = "macos")),
+        (
+            "Mac64",
             cfg!(target_os = "macos")
                 && (cfg!(target_arch = "x86_64") || cfg!(target_arch = "aarch64")),
         ),
-    );
+    ];
+
+    for (name, value) in bool_constants {
+        constants.insert(key(name), ConstValue::Boolean(value));
+    }
     constants
 }
 

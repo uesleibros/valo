@@ -360,6 +360,61 @@ fn msgbox_and_vartype_constants_have_vba_values() {
 }
 
 #[test]
+fn microsoft_vba_reference_constants_have_values() {
+    let source = r#"
+        Sub Main()
+            Console.WriteLine(vbCalGreg & "," & vbCalHijri)
+            Console.WriteLine(vbBlack & "," & vbRed & "," & vbGreen & "," & vbBlue & "," & vbWhite)
+            Console.WriteLine(Unknown & "," & Removable & "," & Fixed & "," & Remote & "," & CDROM & "," & RAMDisk)
+            Console.WriteLine(ForReading & "," & ForWriting & "," & ForAppending)
+            Console.WriteLine(vbModeless & "," & vbModal)
+            Console.WriteLine(vbIMEModeNoControl & "," & vbIMEModeKatakanaHalf & "," & vbIMEModeHangul)
+            Console.WriteLine(vbKeyLButton & "," & vbKeyA & "," & vbKey0 & "," & vbKeyNumpad9 & "," & vbKeyF16)
+            Console.WriteLine(vbFormControlMenu & "," & vbFormCode & "," & vbAppWindows & "," & vbAppTaskManager)
+            Console.WriteLine(WindowsFolder & "," & SystemFolder & "," & TemporaryFolder)
+            Console.WriteLine(vbScrollBars & "," & vbDesktop & "," & vbInfoBackground)
+        End Sub
+    "#;
+    let program = Parser::parse_source(source, crate::runtime::FileId::default()).unwrap();
+    validate(&program).unwrap();
+    let output = run(&program).unwrap();
+    assert_eq!(
+        output,
+        vec![
+            "0,1",
+            "0,255,65280,16711680,16777215",
+            "0,1,2,3,4,5",
+            "1,2,8",
+            "0,1",
+            "0,6,10",
+            "1,65,48,105,127",
+            "0,1,2,3",
+            "0,1,2",
+            "-2147483648,-2147483647,-2147483624",
+        ]
+    );
+}
+
+#[test]
+fn local_variables_shadow_vba_type_library_constants() {
+    let source = r#"
+        Sub Main()
+            Dim fixed(1) As Integer
+            Dim item As Integer
+            fixed(0) = 41
+            fixed(1) = 1
+            For Each item In fixed
+                Console.WriteLine(item)
+            Next item
+        End Sub
+    "#;
+    let program = Parser::parse_source(source, crate::runtime::FileId::default()).unwrap();
+    validate(&program).unwrap();
+    let output = run(&program).unwrap();
+    assert_eq!(output, vec!["41", "1"]);
+}
+
+#[test]
 fn common_safe_vba_string_functions_work() {
     let source = r#"
         Sub Main()
