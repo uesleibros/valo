@@ -13,6 +13,6 @@ Documentation for the Valo language features.
 *   **[Inheritance](inheritance.md):** Base classes, overrides, abstract members, and protected visibility.
 *   **[Modules and Imports](modules.md):** Project organization and dependency management.
 *   **[Error Handling](error-handling.md):** Robust runtime failure management.
-*   **[VBA Compatibility](vba-compat.md):** Information on the bridge between modern Valo and legacy VBA.
+*   **[VBA Compatibility](vba-compat.md):** Compatibility syntax, `.bas`/`.cls` migration, built-in constants, runtime functions, file I/O, COM, and FFI bridge behavior.
 *   **[COM Automation](com.md):** Windows COM/OLE Automation through `Object`, `CreateObject`, and late-bound calls.
 *   **[FFI](ffi.md):** Native library declarations, pointer types, callbacks, and platform-aware loading.

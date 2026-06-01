@@ -137,7 +137,7 @@ It already includes:
 - a REPL and CLI
 - native FFI support through `Declare`, `PtrSafe`, callbacks, and pointer helpers
 - Windows COM/OLE Automation support through late-bound `Object`, `CreateObject`, and default-property dispatch
-- VBA compatibility runtime features, including string/date/time/file helpers and classic file-number I/O
+- VBA compatibility runtime features, including Microsoft-indexed runtime constants, broad VBA function recognition, string/date/time/math/format/file helpers, financial helpers, and classic file-number I/O
 - cross-platform release packaging
 
 Valo is not yet a full production compiler. There is currently no bytecode VM, package manager, formatter, or complete standard library. Some compatibility features are intentionally pragmatic and still evolving.
@@ -507,17 +507,20 @@ Currently supported areas include:
 - `Variant`, `Object`, `Empty`, `Null`
 - Windows COM/OLE Automation through `CreateObject`, late-bound calls/properties, and default-property syntax
 - file I/O compatibility runtime
-- `Dir`, `EOF`, `LOF`, `FreeFile`
+- Microsoft-indexed VBA runtime constants, including Calendar, CallType, Color, Comparison, Date, Dir/GetAttr/SetAttr, DriveType, File Attribute, File I/O, Form, IMEStatus, Keycode, MsgBox, QueryClose, Shell, SpecialFolder, StrConv, System Color, TriState, and VarType constants
+- broad Microsoft-indexed VBA function surface, including math, financial, date interval, formatting, string, conversion, type-checking, selection, file helper, dialog, color, shell, settings, COM, and pointer functions
+- `Dir`, `EOF`, `FileAttr`, `GetAttr`, `LOF`, `Loc`, `Seek`, `FreeFile`
 - `FileLen`, `FileDateTime`, `CurDir`, `MkDir`, `RmDir`, `ChDir`
-- `Timer`, `Now`, `DateSerial`, `TimeSerial`, `DateValue`, `TimeValue`, `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second`, `Weekday`, `MonthName`, `WeekdayName`
-- string/runtime helpers such as `Len`, `LenB`, `Left$`, `Right$`, `Mid$`, `Trim$`, `Replace`, `InStr`, `InStrRev`, `Chr$`, `Asc`, `Hex$`, `Oct$`, `Val`, `Str`, `IsArray`, `IsNumeric`, `IsDate`, `VarType`, and `TypeName`
+- `Timer`, `Now`, `Date`, `Time`, `DateAdd`, `DateDiff`, `DatePart`, `DateSerial`, `TimeSerial`, `DateValue`, `TimeValue`, `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second`, `Weekday`, `MonthName`, `WeekdayName`
+- string/runtime helpers such as `Len`, `LenB`, `Left$`, `Right$`, `Mid$`, `Trim$`, `Replace`, `InStr`, `InStrRev`, `Chr$`, `Asc`, `Hex$`, `Oct$`, `Val`, `Str`, `StrComp`, `StrConv`, `StrReverse`, `Format`, `FormatNumber`, `FormatCurrency`, `FormatPercent`, `IsArray`, `IsNumeric`, `IsDate`, `VarType`, and `TypeName`
+- math and financial helpers such as `Abs`, `Atn`, `Cos`, `Exp`, `Fix`, `Int`, `Log`, `Round`, `Sgn`, `Sin`, `Sqr`, `Tan`, `DDB`, `FV`, `IPmt`, `IRR`, `MIRR`, `NPer`, `NPV`, `Pmt`, `PPmt`, `PV`, `Rate`, `SLN`, and `SYD`
 - `Input #`, `Line Input #`
 - `Print #`, `Write #`
 - `Get #`, `Put #`
 - Random/Binary file modes
 - automatic sibling loading for imported `.bas` / `.cls` compatibility modules
 
-Compatibility is pragmatic and growing.
+Compatibility is pragmatic and growing. Some host-specific functions are recognized with limited or platform-dependent behavior: for example, `MacScript` reports an unsupported-runtime diagnostic, `GetSetting` returns the supplied default when no host settings store exists, and COM automation depends on the host platform.
 
 Valo already supports a substantial VBA compatibility surface, including `.bas` / `.cls` modules, classic runtime behavior, COM automation foundations on Windows, and native interop primitives.
 

@@ -81,8 +81,8 @@ COM examples require Windows and the relevant COM server. They are skipped by th
 - [VBA Syntax](vba_syntax.valo)
 - [Exported Class Module](exported_class.cls)
 - [VBA Compatibility Overview](vba_compat.valo)
-- [VBA Constants](vba_constants.valo)
-- [VBA String Functions](vba_string_functions.valo)
+- [VBA Constants](vba_constants.valo), covering the built-in constant groups exposed by the compatibility runtime
+- [VBA String Functions](vba_string_functions.valo), plus broader runtime function coverage for math, conversion, type-checking, date/time, formatting, financial, selection, color, file, dialog, and host helpers
 - [VBA Optional Arguments](vba_optional_arguments.valo) and [VBA Optional Forwarding](vba_optional_forwarding.valo)
 - [VBA Property Compatibility](vba_property_compat.valo)
 - [VBA StrPtr](vba_strptr.valo)

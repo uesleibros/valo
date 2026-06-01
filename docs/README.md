@@ -17,7 +17,7 @@ Learn how to write code in Valo.
 *   **[Async and Await](language/async.md):** Async declaration syntax and current interpreter behavior.
 *   **[Modules and Imports](language/modules.md):** Project organization and dependency management.
 *   **[Error Handling](language/error-handling.md):** Robust runtime failure management.
-*   **[VBA Compatibility](language/vba-compat.md):** Information on the bridge between modern Valo and legacy VBA.
+*   **[VBA Compatibility](language/vba-compat.md):** The bridge between modern Valo and legacy VBA, including `.bas`/`.cls` imports, constants, runtime functions, file I/O, COM, and native interop.
 *   **[COM Automation](language/com.md):** Windows COM/OLE Automation support.
 *   **[FFI](language/ffi.md):** Calling native libraries.
 *   **[REPL](repl.md):** Interactive REPL documentation.
