@@ -187,6 +187,67 @@ pub(crate) fn eval_strings(
         return Ok(Some(Value::String(format!("{prefix}{replaced}"))));
     }
 
+    if name.eq_ignore_ascii_case("Format") {
+        if args.is_empty() || args.len() > 4 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                "Format expects 1 to 4 arguments",
+                Some(span),
+            ));
+        }
+        let expression = &args[0];
+        let format = args.get(1).map(Value::to_output_string).unwrap_or_default();
+        return Ok(Some(Value::String(format_value(expression, &format))));
+    }
+
+    if name.eq_ignore_ascii_case("FormatNumber")
+        || name.eq_ignore_ascii_case("FormatCurrency")
+        || name.eq_ignore_ascii_case("FormatPercent")
+    {
+        if args.is_empty() || args.len() > 5 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                format!("{name} expects 1 to 5 arguments"),
+                Some(span),
+            ));
+        }
+        let value = crate::runtime::numeric::value_to_f64(&args[0]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                format!("{name} expression must be numeric"),
+                Some(span),
+            )
+        })?;
+        let digits = args
+            .get(1)
+            .and_then(value_to_i64)
+            .filter(|digits| *digits >= 0)
+            .unwrap_or(2) as usize;
+        let value = if name.eq_ignore_ascii_case("FormatPercent") {
+            value * 100.0
+        } else {
+            value
+        };
+        let mut text = format!("{value:.digits$}");
+        if name.eq_ignore_ascii_case("FormatCurrency") {
+            text = format!("${text}");
+        } else if name.eq_ignore_ascii_case("FormatPercent") {
+            text.push('%');
+        }
+        return Ok(Some(Value::String(text)));
+    }
+
+    if name.eq_ignore_ascii_case("FormatDateTime") {
+        if args.is_empty() || args.len() > 2 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                "FormatDateTime expects 1 to 2 arguments",
+                Some(span),
+            ));
+        }
+        return Ok(Some(Value::String(args[0].to_output_string())));
+    }
+
     if name.eq_ignore_ascii_case("InStr") {
         expect_arg_range(name, args, 2, 4, span)?;
         let (start, text, find, compare_arg) = match args.len() {
@@ -258,6 +319,35 @@ pub(crate) fn eval_strings(
         let count = non_negative_len(name, &args[0], span)?;
         let ch = string_char(&args[1], span)?;
         return Ok(Some(Value::String(ch.to_string().repeat(count))));
+    }
+
+    if name.eq_ignore_ascii_case("StrReverse") {
+        expect_arg_range(name, args, 1, 1, span)?;
+        return Ok(Some(Value::String(
+            args[0].to_output_string().chars().rev().collect(),
+        )));
+    }
+
+    if name.eq_ignore_ascii_case("StrConv") {
+        expect_arg_range(name, args, 2, 3, span)?;
+        let text = args[0].to_output_string();
+        let conversion = value_to_i64(&args[1]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "StrConv conversion must be Integer",
+                Some(span),
+            )
+        })?;
+        let converted = if conversion & 3 == 3 {
+            proper_case(&text)
+        } else if conversion & 1 != 0 {
+            text.to_uppercase()
+        } else if conversion & 2 != 0 {
+            text.to_lowercase()
+        } else {
+            text
+        };
+        return Ok(Some(Value::String(converted)));
     }
 
     if name.eq_ignore_ascii_case("Chr") || name.eq_ignore_ascii_case("ChrW") {
@@ -353,6 +443,41 @@ pub(crate) fn eval_strings(
             std::cmp::Ordering::Greater => 1,
         };
         return Ok(Some(Value::Int64(result)));
+    }
+
+    if name.eq_ignore_ascii_case("Partition") {
+        expect_arg_range(name, args, 4, 4, span)?;
+        let number = value_to_i64(&args[0]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "Partition number must be Integer",
+                Some(span),
+            )
+        })?;
+        let start = value_to_i64(&args[1]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "Partition start must be Integer",
+                Some(span),
+            )
+        })?;
+        let stop = value_to_i64(&args[2]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "Partition stop must be Integer",
+                Some(span),
+            )
+        })?;
+        let interval = value_to_i64(&args[3]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "Partition interval must be Integer",
+                Some(span),
+            )
+        })?;
+        return Ok(Some(Value::String(partition(
+            number, start, stop, interval, span,
+        )?)));
     }
 
     Ok(None)
@@ -568,4 +693,76 @@ fn val_number(text: &str) -> f64 {
         return 0.0;
     }
     trimmed[..end].parse::<f64>().unwrap_or(0.0)
+}
+
+fn format_value(value: &Value, format: &str) -> String {
+    if format.is_empty() {
+        return value.to_output_string();
+    }
+    let lower = format.to_ascii_lowercase();
+    if lower == "yes/no" {
+        return if value.is_truthy() { "Yes" } else { "No" }.to_string();
+    }
+    if lower == "true/false" {
+        return if value.is_truthy() { "True" } else { "False" }.to_string();
+    }
+    if lower == "on/off" {
+        return if value.is_truthy() { "On" } else { "Off" }.to_string();
+    }
+    if let Some(number) = crate::runtime::numeric::value_to_f64(value) {
+        let decimals = format
+            .split('.')
+            .nth(1)
+            .map(|tail| tail.chars().filter(|ch| matches!(ch, '0' | '#')).count())
+            .unwrap_or(0);
+        if decimals > 0 {
+            return format!("{number:.decimals$}");
+        }
+    }
+    value.to_output_string()
+}
+
+fn proper_case(text: &str) -> String {
+    let mut next_upper = true;
+    text.chars()
+        .map(|ch| {
+            if ch.is_alphabetic() {
+                let converted = if next_upper {
+                    ch.to_uppercase().collect::<String>()
+                } else {
+                    ch.to_lowercase().collect::<String>()
+                };
+                next_upper = false;
+                converted
+            } else {
+                next_upper = true;
+                ch.to_string()
+            }
+        })
+        .collect()
+}
+
+fn partition(
+    number: i64,
+    start: i64,
+    stop: i64,
+    interval: i64,
+    span: crate::runtime::Span,
+) -> Result<String, Diagnostic> {
+    if interval < 1 || stop < start {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Partition requires stop >= start and interval >= 1",
+            Some(span),
+        ));
+    }
+    if number < start {
+        return Ok(format!("     :{}", start - 1));
+    }
+    if number > stop {
+        return Ok(format!("{}:     ", stop + 1));
+    }
+    let lower = start + ((number - start) / interval) * interval;
+    let upper = (lower + interval - 1).min(stop);
+    Ok(format!("{lower}:{upper}"))
 }

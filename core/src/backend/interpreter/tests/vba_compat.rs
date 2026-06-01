@@ -415,6 +415,205 @@ fn local_variables_shadow_vba_type_library_constants() {
 }
 
 #[test]
+fn microsoft_vba_function_index_names_validate() {
+    parse_and_validate(
+        r#"
+Function WasMissing(Optional value As Variant) As Boolean
+    WasMissing = IsMissing(value)
+End Function
+
+Sub Main()
+    Dim v As Variant
+    Dim values As Variant
+    values = Array(-100, 200, 300)
+    v = Abs(-1)
+    v = Array(1, 2)
+    v = Asc("A")
+    v = AscW("A")
+    v = Atn(1)
+    v = CBool(1)
+    v = CByte(1)
+    v = CCur(1)
+    v = CDate(1)
+    v = CDbl(1)
+    v = CDec(1)
+    v = Choose(1, "a", "b")
+    v = Chr(65)
+    v = ChrW(65)
+    v = CInt(1)
+    v = CLng(1)
+    v = CLngLng(1)
+    v = CLngPtr(1)
+    v = Command()
+    v = Cos(0)
+    v = CreateObject("Scripting.Dictionary")
+    v = CStr(1)
+    v = CVar(1)
+    v = CVErr(5)
+    v = Date
+    v = DateAdd("d", 1, Date)
+    v = DateDiff("d", Date, Date)
+    v = DatePart("yyyy", Date)
+    v = DateSerial(2024, 1, 1)
+    v = DateValue("2024-01-01")
+    v = Day(Date)
+    v = DDB(1000, 100, 5, 1)
+    v = Dir()
+    v = DoEvents()
+    v = Environ("PATH")
+    v = EOF(1)
+    v = Error(5)
+    v = Exp(1)
+    v = FileAttr(1, 1)
+    v = FileDateTime("missing.txt")
+    v = FileLen("missing.txt")
+    v = Filter(values, "0")
+    v = Fix(-1.2)
+    v = Format(1, "0.00")
+    v = FormatCurrency(1)
+    v = FormatDateTime(Date)
+    v = FormatNumber(1)
+    v = FormatPercent(0.5)
+    v = FreeFile()
+    v = FV(0.1, 2, -10)
+    v = GetAllSettings("app", "section")
+    v = GetAttr(".")
+    v = GetObject("missing", "Class")
+    v = GetSetting("app", "section", "key", "default")
+    v = Hex(10)
+    v = Hour(Time)
+    v = IIf(True, 1, 2)
+    v = IMEStatus()
+    v = Input(1, 1)
+    v = InputBox("prompt")
+    v = InStr("abc", "b")
+    v = InStrRev("abcabc", "b")
+    v = Int(-1.2)
+    v = IPmt(0.1, 1, 12, 100)
+    v = IRR(values)
+    v = IsArray(values)
+    v = IsDate(Date)
+    v = IsEmpty(Empty)
+    v = IsError(CVErr(1))
+    v = WasMissing()
+    v = IsNull(Null)
+    v = IsNumeric("1")
+    v = IsObject(Nothing)
+    v = Join(values)
+    v = LBound(values)
+    v = LCase("A")
+    v = Left("abc", 1)
+    v = Len("abc")
+    v = LenB("abc")
+    v = Loc(1)
+    v = Log(1)
+    v = LTrim(" x")
+    v = MacID("TEXT")
+    v = MacScript("return 1")
+    v = Mid("abc", 2)
+    v = Minute(Time)
+    v = MIRR(values, 0.1, 0.1)
+    v = Month(Date)
+    v = MonthName(1)
+    v = MsgBox("prompt")
+    v = Now
+    v = NPer(0.1, -10, 100)
+    v = NPV(0.1, values)
+    v = Oct(8)
+    v = Partition(10, 0, 100, 10)
+    v = Pmt(0.1, 12, 100)
+    v = PPmt(0.1, 1, 12, 100)
+    v = PV(0.1, 12, -10)
+    v = QBColor(1)
+    v = Rate(12, -10, 100)
+    v = Replace("aba", "a", "x")
+    v = RGB(1, 2, 3)
+    v = Right("abc", 1)
+    v = Rnd()
+    v = Round(1.25, 1)
+    v = RTrim("x ")
+    v = Second(Time)
+    v = Seek(1)
+    v = Sgn(-1)
+    v = Shell("echo valo")
+    v = Sin(0)
+    v = SLN(100, 10, 5)
+    v = Space(2)
+    v = Spc(2)
+    v = Split("a b", " ")
+    v = Sqr(4)
+    v = Str(1)
+    v = StrComp("a", "b")
+    v = StrConv("hello world", 3)
+    v = String(2, "x")
+    v = StrReverse("abc")
+    v = Switch(True, 1)
+    v = SYD(100, 10, 5, 1)
+    v = Tab(2)
+    v = Tan(0)
+    v = Time
+    v = TimeSerial(1, 2, 3)
+    v = TimeValue("01:02:03")
+    v = Timer
+    v = Trim(" x ")
+    v = TypeName(v)
+    v = UBound(values)
+    v = UCase("a")
+    v = Val("1")
+    v = VarType(v)
+    v = Weekday(Date)
+    v = WeekdayName(1)
+    v = Year(Date)
+End Sub
+"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn additional_vba_functions_execute() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Randomize 1
+    Console.WriteLine(Abs(-5) & "," & Fix(-1.7) & "," & Int(-1.7) & "," & Sgn(-2))
+    Console.WriteLine(Round(1.25, 1))
+    Console.WriteLine(Left(FormatNumber(12.345, 1), 4))
+    Console.WriteLine(StrReverse("abc") & "," & StrConv("hello world", vbProperCase))
+    Console.WriteLine(RGB(1, 2, 3) & "," & QBColor(15))
+    Console.WriteLine(DateDiff("d", DateSerial(2024, 1, 1), DateAdd("d", 9, DateSerial(2024, 1, 1))))
+    Console.WriteLine(DatePart("yyyy", DateSerial(2024, 2, 3)))
+    Console.WriteLine(Choose(2, "a", "b", "c") & "," & Switch(False, "x", True, "y"))
+    Console.WriteLine(Error(13))
+    Console.WriteLine(FormatPercent(0.5, 0))
+    Console.WriteLine(Partition(23, 0, 99, 10))
+    Console.WriteLine(TypeName(CVar(5)) & "," & IsError(CVErr(5)))
+    Console.WriteLine(SLN(100, 10, 5))
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        output,
+        vec![
+            "5,-1,-2,-1",
+            "1.3",
+            "12.3",
+            "cba,Hello World",
+            "197121,16777215",
+            "9",
+            "2024",
+            "b,y",
+            "Type mismatch",
+            "50%",
+            "20:29",
+            "Integer,True",
+            "18",
+        ]
+    );
+}
+
+#[test]
 fn common_safe_vba_string_functions_work() {
     let source = r#"
         Sub Main()

@@ -68,6 +68,21 @@ pub(crate) fn eval_types(
         expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::String(match_value_type_name(&args[0]))));
     }
+    if name.eq_ignore_ascii_case("CVar") {
+        expect_value_count(name, args, 1, span)?;
+        return Ok(Some(args[0].clone()));
+    }
+    if name.eq_ignore_ascii_case("CVErr") {
+        expect_value_count(name, args, 1, span)?;
+        let code = crate::runtime::numeric::value_to_i64(&args[0]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "CVErr requires an integer error code",
+                Some(span),
+            )
+        })?;
+        return Ok(Some(Value::Error(code as i32)));
+    }
     if name.eq_ignore_ascii_case("CByte") {
         expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
@@ -92,7 +107,10 @@ pub(crate) fn eval_types(
             span,
         )?));
     }
-    if name.eq_ignore_ascii_case("CLngLng") || name.eq_ignore_ascii_case("CInt64") {
+    if name.eq_ignore_ascii_case("CLngLng")
+        || name.eq_ignore_ascii_case("CLngPtr")
+        || name.eq_ignore_ascii_case("CInt64")
+    {
         expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Int64,

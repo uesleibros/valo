@@ -295,6 +295,29 @@ impl Interpreter {
         Ok(())
     }
 
+    pub(crate) fn input_file_chars(
+        &mut self,
+        number: i32,
+        count: i64,
+        span: Span,
+    ) -> Result<String, Diagnostic> {
+        if count < 0 {
+            return Err(file_error("Input length cannot be negative", span));
+        }
+        let file = self.open_file_mut(number, span)?;
+        if !can_read(file.access) || file.mode == OpenMode::Output || file.mode == OpenMode::Append
+        {
+            return Err(file_error(
+                format!("Input requires file #{} to be open for reading", number),
+                span,
+            ));
+        }
+        let start = file.position;
+        let end = (start + count as usize).min(file.content.len());
+        file.position = end;
+        Ok(String::from_utf8_lossy(&file.content[start..end]).to_string())
+    }
+
     pub(crate) fn print_file(
         &mut self,
         number: &Expr,
@@ -441,6 +464,42 @@ impl Interpreter {
             file.content.len() as u64
         };
         Ok(len as i64)
+    }
+
+    pub(crate) fn loc_file(&self, number: i32, span: Span) -> Result<i64, Diagnostic> {
+        let file = self.opened_file(number, span)?;
+        if file.mode == OpenMode::Random {
+            let record_len = file
+                .record_len
+                .ok_or_else(|| file_error("Random mode requires Len =", span))?;
+            Ok((file.position / record_len) as i64)
+        } else {
+            Ok(file.position as i64)
+        }
+    }
+
+    pub(crate) fn file_attr(
+        &self,
+        number: i32,
+        attribute: i64,
+        span: Span,
+    ) -> Result<i64, Diagnostic> {
+        let file = self.opened_file(number, span)?;
+        match attribute {
+            1 => Ok(match file.mode {
+                OpenMode::Input => 1,
+                OpenMode::Output => 2,
+                OpenMode::Random => 4,
+                OpenMode::Append => 8,
+                OpenMode::Binary => 32,
+            }),
+            2 => Ok(match file.access {
+                FileAccess::Read => 1,
+                FileAccess::Write => 2,
+                FileAccess::ReadWrite => 3,
+            }),
+            _ => Err(file_error("FileAttr attribute must be 1 or 2", span)),
+        }
     }
 
     pub(crate) fn seek_file_position(&self, number: i32, span: Span) -> Result<i64, Diagnostic> {

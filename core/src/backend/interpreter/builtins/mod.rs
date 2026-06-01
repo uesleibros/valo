@@ -116,6 +116,41 @@ pub(crate) fn dispatch_function(
         return Ok(Some(interpreter.eval_expr(value_expr, frame)?));
     }
 
+    if effective_name.eq_ignore_ascii_case("Choose") {
+        if args.len() < 2 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                "Choose expects an index and at least one choice",
+                Some(span),
+            ));
+        }
+        let index = integer_arg(
+            effective_name,
+            &interpreter.eval_expr(&args[0], frame)?,
+            span,
+        )?;
+        if index < 1 || index as usize >= args.len() {
+            return Ok(Some(Value::Null));
+        }
+        return Ok(Some(interpreter.eval_expr(&args[index as usize], frame)?));
+    }
+
+    if effective_name.eq_ignore_ascii_case("Switch") {
+        if args.is_empty() || !args.len().is_multiple_of(2) {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                "Switch expects expression/value pairs",
+                Some(span),
+            ));
+        }
+        for pair in args.chunks(2) {
+            if interpreter.eval_expr(&pair[0], frame)?.is_truthy() {
+                return Ok(Some(interpreter.eval_expr(&pair[1], frame)?));
+            }
+        }
+        return Ok(Some(Value::Null));
+    }
+
     if effective_name.eq_ignore_ascii_case("CallByName") {
         return dispatch_callbyname(interpreter, effective_name, args, frame, span);
     }
@@ -281,6 +316,73 @@ pub(crate) fn dispatch_function(
         return Ok(Some(Value::String(result)));
     }
 
+    if effective_name.eq_ignore_ascii_case("Command") {
+        expect_arg_count(effective_name, args, 0, span)?;
+        let command = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+        return Ok(Some(Value::String(command)));
+    }
+
+    if effective_name.eq_ignore_ascii_case("Error") {
+        if args.len() > 1 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                "Error expects 0 to 1 arguments",
+                Some(span),
+            ));
+        }
+        let number = if let Some(arg) = args.first() {
+            integer_arg(effective_name, &interpreter.eval_expr(arg, frame)?, span)?
+        } else {
+            0
+        };
+        return Ok(Some(Value::String(error_description(number))));
+    }
+
+    if effective_name.eq_ignore_ascii_case("Input") {
+        expect_arg_count(effective_name, args, 2, span)?;
+        let count = integer_arg(
+            effective_name,
+            &interpreter.eval_expr(&args[0], frame)?,
+            span,
+        )?;
+        let number = file_number_arg(
+            effective_name,
+            &interpreter.eval_expr(&args[1], frame)?,
+            span,
+        )?;
+        return Ok(Some(Value::String(
+            interpreter.input_file_chars(number, count, span)?,
+        )));
+    }
+
+    if effective_name.eq_ignore_ascii_case("Shell") {
+        if args.is_empty() || args.len() > 2 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                "Shell expects 1 to 2 arguments",
+                Some(span),
+            ));
+        }
+        let command = interpreter.eval_expr(&args[0], frame)?.to_output_string();
+        let child = if cfg!(windows) {
+            std::process::Command::new("cmd")
+                .args(["/C", &command])
+                .spawn()
+        } else {
+            std::process::Command::new("sh")
+                .args(["-c", &command])
+                .spawn()
+        }
+        .map_err(|error| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                format!("Shell failed to start '{}': {}", command, error),
+                Some(span),
+            )
+        })?;
+        return Ok(Some(Value::Int64(i64::from(child.id()))));
+    }
+
     if effective_name.eq_ignore_ascii_case("Debug.Assert") {
         expect_arg_count(effective_name, args, 1, span)?;
         let condition = interpreter.eval_expr(&args[0], frame)?.is_truthy();
@@ -364,6 +466,61 @@ pub(crate) fn dispatch_function(
         )?)));
     }
 
+    if effective_name.eq_ignore_ascii_case("GetSetting") {
+        if args.len() < 3 || args.len() > 4 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                "GetSetting expects 3 to 4 arguments",
+                Some(span),
+            ));
+        }
+        for arg in args.iter().take(3) {
+            let _ = interpreter.eval_expr(arg, frame)?;
+        }
+        let default = if let Some(default) = args.get(3) {
+            interpreter.eval_expr(default, frame)?.to_output_string()
+        } else {
+            String::new()
+        };
+        return Ok(Some(Value::String(default)));
+    }
+
+    if effective_name.eq_ignore_ascii_case("GetAllSettings") {
+        expect_arg_count(effective_name, args, 2, span)?;
+        for arg in args {
+            let _ = interpreter.eval_expr(arg, frame)?;
+        }
+        return Ok(Some(empty_string_matrix()));
+    }
+
+    if effective_name.eq_ignore_ascii_case("IMEStatus") {
+        expect_arg_count(effective_name, args, 0, span)?;
+        return Ok(Some(Value::Int64(0)));
+    }
+
+    if effective_name.eq_ignore_ascii_case("MacID") {
+        expect_arg_count(effective_name, args, 1, span)?;
+        let text = interpreter.eval_expr(&args[0], frame)?.to_output_string();
+        let mut bytes = [b' '; 4];
+        for (slot, byte) in bytes.iter_mut().zip(text.bytes()) {
+            *slot = byte;
+        }
+        let value = bytes
+            .iter()
+            .fold(0_i64, |acc, byte| (acc << 8) | i64::from(*byte));
+        return Ok(Some(Value::Int64(value)));
+    }
+
+    if effective_name.eq_ignore_ascii_case("MacScript") {
+        expect_arg_count(effective_name, args, 1, span)?;
+        let _ = interpreter.eval_expr(&args[0], frame)?;
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            "MacScript is not supported on this runtime",
+            Some(span),
+        ));
+    }
+
     if is_name_in(effective_name, DATE_TIME_FUNCTIONS) {
         let mut values = Vec::with_capacity(args.len());
         for arg in args {
@@ -418,6 +575,9 @@ pub(crate) fn dispatch_function(
     if let Some(val) = math::eval_math(interpreter, effective_name, &values, span)? {
         return Ok(Some(val));
     }
+    if let Some(val) = eval_misc_value_function(effective_name, &values, span)? {
+        return Ok(Some(val));
+    }
 
     Ok(None)
 }
@@ -446,10 +606,23 @@ fn dispatch_file_function(
             let number = file_number_arg(name, &args[0], span)?;
             Ok(Some(Value::Boolean(interpreter.eof_file(number, span)?)))
         }
+        "fileattr" => {
+            expect_value_count(name, args, 2, span)?;
+            let number = file_number_arg(name, &args[0], span)?;
+            let attribute = integer_arg(name, &args[1], span)?;
+            Ok(Some(Value::Int64(
+                interpreter.file_attr(number, attribute, span)?,
+            )))
+        }
         "lof" => {
             expect_value_count(name, args, 1, span)?;
             let number = file_number_arg(name, &args[0], span)?;
             Ok(Some(Value::Int64(interpreter.lof_file(number, span)?)))
+        }
+        "loc" => {
+            expect_value_count(name, args, 1, span)?;
+            let number = file_number_arg(name, &args[0], span)?;
+            Ok(Some(Value::Int64(interpreter.loc_file(number, span)?)))
         }
         "seek" => {
             expect_value_count(name, args, 1, span)?;
@@ -459,6 +632,13 @@ fn dispatch_file_function(
             )))
         }
         "dir" => Ok(Some(Value::String(interpreter.dir(args, span)?))),
+        "getattr" => {
+            expect_value_count(name, args, 1, span)?;
+            Ok(Some(Value::Int64(get_attr(
+                &args[0].to_output_string(),
+                span,
+            )?)))
+        }
         "filelen" => {
             expect_value_count(name, args, 1, span)?;
             let path = args[0].to_output_string();
@@ -560,6 +740,38 @@ fn dispatch_datetime_function(
                 span,
             )?)))
         }
+        "dateadd" => {
+            expect_value_count(name, args, 3, span)?;
+            let interval = args[0].to_output_string();
+            let number = integer_arg(name, &args[1], span)?;
+            let date = date_arg(name, &args[2], span)?;
+            Ok(Some(Value::Date(date_add(&interval, number, date, span)?)))
+        }
+        "datediff" => {
+            if args.len() < 3 || args.len() > 5 {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::GENERIC,
+                    "DateDiff expects 3 to 5 arguments",
+                    Some(span),
+                ));
+            }
+            let interval = args[0].to_output_string();
+            let start = date_arg(name, &args[1], span)?;
+            let end = date_arg(name, &args[2], span)?;
+            Ok(Some(Value::Int64(date_diff(&interval, start, end, span)?)))
+        }
+        "datepart" => {
+            if args.len() < 2 || args.len() > 4 {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::GENERIC,
+                    "DatePart expects 2 to 4 arguments",
+                    Some(span),
+                ));
+            }
+            let interval = args[0].to_output_string();
+            let date = date_arg(name, &args[1], span)?;
+            Ok(Some(Value::Int64(date_part(&interval, date, span)?)))
+        }
         "year" | "month" | "day" => {
             expect_value_count(name, args, 1, span)?;
             let serial = date_arg(name, &args[0], span)?;
@@ -647,6 +859,99 @@ fn environ_value(
                 .map(|(key, value)| format!("{key}={value}"))
                 .unwrap_or_default())
         }
+    }
+}
+
+fn eval_misc_value_function(
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Option<Value>, Diagnostic> {
+    match name.to_ascii_lowercase().as_str() {
+        "rgb" => {
+            expect_value_count(name, args, 3, span)?;
+            let red = color_component(name, &args[0], span)?;
+            let green = color_component(name, &args[1], span)?;
+            let blue = color_component(name, &args[2], span)?;
+            Ok(Some(Value::Int64(red | (green << 8) | (blue << 16))))
+        }
+        "qbcolor" => {
+            expect_value_count(name, args, 1, span)?;
+            let color = integer_arg(name, &args[0], span)?;
+            const COLORS: [i64; 16] = [
+                0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080, 0x008080, 0xC0C0C0,
+                0x808080, 0xFF0000, 0x00FF00, 0xFFFF00, 0x0000FF, 0xFF00FF, 0x00FFFF, 0xFFFFFF,
+            ];
+            let Some(value) = COLORS.get(color as usize) else {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                    "QBColor color must be between 0 and 15",
+                    Some(span),
+                ));
+            };
+            Ok(Some(Value::Int64(*value)))
+        }
+        "spc" | "tab" => {
+            expect_value_count(name, args, 1, span)?;
+            let count = integer_arg(name, &args[0], span)?.max(0) as usize;
+            Ok(Some(Value::String(" ".repeat(count))))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn color_component(
+    name: &str,
+    value: &Value,
+    span: crate::runtime::Span,
+) -> Result<i64, Diagnostic> {
+    let value = integer_arg(name, value, span)?;
+    Ok(value.clamp(0, 255))
+}
+
+fn get_attr(path: &str, span: crate::runtime::Span) -> Result<i64, Diagnostic> {
+    let metadata = std::fs::metadata(path).map_err(|error| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            format!("Unable to get attributes for '{}': {}", path, error),
+            Some(span),
+        )
+    })?;
+    let mut attr = if metadata.is_dir() { 16 } else { 0 };
+    if metadata.permissions().readonly() {
+        attr |= 1;
+    }
+    Ok(attr)
+}
+
+fn empty_string_matrix() -> Value {
+    Value::Array(std::rc::Rc::new(crate::runtime::ArrayValue {
+        element_type: crate::runtime::TypeName::Variant,
+        elements: Vec::new(),
+        bounds: vec![
+            crate::runtime::ArrayBound {
+                lower: 0,
+                upper: -1,
+            },
+            crate::runtime::ArrayBound { lower: 0, upper: 1 },
+        ],
+        allocated: true,
+        dynamic: true,
+    }))
+}
+
+fn error_description(number: i64) -> String {
+    match number {
+        0 => String::new(),
+        5 => "Invalid procedure call or argument".to_string(),
+        6 => "Overflow".to_string(),
+        7 => "Out of memory".to_string(),
+        9 => "Subscript out of range".to_string(),
+        11 => "Division by zero".to_string(),
+        13 => "Type mismatch".to_string(),
+        53 => "File not found".to_string(),
+        76 => "Path not found".to_string(),
+        _ => format!("Application-defined or object-defined error ({number})"),
     }
 }
 
@@ -750,6 +1055,81 @@ fn date_serial(year: i64, month: i64, day: i64) -> f64 {
 fn time_serial(hour: i64, minute: i64, second: i64) -> f64 {
     let total = hour * 3600 + minute * 60 + second;
     total as f64 / 86_400.0
+}
+
+fn date_add(
+    interval: &str,
+    number: i64,
+    serial: f64,
+    span: crate::runtime::Span,
+) -> Result<f64, Diagnostic> {
+    let days = serial.floor() as i64 - UNIX_EPOCH_AS_VBA;
+    let fraction = serial.fract();
+    let (year, month, day) = civil_from_days(days);
+    let result = match interval.to_ascii_lowercase().as_str() {
+        "yyyy" => date_serial(year + number, i64::from(month), i64::from(day)) + fraction,
+        "q" => date_serial(year, i64::from(month) + number * 3, i64::from(day)) + fraction,
+        "m" => date_serial(year, i64::from(month) + number, i64::from(day)) + fraction,
+        "y" | "d" | "w" => serial + number as f64,
+        "ww" => serial + (number * 7) as f64,
+        "h" => serial + number as f64 / 24.0,
+        "n" => serial + number as f64 / 1_440.0,
+        "s" => serial + number as f64 / 86_400.0,
+        _ => return Err(invalid_interval(interval, span)),
+    };
+    Ok(result)
+}
+
+fn date_diff(
+    interval: &str,
+    start: f64,
+    end: f64,
+    span: crate::runtime::Span,
+) -> Result<i64, Diagnostic> {
+    let start_days = start.floor() as i64 - UNIX_EPOCH_AS_VBA;
+    let end_days = end.floor() as i64 - UNIX_EPOCH_AS_VBA;
+    let (start_year, start_month, _) = civil_from_days(start_days);
+    let (end_year, end_month, _) = civil_from_days(end_days);
+    let diff = match interval.to_ascii_lowercase().as_str() {
+        "yyyy" => end_year - start_year,
+        "q" => (end_year - start_year) * 4 + (i64::from(end_month) - i64::from(start_month)) / 3,
+        "m" => (end_year - start_year) * 12 + i64::from(end_month) - i64::from(start_month),
+        "y" | "d" | "w" => end_days - start_days,
+        "ww" => (end_days - start_days) / 7,
+        "h" => ((end - start) * 24.0).trunc() as i64,
+        "n" => ((end - start) * 1_440.0).trunc() as i64,
+        "s" => ((end - start) * 86_400.0).trunc() as i64,
+        _ => return Err(invalid_interval(interval, span)),
+    };
+    Ok(diff)
+}
+
+fn date_part(interval: &str, serial: f64, span: crate::runtime::Span) -> Result<i64, Diagnostic> {
+    let days = serial.floor() as i64 - UNIX_EPOCH_AS_VBA;
+    let (year, month, day) = civil_from_days(days);
+    let seconds = seconds_since_midnight(serial);
+    let value = match interval.to_ascii_lowercase().as_str() {
+        "yyyy" => year,
+        "q" => ((month - 1) / 3 + 1).into(),
+        "m" => month.into(),
+        "y" => days - days_from_civil(year, 1, 1) + 1,
+        "d" => day.into(),
+        "w" => weekday_value(serial, 1),
+        "ww" => ((days - days_from_civil(year, 1, 1)) / 7) + 1,
+        "h" => seconds / 3600,
+        "n" => (seconds % 3600) / 60,
+        "s" => seconds % 60,
+        _ => return Err(invalid_interval(interval, span)),
+    };
+    Ok(value)
+}
+
+fn invalid_interval(interval: &str, span: crate::runtime::Span) -> Diagnostic {
+    Diagnostic::new(
+        crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+        format!("Invalid date interval '{}'", interval),
+        Some(span),
+    )
 }
 
 pub(crate) fn parse_date_value(value: &str, span: crate::runtime::Span) -> Result<f64, Diagnostic> {

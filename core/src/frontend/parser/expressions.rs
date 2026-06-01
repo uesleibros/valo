@@ -571,6 +571,24 @@ impl Parser {
                     span: Span::new(self.file_id, span.start, end.end),
                 }
             }
+            TokenKind::Error => {
+                let name = "Error".to_string();
+                let kind = if self.match_simple(&TokenKind::LeftParen) {
+                    let args = self.finish_call_arguments()?;
+                    ExprKind::Call {
+                        name,
+                        type_args: Vec::new(),
+                        args,
+                    }
+                } else {
+                    ExprKind::Variable(name)
+                };
+                let end = self.previous().span;
+                Expr {
+                    kind,
+                    span: Span::new(self.file_id, span.start, end.end),
+                }
+            }
             TokenKind::Identifier(name, _) => {
                 if name.eq_ignore_ascii_case("MyBase") {
                     Expr {
