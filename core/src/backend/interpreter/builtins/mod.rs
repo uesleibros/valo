@@ -415,8 +415,11 @@ pub(crate) fn dispatch_function(
             if !server.is_empty() {
                 return Err(Diagnostic::new(
                     crate::runtime::DiagnosticCode::GENERIC,
-                    "CreateObject remote server activation is not supported yet",
+                    "Compatibility diagnostic: CreateObject remote server activation is not supported by the standalone Valo runtime; omit the server name for local COM activation",
                     Some(args[1].span),
+                )
+                .with_help(
+                    "omit the server name for local COM activation, or run this automation in a host/runtime that supports remote COM",
                 ));
             }
         }
@@ -516,9 +519,10 @@ pub(crate) fn dispatch_function(
         let _ = interpreter.eval_expr(&args[0], frame)?;
         return Err(Diagnostic::new(
             crate::runtime::DiagnosticCode::GENERIC,
-            "MacScript is not supported on this runtime",
+            "Compatibility diagnostic: MacScript requires an Office VBA Mac host and is not supported by the standalone Valo runtime; replace MacScript with a platform API, shell command, or host-specific adapter",
             Some(span),
-        ));
+        )
+        .with_help("replace MacScript with a platform API, shell command, or host-specific adapter"));
     }
 
     if is_name_in(effective_name, DATE_TIME_FUNCTIONS) {
@@ -1067,9 +1071,9 @@ fn date_add(
     let fraction = serial.fract();
     let (year, month, day) = civil_from_days(days);
     let result = match interval.to_ascii_lowercase().as_str() {
-        "yyyy" => date_serial(year + number, i64::from(month), i64::from(day)) + fraction,
-        "q" => date_serial(year, i64::from(month) + number * 3, i64::from(day)) + fraction,
-        "m" => date_serial(year, i64::from(month) + number, i64::from(day)) + fraction,
+        "yyyy" => date_add_months(year, month, day, number * 12) + fraction,
+        "q" => date_add_months(year, month, day, number * 3) + fraction,
+        "m" => date_add_months(year, month, day, number) + fraction,
         "y" | "d" | "w" => serial + number as f64,
         "ww" => serial + (number * 7) as f64,
         "h" => serial + number as f64 / 24.0,
@@ -1078,6 +1082,23 @@ fn date_add(
         _ => return Err(invalid_interval(interval, span)),
     };
     Ok(result)
+}
+
+fn date_add_months(year: i64, month: u32, day: u32, months: i64) -> f64 {
+    let month_index = i64::from(month) - 1 + months;
+    let target_year = year + month_index.div_euclid(12);
+    let target_month = month_index.rem_euclid(12) + 1;
+    let target_day = day.min(days_in_month(target_year, target_month as u32));
+    date_serial(target_year, target_month, i64::from(target_day))
+}
+
+fn days_in_month(year: i64, month: u32) -> u32 {
+    let next_month_index = i64::from(month);
+    let next_year = year + next_month_index.div_euclid(12);
+    let next_month = next_month_index.rem_euclid(12) + 1;
+    let this_month_days = days_from_civil(year, month, 1);
+    let next_month_days = days_from_civil(next_year, next_month as u32, 1);
+    (next_month_days - this_month_days) as u32
 }
 
 fn date_diff(

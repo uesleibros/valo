@@ -486,6 +486,133 @@ End Function
 }
 
 #[test]
+fn option_private_module_allows_explicit_same_project_import() {
+    let dir = temp_project();
+    write(
+        &dir,
+        "main.valo",
+        r#"
+Imports Hidden
+
+Sub Main()
+    Console.WriteLine(Hidden.Value())
+End Sub
+"#,
+    );
+    write(
+        &dir,
+        "Hidden.bas",
+        r#"
+Option Private Module
+
+Public Function Value() As String
+    Value = "hidden"
+End Function
+"#,
+    );
+
+    assert_eq!(
+        run_file(dir.join("main.valo")).unwrap(),
+        vec!["hidden".to_string()]
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn option_private_vba_sibling_remains_visible_inside_project_group() {
+    let dir = temp_project();
+    write(
+        &dir,
+        "main.valo",
+        r#"
+Imports MainModule
+
+Sub Main()
+    Console.WriteLine(MainModule.Start())
+End Sub
+"#,
+    );
+    write(
+        &dir,
+        "MainModule.bas",
+        r#"
+Public Function Start() As String
+    Start = HiddenValue()
+End Function
+"#,
+    );
+    write(
+        &dir,
+        "Hidden.bas",
+        r#"
+Option Private Module
+
+Public Function HiddenValue() As String
+    HiddenValue = "hidden"
+End Function
+"#,
+    );
+
+    assert_eq!(
+        run_file(dir.join("main.valo")).unwrap(),
+        vec!["hidden".to_string()]
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn loaded_but_unimported_module_is_not_an_ambient_unqualified_candidate() {
+    let dir = temp_project();
+    write(
+        &dir,
+        "main.valo",
+        r#"
+Imports A
+Imports C
+
+Sub Main()
+    Console.WriteLine(A.Start())
+End Sub
+"#,
+    );
+    write(
+        &dir,
+        "A.valo",
+        r#"
+Imports B
+
+Public Function Start() As String
+    Return Value()
+End Function
+"#,
+    );
+    write(
+        &dir,
+        "B.valo",
+        r#"
+Public Function Value() As String
+    Return "b"
+End Function
+"#,
+    );
+    write(
+        &dir,
+        "C.valo",
+        r#"
+Public Function Value() As String
+    Return "c"
+End Function
+"#,
+    );
+
+    assert_eq!(
+        run_file(dir.join("main.valo")).unwrap(),
+        vec!["b".to_string()]
+    );
+    fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn vba_compat_sibling_modules_can_reference_each_other_without_import_cycles() {
     let dir = temp_project();
     write(

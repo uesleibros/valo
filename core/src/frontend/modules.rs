@@ -32,6 +32,7 @@ pub struct ResolvedImport {
     pub module: usize,
     pub requested: String,
     pub qualifier: String,
+    pub implicit: bool,
     pub span: Span,
 }
 
@@ -157,6 +158,7 @@ impl ModuleLoader {
                 module: target_index,
                 requested: import.module,
                 qualifier,
+                implicit: false,
                 span: import.span,
             });
         }
@@ -240,6 +242,7 @@ impl ModuleLoader {
                     module: target_index,
                     requested: qualifier.clone(),
                     qualifier,
+                    implicit: true,
                     span: Span::empty(file_id),
                 });
             }

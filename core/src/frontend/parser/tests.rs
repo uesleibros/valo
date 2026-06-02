@@ -776,3 +776,14 @@ End Sub
     let program = Parser::parse_source(source, FileId::default()).unwrap();
     assert_eq!(program.procedures[0].body.len(), 4);
 }
+
+#[test]
+fn parses_base_as_vba_variable_name() {
+    let source = r#"
+Sub Main()
+    Dim base As Long: base = 1
+End Sub
+"#;
+    let program = Parser::parse_source(source, FileId::default());
+    assert!(program.is_ok(), "Failed to parse: {:?}", program.err());
+}

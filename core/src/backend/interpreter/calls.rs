@@ -1360,7 +1360,7 @@ impl Interpreter {
             .filter(|import| modules.iter().any(|module| module == &import.module))
             .map(|import| import.module.clone())
             .collect();
-        let candidates = if imported.is_empty() {
+        let candidates = if frame.module_key().is_none() {
             modules.clone()
         } else {
             imported

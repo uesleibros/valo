@@ -3,6 +3,7 @@ use super::*;
 impl Parser {
     pub fn parse_program(&mut self) -> Result<Program, Diagnostic> {
         let mut option_explicit = false;
+        let mut option_private_module = false;
         let mut option_base = 0;
         let mut saw_option_base = false;
         let mut option_compare = OptionCompare::Binary;
@@ -121,6 +122,7 @@ impl Parser {
                                 "Expected 'Module' after 'Option Private'",
                             )?;
                         }
+                        option_private_module = true;
                     } else {
                         return Err(self.error_here("Option must be Explicit, Base, or Compare"));
                     }
@@ -315,6 +317,7 @@ impl Parser {
             attributes,
             imports,
             option_explicit,
+            option_private_module,
             option_base,
             option_compare,
             types,

@@ -14,5 +14,6 @@ Documentation for the Valo language features.
 *   **[Modules and Imports](modules.md):** Project organization and dependency management.
 *   **[Error Handling](error-handling.md):** Robust runtime failure management.
 *   **[VBA Compatibility](vba-compat.md):** Compatibility syntax, `.bas`/`.cls` migration, built-in constants, runtime functions, file I/O, COM, and FFI bridge behavior.
+*   **[Standard Library Reference](standard-library.md):** Built-in functions, constants, compatibility levels, and known caveats.
 *   **[COM Automation](com.md):** Windows COM/OLE Automation through `Object`, `CreateObject`, and late-bound calls.
 *   **[FFI](ffi.md):** Native library declarations, pointer types, callbacks, and platform-aware loading.

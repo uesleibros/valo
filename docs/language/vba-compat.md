@@ -25,6 +25,7 @@ Valo distinguishes between modern native code and legacy compatibility code prim
 
 ### Built-in Compatibility
 - VBA project-style module groups: importing any `.bas` or `.cls` file automatically loads sibling `.bas` and `.cls` files from the same directory. Those sibling compatibility modules can reference each other's public declarations without explicit `Imports`, matching the flat project namespace used by exported VBA projects while keeping modern `.valo` imports explicit.
+- The [standard library reference](standard-library.md) tracks built-in functions, constants, and compatibility levels as Implemented, Recognized limited, Platform-dependent, or Stub / diagnostic.
 - `Debug.Print`: Available in all file modes, outputs to the standard console. Supports multiple comma-separated arguments.
 - `Err` Object: Full support for `Err.Raise`, `Err.Number`, and `Err.Description` in all modes.
 - `Array Built-ins`: `Array`, `Split`, `Join`, `Filter`, `LBound`, and `UBound` behave according to standard VBA semantics.
@@ -39,6 +40,7 @@ Valo distinguishes between modern native code and legacy compatibility code prim
 - Filesystem helpers: `Dir`, `GetAttr`, `Kill`, `FileLen`, `FileDateTime`, `CurDir`, `ChDir`, `MkDir`, `RmDir`, and `Name old As new` are available for local filesystem compatibility. `Dir` supports exact paths, `*`/`?` wildcard enumeration, repeated `Dir()` continuation calls, `vbDirectory`, basic read-only filtering, Unix-style dotfile hidden matching, and Windows hidden metadata where available.
 - Date/time helpers: `Timer`, `Now`, `Date`, `Time`, `DateAdd`, `DateDiff`, `DatePart`, `DateSerial`, `TimeSerial`, `DateValue`, `TimeValue`, `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second`, `Weekday`, `MonthName`, and `WeekdayName` are implemented using Valo's VBA serial `Date` value. `DateValue`/`TimeValue` intentionally accept a small deterministic parse subset rather than locale-dependent VBA parsing.
 - Host and platform helpers: `Command`, `DoEvents`, `Environ`, `Error`, `GetSetting`, `GetAllSettings`, `IMEStatus`, `InputBox`, `MacID`, `MacScript`, `MsgBox`, `QBColor`, `RGB`, `Shell`, `Spc`, and `Tab` are recognized. Some host-specific behavior is intentionally pragmatic: `MacScript` reports an unsupported-runtime diagnostic, `GetSetting` returns the supplied default when no host settings store exists, and `GetAllSettings` returns an empty array.
+- `Option Private Module`: Parsed and tracked on imported modules. Same-project explicit imports and implicit `.bas` sibling access remain available, while project resolution is import-driven rather than treating every loaded module as an ambient global candidate.
 - `Multidimensional Arrays`: Fully supported with `ReDim Preserve` compatibility (last-dimension only resizing).
 - `New ClassName`: Parentheses are optional for zero-argument construction, matching VBA (`Set v = New Vec2`).
 - `Const`: Module, local, and class-scope constants are supported, including multi-Const declarations such as `Public Const PI = 3.14, E = 2.71`.

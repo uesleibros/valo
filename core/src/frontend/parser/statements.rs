@@ -154,7 +154,7 @@ impl Parser {
             {
                 self.parse_name_file()
             }
-            TokenKind::Identifier(_, _) | TokenKind::Me | TokenKind::Dot => {
+            TokenKind::Identifier(_, _) | TokenKind::Base | TokenKind::Me | TokenKind::Dot => {
                 self.parse_identifier_statement()
             }
             TokenKind::Public | TokenKind::Private => {
@@ -235,6 +235,7 @@ impl Parser {
         let (name, type_char) = match token.kind {
             TokenKind::Identifier(name, hint) => (name, hint),
             TokenKind::Version => ("VERSION".to_string(), None),
+            TokenKind::Base => ("Base".to_string(), None),
             _ => {
                 return Err(Diagnostic::new(
                     crate::runtime::DiagnosticCode::GENERIC,

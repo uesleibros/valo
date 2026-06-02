@@ -1203,6 +1203,23 @@ End Sub
 }
 
 #[test]
+fn createobject_remote_activation_reports_compatibility_diagnostic() {
+    let error = crate::backend::interpreter::tests::helpers::source_error(
+        r#"
+Sub Main()
+    Dim obj As Object
+    Set obj = CreateObject("Scripting.Dictionary", "REMOTEHOST")
+End Sub
+"#,
+    );
+
+    assert!(error.contains(
+        "Compatibility diagnostic: CreateObject remote server activation is not supported"
+    ));
+    assert!(error.contains("omit the server name"));
+}
+
+#[test]
 fn object_default_property_assignment_accepts_string_index_semantically() {
     let source = r#"
 Sub Main()

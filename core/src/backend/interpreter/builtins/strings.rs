@@ -245,7 +245,12 @@ pub(crate) fn eval_strings(
                 Some(span),
             ));
         }
-        return Ok(Some(Value::String(args[0].to_output_string())));
+        let named_format = args.get(1).and_then(value_to_i64).unwrap_or(0);
+        return Ok(Some(Value::String(format_datetime(
+            &args[0],
+            named_format,
+            span,
+        )?)));
     }
 
     if name.eq_ignore_ascii_case("InStr") {
@@ -700,6 +705,34 @@ fn format_value(value: &Value, format: &str) -> String {
         return value.to_output_string();
     }
     let lower = format.to_ascii_lowercase();
+    match lower.as_str() {
+        "general date" => {
+            if let Some(serial) = date_serial_value(value) {
+                return format_vba_date_time(serial);
+            }
+        }
+        "long date" => {
+            if let Some(serial) = date_serial_value(value) {
+                return format_vba_long_date(serial);
+            }
+        }
+        "short date" => {
+            if let Some(serial) = date_serial_value(value) {
+                return format_vba_short_date(serial);
+            }
+        }
+        "long time" => {
+            if let Some(serial) = date_serial_value(value) {
+                return format_vba_long_time(serial);
+            }
+        }
+        "short time" => {
+            if let Some(serial) = date_serial_value(value) {
+                return format_vba_short_time(serial);
+            }
+        }
+        _ => {}
+    }
     if lower == "yes/no" {
         return if value.is_truthy() { "Yes" } else { "No" }.to_string();
     }
@@ -710,6 +743,15 @@ fn format_value(value: &Value, format: &str) -> String {
         return if value.is_truthy() { "On" } else { "Off" }.to_string();
     }
     if let Some(number) = crate::runtime::numeric::value_to_f64(value) {
+        match lower.as_str() {
+            "general number" => return number.to_string(),
+            "currency" => return format!("${number:.2}"),
+            "fixed" => return format!("{number:.2}"),
+            "standard" => return format_number_with_grouping(number, 2),
+            "percent" => return format!("{:.2}%", number * 100.0),
+            "scientific" => return format!("{number:E}"),
+            _ => {}
+        }
         let decimals = format
             .split('.')
             .nth(1)
@@ -720,6 +762,166 @@ fn format_value(value: &Value, format: &str) -> String {
         }
     }
     value.to_output_string()
+}
+
+fn format_datetime(
+    value: &Value,
+    named_format: i64,
+    span: crate::runtime::Span,
+) -> Result<String, Diagnostic> {
+    let serial = date_serial_value(value).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "FormatDateTime expression must be Date",
+            Some(span),
+        )
+    })?;
+    let text = match named_format {
+        0 => format_vba_date_time(serial),
+        1 => format_vba_long_date(serial),
+        2 => format_vba_short_date(serial),
+        3 => format_vba_long_time(serial),
+        4 => format_vba_short_time(serial),
+        _ => {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "FormatDateTime named format must be vbGeneralDate, vbLongDate, vbShortDate, vbLongTime, or vbShortTime",
+                Some(span),
+            ));
+        }
+    };
+    Ok(text)
+}
+
+fn date_serial_value(value: &Value) -> Option<f64> {
+    match value {
+        Value::Date(value) | Value::Double(value) => Some(*value),
+        Value::Single(value) => Some(f64::from(*value)),
+        Value::Int16(value) => Some(f64::from(*value)),
+        Value::Int32(value) => Some(f64::from(*value)),
+        Value::Int64(value) => Some(*value as f64),
+        _ => None,
+    }
+}
+
+fn format_vba_date_time(serial: f64) -> String {
+    let days = serial.floor() as i64;
+    let seconds = seconds_since_midnight(serial);
+    if days == 0 {
+        format_vba_long_time(serial)
+    } else if seconds == 0 {
+        format_vba_short_date(serial)
+    } else {
+        format!(
+            "{} {}",
+            format_vba_short_date(serial),
+            format_vba_long_time(serial)
+        )
+    }
+}
+
+fn format_vba_short_date(serial: f64) -> String {
+    let (year, month, day) = civil_from_vba_serial(serial);
+    format!("{month}/{day}/{year}")
+}
+
+fn format_vba_long_date(serial: f64) -> String {
+    let (year, month, day) = civil_from_vba_serial(serial);
+    format!(
+        "{}, {} {}, {}",
+        weekday_name_from_serial(serial),
+        month_name(month),
+        day,
+        year
+    )
+}
+
+fn format_vba_long_time(serial: f64) -> String {
+    let seconds = seconds_since_midnight(serial);
+    let hour = seconds / 3600;
+    let minute = (seconds % 3600) / 60;
+    let second = seconds % 60;
+    format!("{hour:02}:{minute:02}:{second:02}")
+}
+
+fn format_vba_short_time(serial: f64) -> String {
+    let seconds = seconds_since_midnight(serial);
+    let hour = seconds / 3600;
+    let minute = (seconds % 3600) / 60;
+    format!("{hour:02}:{minute:02}")
+}
+
+fn format_number_with_grouping(number: f64, decimals: usize) -> String {
+    let sign = if number.is_sign_negative() { "-" } else { "" };
+    let text = format!("{:.*}", decimals, number.abs());
+    let (whole, fraction) = text.split_once('.').unwrap_or((&text, ""));
+    let mut grouped = String::new();
+    for (index, ch) in whole.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(ch);
+    }
+    let whole = grouped.chars().rev().collect::<String>();
+    if decimals == 0 {
+        format!("{sign}{whole}")
+    } else {
+        format!("{sign}{whole}.{fraction}")
+    }
+}
+
+fn civil_from_vba_serial(serial: f64) -> (i64, u32, u32) {
+    civil_from_days(serial.floor() as i64 - 25_569)
+}
+
+fn seconds_since_midnight(serial: f64) -> i64 {
+    ((serial.fract().rem_euclid(1.0) * 86_400.0).round() as i64).rem_euclid(86_400)
+}
+
+fn weekday_name_from_serial(serial: f64) -> &'static str {
+    const NAMES: [&str; 7] = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+    ];
+    let days = serial.floor() as i64 - 25_569;
+    let index = (days + 4).rem_euclid(7) as usize;
+    NAMES[index]
+}
+
+fn month_name(month: u32) -> &'static str {
+    const NAMES: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    NAMES[month as usize - 1]
+}
+
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let days = days + 719_468;
+    let era = days.div_euclid(146_097);
+    let doe = days - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096).div_euclid(365);
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2).div_euclid(153);
+    let day = doy - (153 * mp + 2).div_euclid(5) + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    (year + i64::from(month <= 2), month as u32, day as u32)
 }
 
 fn proper_case(text: &str) -> String {

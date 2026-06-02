@@ -8,6 +8,7 @@ pub struct Program {
     pub attributes: Vec<AttributeDecl>,
     pub imports: Vec<ImportDecl>,
     pub option_explicit: bool,
+    pub option_private_module: bool,
     pub option_base: i64,
     pub option_compare: OptionCompare,
     pub types: Vec<TypeDecl>,

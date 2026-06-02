@@ -297,18 +297,26 @@ fn eval_cashflow(
                 return Err(arg_range(name, 1, 2, span));
             }
             let values = flatten_values(&args[0..1], span)?;
+            ensure_mixed_cashflows("IRR", &values, span)?;
             let guess = optional_number(name, args.get(1), span, 0.1)?;
-            Ok(Value::Double(solve_rate(&values, guess, |values, rate| {
-                values
-                    .iter()
-                    .enumerate()
-                    .map(|(index, value)| value / (1.0 + rate).powi(index as i32))
-                    .sum()
-            })))
+            Ok(Value::Double(solve_rate(
+                name,
+                &values,
+                guess,
+                span,
+                |values, rate| {
+                    values
+                        .iter()
+                        .enumerate()
+                        .map(|(index, value)| value / (1.0 + rate).powi(index as i32))
+                        .sum()
+                },
+            )?))
         }
         "mirr" => {
             expect_value_count(name, args, 3, span)?;
             let values = flatten_values(&args[0..1], span)?;
+            ensure_mixed_cashflows("MIRR", &values, span)?;
             let finance_rate = number_arg(name, &args[1], span)?;
             let reinvest_rate = number_arg(name, &args[2], span)?;
             let periods = values.len() as i32 - 1;
@@ -376,22 +384,81 @@ fn pmt(rate: f64, nper: f64, pv: f64, fv_value: f64, typ: f64) -> f64 {
     }
 }
 
-fn solve_rate(values: &[f64], guess: f64, f: impl Fn(&[f64], f64) -> f64) -> f64 {
+fn solve_rate(
+    name: &str,
+    values: &[f64],
+    guess: f64,
+    span: crate::runtime::Span,
+    f: impl Fn(&[f64], f64) -> f64,
+) -> Result<f64, Diagnostic> {
     let mut rate = guess;
     for _ in 0..50 {
         let value = f(values, rate);
+        if value.abs() < 1e-10 {
+            return Ok(rate);
+        }
         let delta = 1e-6;
         let derivative = (f(values, rate + delta) - value) / delta;
         if derivative.abs() < 1e-12 {
             break;
         }
         let next = rate - value / derivative;
-        if (next - rate).abs() < 1e-10 {
-            return next;
+        if next.is_finite() && next > -1.0 && (next - rate).abs() < 1e-10 {
+            return Ok(next);
+        }
+        if !next.is_finite() || next <= -1.0 {
+            break;
         }
         rate = next;
     }
-    rate
+
+    let mut previous_rate = -0.999_999;
+    let mut previous_value = f(values, previous_rate);
+    for step in 1..=20_000 {
+        let current_rate = -0.999_999 + step as f64 * 0.001;
+        let current_value = f(values, current_rate);
+        if previous_value.signum() != current_value.signum() {
+            let mut low = previous_rate;
+            let mut high = current_rate;
+            for _ in 0..100 {
+                let mid = (low + high) / 2.0;
+                let mid_value = f(values, mid);
+                if mid_value.abs() < 1e-10 {
+                    return Ok(mid);
+                }
+                if f(values, low).signum() == mid_value.signum() {
+                    low = mid;
+                } else {
+                    high = mid;
+                }
+            }
+            return Ok((low + high) / 2.0);
+        }
+        previous_rate = current_rate;
+        previous_value = current_value;
+    }
+
+    Err(Diagnostic::new(
+        crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+        format!("{name} could not find a convergent rate for the supplied cash flows"),
+        Some(span),
+    ))
+}
+
+fn ensure_mixed_cashflows(
+    name: &str,
+    values: &[f64],
+    span: crate::runtime::Span,
+) -> Result<(), Diagnostic> {
+    if values.iter().any(|value| *value > 0.0) && values.iter().any(|value| *value < 0.0) {
+        Ok(())
+    } else {
+        Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            format!("{name} requires at least one positive and one negative cash flow"),
+            Some(span),
+        ))
+    }
 }
 
 fn flatten_values(values: &[Value], span: crate::runtime::Span) -> Result<Vec<f64>, Diagnostic> {
