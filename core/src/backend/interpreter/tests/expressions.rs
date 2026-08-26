@@ -191,3 +191,90 @@ End Sub
 
     assert_eq!(output, vec!["True", "True", "True", "True", "True", "True"]);
 }
+
+#[test]
+fn compound_assignment_operators_update_in_place() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim total As Long = 10
+    total += 5
+    Console.WriteLine(total)
+    total -= 3
+    Console.WriteLine(total)
+    total *= 2
+    Console.WriteLine(total)
+    total \= 4
+    Console.WriteLine(total)
+    total ^= 2
+    Console.WriteLine(total)
+
+    Dim label As String = "Valo"
+    label &= " 1.0"
+    Console.WriteLine(label)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["15", "12", "24", "6", "36", "Valo 1.0"]);
+}
+
+#[test]
+fn compound_assignment_works_on_array_elements_and_fields() {
+    let output = run_source(
+        r#"
+Class Counter
+    Public Hits As Long
+End Class
+
+Sub Main()
+    Dim slots(0 To 2) As Long
+    slots(1) = 7
+    slots(1) += 5
+    Console.WriteLine(slots(1))
+
+    Dim c As New Counter()
+    c.Hits = 2
+    c.Hits *= 10
+    Console.WriteLine(c.Hits)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["12", "20"]);
+}
+
+#[test]
+fn shift_operators_preserve_the_left_operand_type_and_sign() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Console.WriteLine(1 << 10)
+    Console.WriteLine(1024 >> 3)
+    Console.WriteLine(-16 >> 2)
+
+    Dim flags As Long = 3
+    flags <<= 4
+    Console.WriteLine(flags)
+    flags >>= 2
+    Console.WriteLine(flags)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["1024", "128", "-4", "48", "12"]);
+}
+
+#[test]
+fn shift_binds_tighter_than_comparison_and_looser_than_addition() {
+    let output = run_source(
+        r#"
+Sub Main()
+    ' 1 + 1 = 2, so 1 << 2 = 4, and 4 > 3 is True.
+    Console.WriteLine(1 << 1 + 1 > 3)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["True"]);
+}

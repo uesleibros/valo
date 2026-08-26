@@ -72,19 +72,36 @@ impl<'a> Lexer<'a> {
                 ')' => tokens.push(self.single_char(TokenKind::RightParen)),
                 '{' => tokens.push(self.single_char(TokenKind::LeftBrace)),
                 '}' => tokens.push(self.single_char(TokenKind::RightBrace)),
-                '+' => tokens.push(self.single_char(TokenKind::Plus)),
-                '-' => tokens.push(self.single_char(TokenKind::Minus)),
-                '*' => tokens.push(self.single_char(TokenKind::Star)),
-                '^' => tokens.push(self.single_char(TokenKind::Caret)),
-                '/' => tokens.push(self.single_char(TokenKind::Slash)),
-                '\\' => tokens.push(self.single_char(TokenKind::Backslash)),
+                '+' => {
+                    tokens.push(self.operator_or_compound(TokenKind::Plus, TokenKind::PlusEqual))
+                }
+                '-' => {
+                    tokens.push(self.operator_or_compound(TokenKind::Minus, TokenKind::MinusEqual))
+                }
+                '*' => {
+                    tokens.push(self.operator_or_compound(TokenKind::Star, TokenKind::StarEqual))
+                }
+                '^' => {
+                    tokens.push(self.operator_or_compound(TokenKind::Caret, TokenKind::CaretEqual))
+                }
+                '/' => {
+                    tokens.push(self.operator_or_compound(TokenKind::Slash, TokenKind::SlashEqual))
+                }
+                '\\' => tokens.push(
+                    self.operator_or_compound(TokenKind::Backslash, TokenKind::BackslashEqual),
+                ),
                 '&' => {
                     if let Some('H') | Some('h') = self.peek_next() {
                         tokens.push(self.hex_number()?)
                     } else if let Some('O') | Some('o') = self.peek_next() {
                         tokens.push(self.octal_number()?)
                     } else {
-                        tokens.push(self.single_char(TokenKind::Ampersand))
+                        tokens.push(
+                            self.operator_or_compound(
+                                TokenKind::Ampersand,
+                                TokenKind::AmpersandEqual,
+                            ),
+                        )
                     }
                 }
                 '%' => tokens.push(self.single_char(TokenKind::Percent)),
@@ -250,6 +267,7 @@ impl<'a> Lexer<'a> {
             "step" if hint.is_none() => TokenKind::Step,
             "next" if hint.is_none() => TokenKind::Next,
             "exit" if hint.is_none() => TokenKind::Exit,
+            "continue" if hint.is_none() => TokenKind::Continue,
             "on" if hint.is_none() => TokenKind::On,
             "error" if hint.is_none() => TokenKind::Error,
             "resume" if hint.is_none() => TokenKind::Resume,
@@ -521,6 +539,23 @@ impl<'a> Lexer<'a> {
         ))
     }
 
+    /// Scans a single-character operator, upgrading it to its `op=` compound
+    /// form when an `=` immediately follows.
+    fn operator_or_compound(&mut self, simple: TokenKind, compound: TokenKind) -> Token {
+        let start = self.pos();
+        self.advance();
+        let kind = if self.peek() == Some('=') {
+            self.advance();
+            compound
+        } else {
+            simple
+        };
+        Token {
+            kind,
+            span: Span::new(self.file_id, start, self.pos()),
+        }
+    }
+
     fn less_or_not_equal(&mut self) -> Token {
         let start = self.pos();
         self.advance();
@@ -532,6 +567,15 @@ impl<'a> Lexer<'a> {
             Some('>') => {
                 self.advance();
                 TokenKind::NotEqual
+            }
+            Some('<') => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::ShiftLeftEqual
+                } else {
+                    TokenKind::ShiftLeft
+                }
             }
             _ => TokenKind::Less,
         };
@@ -548,6 +592,15 @@ impl<'a> Lexer<'a> {
             Some('=') => {
                 self.advance();
                 TokenKind::GreaterEqual
+            }
+            Some('>') => {
+                self.advance();
+                if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::ShiftRightEqual
+                } else {
+                    TokenKind::ShiftRight
+                }
             }
             _ => TokenKind::Greater,
         };

@@ -171,9 +171,37 @@ impl Parser {
     }
 
     fn parse_comparison(&mut self) -> Result<Expr, Diagnostic> {
-        let mut expr = self.parse_concat()?;
+        let mut expr = self.parse_shift()?;
 
         while let Some(op) = self.match_comparison_op() {
+            let right = self.parse_shift()?;
+            let span = Span::new(self.file_id, expr.span.start, right.span.end);
+            expr = Expr {
+                kind: ExprKind::Binary {
+                    left: Box::new(expr),
+                    op,
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    /// Parses `<<` and `>>`, which bind tighter than comparison and looser than
+    /// concatenation, matching VB.NET operator precedence.
+    fn parse_shift(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_concat()?;
+
+        loop {
+            let op = if self.match_simple(&TokenKind::ShiftLeft) {
+                BinaryOp::ShiftLeft
+            } else if self.match_simple(&TokenKind::ShiftRight) {
+                BinaryOp::ShiftRight
+            } else {
+                break;
+            };
             let right = self.parse_concat()?;
             let span = Span::new(self.file_id, expr.span.start, right.span.end);
             expr = Expr {

@@ -584,8 +584,37 @@ pub fn validate_statements(
                 handler,
                 span,
             } => {
-                let _event_ty =
-                    validate_expr(event, symbols, types, signatures, context, option_explicit)?;
+                // The event operand names an event, not a value, so it cannot go
+                // through ordinary member-access validation, which only knows
+                // about fields and properties.
+                if let ExprKind::MemberAccess {
+                    object,
+                    field: event_name,
+                } = &event.kind
+                {
+                    let owner = validate_expr(
+                        object,
+                        symbols,
+                        types,
+                        signatures,
+                        context,
+                        option_explicit,
+                    )?;
+                    if let Some(owner_name) = owner.base_user_name()
+                        && let Some(class_sig) = types.get_class(owner_name)
+                        && !class_sig.events.contains_key(&key(event_name))
+                    {
+                        return Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::MEMBER_ACCESS,
+                            format!(
+                                "Class '{}' does not declare event '{}'",
+                                owner_name, event_name
+                            ),
+                            Some(event.span),
+                        )
+                        .with_primary_label("unknown event"));
+                    }
+                }
                 let _handler_ty = validate_expr(
                     handler,
                     symbols,
@@ -1229,6 +1258,9 @@ pub fn validate_statements(
             Stmt::Exit { target, span } => {
                 validate_exit(*target, *span, context, loop_context)?;
             }
+            Stmt::Continue { target, span } => {
+                validate_continue(*target, *span, loop_context)?;
+            }
             Stmt::TryCatch {
                 try_body,
                 catch_block,
@@ -1664,6 +1696,7 @@ fn stmt_span(stmt: &Stmt, _context: &Context<'_>) -> crate::runtime::Span {
         | Stmt::With { span, .. }
         | Stmt::Using { span, .. }
         | Stmt::Exit { span, .. }
+        | Stmt::Continue { span, .. }
         | Stmt::TryCatch { span, .. }
         | Stmt::DebugPrint { span, .. }
         | Stmt::OpenFile { span, .. }
@@ -1895,7 +1928,7 @@ fn stmt_uses_with_target(stmt: &Stmt, _context: &Context<'_>) -> bool {
                 .as_ref()
                 .is_some_and(|arg| expr_uses_with_target(arg, _context))
         }),
-        Stmt::Exit { .. } => false,
+        Stmt::Exit { .. } | Stmt::Continue { .. } => false,
         Stmt::Yield { expr, .. } => expr_uses_with_target(expr, _context),
     }
 }

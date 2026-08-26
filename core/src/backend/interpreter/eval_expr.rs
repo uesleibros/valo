@@ -600,6 +600,8 @@ impl Interpreter {
                     crate::BinaryOp::IntegerDivide => RuntimeBinaryOp::IntegerDivide,
                     crate::BinaryOp::Modulo => RuntimeBinaryOp::Modulo,
                     crate::BinaryOp::Concat => RuntimeBinaryOp::Concat,
+                    crate::BinaryOp::ShiftLeft => RuntimeBinaryOp::ShiftLeft,
+                    crate::BinaryOp::ShiftRight => RuntimeBinaryOp::ShiftRight,
                     crate::BinaryOp::LogicalAnd | crate::BinaryOp::LogicalAndAlso => {
                         RuntimeBinaryOp::LogicalAnd
                     }

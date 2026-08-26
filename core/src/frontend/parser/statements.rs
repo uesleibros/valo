@@ -59,6 +59,7 @@ impl Parser {
             TokenKind::On => self.parse_on_error(),
             TokenKind::Resume => self.parse_resume(),
             TokenKind::Exit => self.parse_exit(),
+            TokenKind::Continue => self.parse_continue(),
             TokenKind::ReDim => self.parse_redim(),
             TokenKind::Erase => self.parse_erase(),
             TokenKind::LSet => self.parse_lset(),
@@ -766,6 +767,55 @@ impl Parser {
         })
     }
 
+    /// Matches `=` or any `op=` compound assignment operator.
+    ///
+    /// The inner `Option` carries the operator a compound form expands to and
+    /// is `None` for a plain `=`. The outer `Option` is `None` when no
+    /// assignment operator follows at all.
+    fn match_assignment_operator(&mut self) -> Option<Option<BinaryOp>> {
+        let op = match self.peek_kind() {
+            TokenKind::Equal => None,
+            TokenKind::PlusEqual => Some(BinaryOp::Add),
+            TokenKind::MinusEqual => Some(BinaryOp::Subtract),
+            TokenKind::StarEqual => Some(BinaryOp::Multiply),
+            TokenKind::SlashEqual => Some(BinaryOp::Divide),
+            TokenKind::BackslashEqual => Some(BinaryOp::IntegerDivide),
+            TokenKind::CaretEqual => Some(BinaryOp::Exponent),
+            TokenKind::AmpersandEqual => Some(BinaryOp::Concat),
+            TokenKind::ShiftLeftEqual => Some(BinaryOp::ShiftLeft),
+            TokenKind::ShiftRightEqual => Some(BinaryOp::ShiftRight),
+            _ => return None,
+        };
+        self.advance();
+        Some(op)
+    }
+
+    /// Parses the right-hand side of an assignment.
+    ///
+    /// A compound assignment expands to the equivalent binary expression, so
+    /// `total += 1` becomes `total = total + 1`. The target therefore appears
+    /// twice in the expansion, which matters only if an index or receiver
+    /// expression has side effects.
+    fn parse_assigned_value(
+        &mut self,
+        target: &Expr,
+        op: Option<BinaryOp>,
+    ) -> Result<Expr, Diagnostic> {
+        let value = self.parse_expression()?;
+        let Some(op) = op else {
+            return Ok(value);
+        };
+        let span = Span::new(self.file_id, target.span.start, value.span.end);
+        Ok(Expr {
+            kind: ExprKind::Binary {
+                left: Box::new(target.clone()),
+                op,
+                right: Box::new(value),
+            },
+            span,
+        })
+    }
+
     fn parse_identifier_statement_with_expr(
         &mut self,
         expr: Expr,
@@ -774,8 +824,8 @@ impl Parser {
         let span = expr.span;
         match &expr.kind {
             ExprKind::Call { name, args, .. } => {
-                if self.match_simple(&TokenKind::Equal) {
-                    let value = self.parse_expression()?;
+                if let Some(op) = self.match_assignment_operator() {
+                    let value = self.parse_assigned_value(&expr, op)?;
                     let end = value.span;
                     return Ok(Stmt::Assign {
                         target: AssignTarget::ArrayElement {
@@ -790,8 +840,9 @@ impl Parser {
 
                 // Check if it's a member access after the call (e.g., obj(1).prop = 2)
                 if self.check_simple(&TokenKind::Dot) {
-                    let target = self.parse_member_access(expr)?;
+                    let target = self.parse_member_access(expr.clone())?;
                     let target_span = target.span;
+                    let target_for_read = target.clone();
                     let ExprKind::MemberAccess { object, field } = target.kind else {
                         return Err(Diagnostic::new(
                             crate::runtime::DiagnosticCode::PARSE,
@@ -799,8 +850,14 @@ impl Parser {
                             Some(target_span),
                         ));
                     };
-                    self.expect_simple(TokenKind::Equal, "Expected '=' in member assignment")?;
-                    let value = self.parse_expression()?;
+                    let Some(op) = self.match_assignment_operator() else {
+                        return Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::PARSE,
+                            "Expected '=' in member assignment",
+                            Some(target_span),
+                        ));
+                    };
+                    let value = self.parse_assigned_value(&target_for_read, op)?;
                     let end = value.span;
                     return Ok(Stmt::Assign {
                         target: AssignTarget::Member {
@@ -832,8 +889,8 @@ impl Parser {
                     });
                 }
 
-                if self.match_simple(&TokenKind::Equal) {
-                    let value = self.parse_expression()?;
+                if let Some(op) = self.match_assignment_operator() {
+                    let value = self.parse_assigned_value(&expr, op)?;
                     let end = value.span;
                     return Ok(Stmt::Assign {
                         target: AssignTarget::Member {
@@ -872,8 +929,8 @@ impl Parser {
                     });
                 }
 
-                if self.match_simple(&TokenKind::Equal) {
-                    let value = self.parse_expression()?;
+                if let Some(op) = self.match_assignment_operator() {
+                    let value = self.parse_assigned_value(&expr, op)?;
                     let end = value.span;
                     return Ok(Stmt::Assign {
                         target: AssignTarget::MemberArrayElement {
@@ -895,8 +952,8 @@ impl Parser {
                 })
             }
             ExprKind::Variable(name) => {
-                if self.match_simple(&TokenKind::Equal) {
-                    let value = self.parse_expression()?;
+                if let Some(op) = self.match_assignment_operator() {
+                    let value = self.parse_assigned_value(&expr, op)?;
                     let end = value.span;
                     return Ok(Stmt::Assign {
                         target: AssignTarget::Variable {
@@ -1947,6 +2004,29 @@ impl Parser {
             catch_block,
             finally_body,
             span: Span::new(self.file_id, start.start, end.end),
+        })
+    }
+
+    fn parse_continue(&mut self) -> Result<Stmt, Diagnostic> {
+        let start = self
+            .expect_simple(TokenKind::Continue, "Expected 'Continue'")?
+            .span;
+        let token = self.advance();
+        let target = match token.kind {
+            TokenKind::For => ContinueTarget::For,
+            TokenKind::While => ContinueTarget::While,
+            TokenKind::Do => ContinueTarget::Do,
+            _ => {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::PARSE,
+                    "Expected 'For', 'While', or 'Do' after 'Continue'",
+                    Some(token.span),
+                ));
+            }
+        };
+        Ok(Stmt::Continue {
+            target,
+            span: Span::new(self.file_id, start.start, token.span.end),
         })
     }
 

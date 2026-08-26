@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use crate::runtime::{Diagnostic, RuntimeErrorInfo, TypeName, Value};
 use crate::{
-    AssignTarget, CaseItem, DoLoopCondition, ExitTarget, ExprKind, OnErrorMode, ReDimTarget,
-    ResumeTarget, Stmt, UsingResource,
+    AssignTarget, CaseItem, ContinueTarget, DoLoopCondition, ExitTarget, ExprKind, OnErrorMode,
+    ReDimTarget, ResumeTarget, Stmt, UsingResource,
 };
 
 use super::values::key;
@@ -515,6 +515,7 @@ impl Interpreter {
                 while self.eval_expr(condition, frame)?.is_truthy() {
                     match self.exec_block(body, frame)? {
                         ControlFlow::Continue => {}
+                        ControlFlow::ContinueWhile => {}
                         ControlFlow::ExitWhile => return Ok(ControlFlow::Continue),
                         flow @ ControlFlow::Return(_) => return Ok(flow),
                         flow => return Ok(flow),
@@ -530,6 +531,7 @@ impl Interpreter {
                         while self.eval_expr(condition, frame)?.is_truthy() {
                             match self.exec_block(body, frame)? {
                                 ControlFlow::Continue => {}
+                                ControlFlow::ContinueDo => {}
                                 ControlFlow::ExitDo => return Ok(ControlFlow::Continue),
                                 flow @ ControlFlow::Return(_) => return Ok(flow),
                                 flow => return Ok(flow),
@@ -540,6 +542,7 @@ impl Interpreter {
                         while !self.eval_expr(condition, frame)?.is_truthy() {
                             match self.exec_block(body, frame)? {
                                 ControlFlow::Continue => {}
+                                ControlFlow::ContinueDo => {}
                                 ControlFlow::ExitDo => return Ok(ControlFlow::Continue),
                                 flow @ ControlFlow::Return(_) => return Ok(flow),
                                 flow => return Ok(flow),
@@ -549,6 +552,7 @@ impl Interpreter {
                     DoLoopCondition::PostWhile(condition) => loop {
                         match self.exec_block(body, frame)? {
                             ControlFlow::Continue => {}
+                            ControlFlow::ContinueDo => {}
                             ControlFlow::ExitDo => return Ok(ControlFlow::Continue),
                             flow @ ControlFlow::Return(_) => return Ok(flow),
                             flow => return Ok(flow),
@@ -560,6 +564,7 @@ impl Interpreter {
                     DoLoopCondition::PostUntil(condition) => loop {
                         match self.exec_block(body, frame)? {
                             ControlFlow::Continue => {}
+                            ControlFlow::ContinueDo => {}
                             ControlFlow::ExitDo => return Ok(ControlFlow::Continue),
                             flow @ ControlFlow::Return(_) => return Ok(flow),
                             flow => return Ok(flow),
@@ -571,6 +576,7 @@ impl Interpreter {
                     DoLoopCondition::Infinite => loop {
                         match self.exec_block(body, frame)? {
                             ControlFlow::Continue => {}
+                            ControlFlow::ContinueDo => {}
                             ControlFlow::ExitDo => return Ok(ControlFlow::Continue),
                             flow @ ControlFlow::Return(_) => return Ok(flow),
                             flow => return Ok(flow),
@@ -615,6 +621,7 @@ impl Interpreter {
                     self.maybe_terminate(old, *span)?;
                     match self.exec_block(body, frame)? {
                         ControlFlow::Continue => {}
+                        ControlFlow::ContinueFor => {}
                         ControlFlow::ExitFor => return Ok(ControlFlow::Continue),
                         flow @ ControlFlow::Return(_) => return Ok(flow),
                         flow => return Ok(flow),
@@ -638,6 +645,7 @@ impl Interpreter {
                     self.maybe_terminate(old, *span)?;
                     match self.exec_block(body, frame)? {
                         ControlFlow::Continue => {}
+                        ControlFlow::ContinueFor => {}
                         ControlFlow::ExitFor => return Ok(ControlFlow::Continue),
                         flow @ ControlFlow::Return(_) => return Ok(flow),
                         flow => return Ok(flow),
@@ -801,6 +809,11 @@ impl Interpreter {
                 ExitTarget::For => Ok(ControlFlow::ExitFor),
                 ExitTarget::While => Ok(ControlFlow::ExitWhile),
                 ExitTarget::Do => Ok(ControlFlow::ExitDo),
+            },
+            Stmt::Continue { target, .. } => match target {
+                ContinueTarget::For => Ok(ControlFlow::ContinueFor),
+                ContinueTarget::While => Ok(ControlFlow::ContinueWhile),
+                ContinueTarget::Do => Ok(ControlFlow::ContinueDo),
             },
             Stmt::TryCatch {
                 try_body,
@@ -1512,6 +1525,7 @@ fn stmt_span(stmt: &Stmt) -> crate::runtime::Span {
         | Stmt::With { span, .. }
         | Stmt::Using { span, .. }
         | Stmt::Exit { span, .. }
+        | Stmt::Continue { span, .. }
         | Stmt::TryCatch { span, .. }
         | Stmt::DebugPrint { span, .. }
         | Stmt::OpenFile { span, .. }

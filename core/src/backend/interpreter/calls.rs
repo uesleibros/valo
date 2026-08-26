@@ -489,6 +489,9 @@ impl Interpreter {
                 ControlFlow::ExitProperty
                 | ControlFlow::ExitFor
                 | ControlFlow::ExitDo
+                | ControlFlow::ContinueFor
+                | ControlFlow::ContinueWhile
+                | ControlFlow::ContinueDo
                 | ControlFlow::ExitWhile => {
                     return Err(Diagnostic::new(
                         crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -690,6 +693,9 @@ impl Interpreter {
                 | ControlFlow::ExitFor
                 | ControlFlow::ExitWhile
                 | ControlFlow::ExitDo
+                | ControlFlow::ContinueFor
+                | ControlFlow::ContinueWhile
+                | ControlFlow::ContinueDo
                 | ControlFlow::GoTo(_)
                 | ControlFlow::Resume(_) => Err(Diagnostic::new(
                     crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -882,6 +888,9 @@ impl Interpreter {
                 ControlFlow::ExitProperty
                 | ControlFlow::ExitFor
                 | ControlFlow::ExitDo
+                | ControlFlow::ContinueFor
+                | ControlFlow::ContinueWhile
+                | ControlFlow::ContinueDo
                 | ControlFlow::ExitWhile => {
                     return Err(Diagnostic::new(
                         crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -959,6 +968,9 @@ impl Interpreter {
                 ControlFlow::ExitProperty
                 | ControlFlow::ExitFor
                 | ControlFlow::ExitDo
+                | ControlFlow::ContinueFor
+                | ControlFlow::ContinueWhile
+                | ControlFlow::ContinueDo
                 | ControlFlow::ExitWhile => {
                     return Err(Diagnostic::new(
                         crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -1059,6 +1071,9 @@ impl Interpreter {
                 | ControlFlow::ExitFor
                 | ControlFlow::ExitWhile
                 | ControlFlow::ExitDo
+                | ControlFlow::ContinueFor
+                | ControlFlow::ContinueWhile
+                | ControlFlow::ContinueDo
                 | ControlFlow::GoTo(_)
                 | ControlFlow::Resume(_) => Err(Diagnostic::new(
                     crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -1181,6 +1196,9 @@ impl Interpreter {
             | ControlFlow::ExitFor
             | ControlFlow::ExitWhile
             | ControlFlow::ExitDo
+            | ControlFlow::ContinueFor
+            | ControlFlow::ContinueWhile
+            | ControlFlow::ContinueDo
             | ControlFlow::GoTo(_)
             | ControlFlow::Resume(_) => Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -1289,6 +1307,9 @@ impl Interpreter {
             | ControlFlow::ExitFor
             | ControlFlow::ExitWhile
             | ControlFlow::ExitDo
+            | ControlFlow::ContinueFor
+            | ControlFlow::ContinueWhile
+            | ControlFlow::ContinueDo
             | ControlFlow::GoTo(_)
             | ControlFlow::Resume(_) => Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -1621,6 +1642,9 @@ impl Interpreter {
             | ControlFlow::ExitFor
             | ControlFlow::ExitWhile
             | ControlFlow::ExitDo
+            | ControlFlow::ContinueFor
+            | ControlFlow::ContinueWhile
+            | ControlFlow::ContinueDo
             | ControlFlow::GoTo(_)
             | ControlFlow::Resume(_) => Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -1747,6 +1771,9 @@ impl Interpreter {
             | ControlFlow::ExitFor
             | ControlFlow::ExitWhile
             | ControlFlow::ExitDo
+            | ControlFlow::ContinueFor
+            | ControlFlow::ContinueWhile
+            | ControlFlow::ContinueDo
             | ControlFlow::GoTo(_)
             | ControlFlow::Resume(_) => Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -1968,6 +1995,9 @@ impl Interpreter {
                         | ControlFlow::ExitFor
                         | ControlFlow::ExitWhile
                         | ControlFlow::ExitDo
+                        | ControlFlow::ContinueFor
+                        | ControlFlow::ContinueWhile
+                        | ControlFlow::ContinueDo
                         | ControlFlow::GoTo(_)
                         | ControlFlow::Resume(_) => Err(Diagnostic::new(
                             crate::runtime::DiagnosticCode::CONTROL_FLOW,
@@ -2238,6 +2268,9 @@ impl Interpreter {
             | ControlFlow::ExitFor
             | ControlFlow::ExitWhile
             | ControlFlow::ExitDo
+            | ControlFlow::ContinueFor
+            | ControlFlow::ContinueWhile
+            | ControlFlow::ContinueDo
             | ControlFlow::GoTo(_)
             | ControlFlow::Resume(_) => Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::CONTROL_FLOW,

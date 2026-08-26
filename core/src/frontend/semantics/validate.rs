@@ -77,59 +77,27 @@ fn validate_internal(program: &Program, require_main: bool) -> Result<(), Diagno
         ));
     }
 
-    for procedure in &program.procedures {
-        validate_procedure(
-            procedure,
-            &types,
-            &signatures,
-            &module_symbols,
-            program.option_explicit,
-        )?;
-    }
-
-    for function in &program.functions {
-        validate_function(
-            function,
-            &types,
-            &signatures,
-            &module_symbols,
-            program.option_explicit,
-        )?;
-    }
-    for type_decl in &program.types {
-        if type_decl.kind == crate::TypeKind::Structure {
-            validate_structure(
-                type_decl,
-                &types,
-                &signatures,
-                &module_symbols,
-                program.option_explicit,
-            )?;
-        }
-    }
-    for class_decl in &program.classes {
-        validate_class(
-            class_decl,
-            &types,
-            &signatures,
-            &module_symbols,
-            program.option_explicit,
-        )?;
-    }
-
-    Ok(())
+    validate_bodies(
+        program,
+        &types,
+        &signatures,
+        &module_symbols,
+        program.option_explicit,
+    )
 }
 
 pub fn validate_project(project: &crate::modules::Project) -> Result<(), Diagnostic> {
     validate_project_with_entry_requirement(project, true)
 }
 
+/// Validates a project the way `valo check` needs to.
+///
+/// This runs the same analysis as `validate_project` but does not insist on a
+/// `Sub Main`, because a library or a single module under review is legitimately
+/// missing one. It used to skip module validation entirely, which made `check`
+/// report success on code that failed the moment it ran.
 pub fn validate_project_for_check(project: &crate::modules::Project) -> Result<(), Diagnostic> {
-    let _project_index = crate::frontend::semantics::hir::build_project_index(project)?;
-    for module in &project.modules {
-        validate_import_aliases(module, project)?;
-    }
-    Ok(())
+    validate_project_with_entry_requirement(project, false)
 }
 
 fn validate_project_with_entry_requirement(
@@ -139,7 +107,7 @@ fn validate_project_with_entry_requirement(
     let _project_index = crate::frontend::semantics::hir::build_project_index(project)?;
     for (index, module) in project.modules.iter().enumerate() {
         let require_main = require_entry_main && index == project.entry;
-        validate_module(&module.program, require_main, &module.imports)?;
+        validate_module(&module.program, require_main, &module.imports, project)?;
         validate_import_aliases(module, project)?;
     }
     Ok(())
@@ -149,9 +117,12 @@ fn validate_module(
     program: &Program,
     require_main: bool,
     imports: &[crate::modules::ResolvedImport],
+    project: &crate::modules::Project,
 ) -> Result<(), Diagnostic> {
-    let types = collect_types(program)?;
-    let signatures = collect_signatures(program, &types)?;
+    let mut types = collect_types(program)?;
+    let mut signatures = collect_signatures(program, &types)?;
+    merge_imported_scope(imports, project, &mut types, &mut signatures)?;
+    merge_project_partial_classes(program, project, &mut types)?;
     let mut module_symbols = collect_module_symbols(program, &types, &signatures)?;
     for import in imports {
         module_symbols.insert(
@@ -181,9 +152,204 @@ fn validate_module(
         ));
     }
 
-    // Project validation currently verifies declarations, import graph, and entry
-    // shape. Body-level cross-module checking is intentionally left to runtime
-    // resolution for the import MVP so the single-file validator remains intact.
+    validate_bodies(
+        program,
+        &types,
+        &signatures,
+        &module_symbols,
+        program.option_explicit,
+    )
+}
+
+/// Brings the types and extension methods of imported modules into scope.
+///
+/// Each module is validated on its own, so without this an imported class or an
+/// `<Extension()>` method declared elsewhere looks undefined. Locally declared
+/// names win, since a module's own declarations shadow anything it imports.
+fn merge_imported_scope(
+    imports: &[crate::modules::ResolvedImport],
+    project: &crate::modules::Project,
+    types: &mut TypeRegistry,
+    signatures: &mut Signatures,
+) -> Result<(), Diagnostic> {
+    for import in imports {
+        let Some(imported) = project.modules.get(import.module) else {
+            continue;
+        };
+        let imported_types = collect_types(&imported.program)?;
+        let imported_signatures = collect_signatures(&imported.program, &imported_types)?;
+
+        // Imported types are reachable both bare and through the import
+        // qualifier, so register `PersonRecord` and `Models.PersonRecord`.
+        let qualifier = key(&import.qualifier);
+        let register = |bare: String, sig_name: &str| {
+            let qualified = format!("{}.{}", qualifier, key(sig_name));
+            (bare, qualified)
+        };
+        for (name, sig) in imported_types.types {
+            let (bare, qualified) = register(name, &sig.name);
+            types.types.entry(qualified).or_insert(sig.clone());
+            types.types.entry(bare).or_insert(sig);
+        }
+        for (name, sig) in imported_types.enums {
+            let (bare, qualified) = register(name, &sig.name);
+            types.enums.entry(qualified).or_insert(sig.clone());
+            types.enums.entry(bare).or_insert(sig);
+        }
+        for (name, sig) in imported_types.interfaces {
+            let (bare, qualified) = register(name, &sig.name);
+            types.interfaces.entry(qualified).or_insert(sig.clone());
+            types.interfaces.entry(bare).or_insert(sig);
+        }
+        for (name, sig) in imported_types.classes {
+            let (bare, qualified) = register(name, &sig.name);
+            merge_class(types.classes.entry(qualified), sig.clone());
+            merge_class(types.classes.entry(bare), sig);
+        }
+        for (type_key, methods) in imported_signatures.extension_methods {
+            signatures
+                .extension_methods
+                .entry(type_key)
+                .or_default()
+                .extend(methods);
+        }
+        for (name, sig) in imported_signatures.functions {
+            let qualified = format!("{}.{}", qualifier, key(&sig.name));
+            signatures.functions.entry(qualified).or_insert(sig.clone());
+            signatures.functions.entry(name).or_insert(sig);
+        }
+        for (name, sig) in imported_signatures.subs {
+            let qualified = format!("{}.{}", qualifier, key(&sig.name));
+            signatures.subs.entry(qualified).or_insert(sig.clone());
+            signatures.subs.entry(name).or_insert(sig);
+        }
+    }
+    Ok(())
+}
+
+/// Completes this module's `Partial Class` declarations with the halves
+/// declared in other modules.
+///
+/// A partial class is one class spread across files, so each half has to see
+/// the members of the others even without an explicit import between them.
+fn merge_project_partial_classes(
+    program: &Program,
+    project: &crate::modules::Project,
+    types: &mut TypeRegistry,
+) -> Result<(), Diagnostic> {
+    let local_partials: Vec<String> = program
+        .classes
+        .iter()
+        .filter(|class| class.is_partial)
+        .map(|class| key(&class.name))
+        .collect();
+    if local_partials.is_empty() {
+        return Ok(());
+    }
+
+    for module in &project.modules {
+        let contributes = module
+            .program
+            .classes
+            .iter()
+            .any(|class| class.is_partial && local_partials.contains(&key(&class.name)));
+        if !contributes {
+            continue;
+        }
+        let other_types = collect_types(&module.program)?;
+        for name in &local_partials {
+            if let Some(sig) = other_types.classes.get(name) {
+                merge_class(types.classes.entry(name.clone()), sig.clone());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Records an imported class, folding it into a same-named local class.
+///
+/// A `Partial Class` can be split across modules, so the halves have to be
+/// merged rather than one shadowing the other. Members already present locally
+/// win, which keeps a module's own declarations authoritative.
+fn merge_class(entry: std::collections::hash_map::Entry<'_, String, ClassSig>, imported: ClassSig) {
+    match entry {
+        std::collections::hash_map::Entry::Vacant(slot) => {
+            slot.insert(imported);
+        }
+        std::collections::hash_map::Entry::Occupied(mut slot) => {
+            let existing = slot.get_mut();
+            for (name, sig) in imported.fields {
+                existing.fields.entry(name).or_insert(sig);
+            }
+            for (name, sig) in imported.subs {
+                existing.subs.entry(name).or_insert(sig);
+            }
+            for (name, sig) in imported.functions {
+                existing.functions.entry(name).or_insert(sig);
+            }
+            for (name, sig) in imported.properties {
+                existing.properties.entry(name).or_insert(sig);
+            }
+            for (name, sig) in imported.events {
+                existing.events.entry(name).or_insert(sig);
+            }
+            for (kind, sig) in imported.operators {
+                existing.operators.entry(kind).or_insert(sig);
+            }
+            if existing.default_property.is_none() {
+                existing.default_property = imported.default_property;
+            }
+            if existing.enumerator.is_none() {
+                existing.enumerator = imported.enumerator;
+            }
+        }
+    }
+}
+
+/// Validates every procedure, function, structure, and class body in a program.
+///
+/// Shared by the single-program and project entry points so both report the
+/// same diagnostics; the project path used to stop before this, which left
+/// `valo check` reporting success on code that failed as soon as it ran.
+fn validate_bodies(
+    program: &Program,
+    types: &TypeRegistry,
+    signatures: &Signatures,
+    module_symbols: &HashMap<String, VarType>,
+    option_explicit: bool,
+) -> Result<(), Diagnostic> {
+    for procedure in &program.procedures {
+        validate_procedure(
+            procedure,
+            types,
+            signatures,
+            module_symbols,
+            option_explicit,
+        )?;
+    }
+    for function in &program.functions {
+        validate_function(function, types, signatures, module_symbols, option_explicit)?;
+    }
+    for type_decl in &program.types {
+        if type_decl.kind == crate::TypeKind::Structure {
+            validate_structure(
+                type_decl,
+                types,
+                signatures,
+                module_symbols,
+                option_explicit,
+            )?;
+        }
+    }
+    for class_decl in &program.classes {
+        validate_class(
+            class_decl,
+            types,
+            signatures,
+            module_symbols,
+            option_explicit,
+        )?;
+    }
     Ok(())
 }
 

@@ -1,4 +1,4 @@
-use super::helpers::{run_source, source_error};
+use super::helpers::{run_source, source_diagnostic, source_error};
 
 #[test]
 fn structure_implements_interface() {
@@ -518,4 +518,125 @@ End Sub
     );
 
     assert_eq!(output, vec!["50"]);
+}
+
+#[test]
+fn is_nothing_tests_a_nullable_for_emptiness() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim x As Integer? = Nothing
+    Console.WriteLine(x Is Nothing)
+    x = 42
+    Console.WriteLine(x IsNot Nothing)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["True", "True"]);
+}
+
+#[test]
+fn ordering_comparison_accepts_variant_operands() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim a As Variant = 3
+    Dim b As Variant = 7
+    Console.WriteLine(a < b)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["True"]);
+}
+
+#[test]
+fn array_field_of_a_user_type_can_be_indexed_through_a_member() {
+    let output = run_source(
+        r#"
+Private Type BufferState
+    Values(0 To 1) As Long
+End Type
+
+Sub Main()
+    Dim state As BufferState
+    state.Values(0) = 11
+    Console.WriteLine(state.Values(0))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["11"]);
+}
+
+#[test]
+fn generic_constructor_arguments_are_checked_against_the_type_argument() {
+    let output = run_source(
+        r#"
+Class Slot(Of T)
+    Public Value As T
+
+    Public Sub Initialize(ByVal value As T)
+        Me.Value = value
+    End Sub
+End Class
+
+Sub Main()
+    Dim item As Slot(Of String)
+    Set item = New Slot(Of String)("runtime")
+    Console.WriteLine(item.Value)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["runtime"]);
+}
+
+#[test]
+fn a_shared_property_is_reachable_by_its_bare_name_inside_the_class() {
+    let output = run_source(
+        r#"
+Class Counter
+    Public Shared Property InstanceCount As Integer = 0
+
+    Public Sub New()
+        InstanceCount = InstanceCount + 1
+    End Sub
+End Class
+
+Sub Main()
+    Dim first As New Counter()
+    Dim second As New Counter()
+    Console.WriteLine(Counter.InstanceCount)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["2"]);
+}
+
+#[test]
+fn add_handler_rejects_an_event_the_class_does_not_declare() {
+    let diagnostic = source_diagnostic(
+        r#"
+Class Source
+    Public Event Click()
+End Class
+
+Sub OnOther()
+End Sub
+
+Sub Main()
+    Dim src As New Source()
+    AddHandler src.Missing, AddressOf OnOther
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        diagnostic.code,
+        crate::runtime::DiagnosticCode::MEMBER_ACCESS
+    );
+    assert!(diagnostic.message.contains("does not declare event"));
 }

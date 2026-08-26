@@ -1263,11 +1263,12 @@ End Sub
         "Public Type PersonRecord\nName As String\nEnd Type\n",
     );
 
+    // A UDT cannot be constructed with New. Project validation now checks
+    // procedure bodies, so this is reported before the program runs rather than
+    // surfacing later as a qualified-access failure.
     let error = run_file_diagnostic(dir.join("main.valo"));
-    assert_eq!(
-        error.code,
-        crate::runtime::DiagnosticCode::INVALID_QUALIFIED_ACCESS
-    );
+    assert_eq!(error.code, crate::runtime::DiagnosticCode::TYPE_MISMATCH);
+    assert!(error.message.contains("cannot be constructed with New"));
 }
 
 #[test]

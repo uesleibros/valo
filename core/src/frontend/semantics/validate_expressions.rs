@@ -1,4 +1,5 @@
 use super::*;
+use crate::ContinueTarget;
 use crate::runtime::Span;
 use crate::runtime::builtins::{
     BOOLEAN_ONE_ARG_FUNCTIONS, DOUBLE_ONE_ARG_FUNCTIONS, INTEGER_ONE_ARG_FUNCTIONS,
@@ -61,6 +62,14 @@ pub(super) fn validate_assignment_target(
                             Some(*span),
                         ));
                     }
+                } else if let Some(property_type) = types
+                    .get_class(owner_name)
+                    .and_then(|class_sig| class_sig.properties.get(&key(name)))
+                    .and_then(bare_property_type)
+                {
+                    // A class property is also reachable by its bare name from
+                    // inside the class, the same way a field is.
+                    VarType::Scalar(Visibility::Public, property_type)
                 } else if let Some(type_sig) = types.get(owner_name)
                     && let Some(field_sig) = type_sig.fields.get(&key(name))
                 {
@@ -270,6 +279,24 @@ pub(super) fn validate_assignment_target(
 
 /// Reports whether a symbol can legitimately appear on the left of `(...)`
 /// as an index or default-member access rather than as a call.
+/// Returns the value type of a property referenced by its bare name.
+///
+/// The type comes from the `Get` accessor's return type, falling back to the
+/// value parameter of `Let`/`Set` for a write-only property.
+fn bare_property_type(property: &ClassPropertySig) -> Option<TypeName> {
+    if let Some(get) = &property.get
+        && let Some(return_type) = &get.return_type
+    {
+        return Some(return_type.clone());
+    }
+    property
+        .let_
+        .as_ref()
+        .or(property.set.as_ref())
+        .and_then(|accessor| accessor.params.last())
+        .map(|param| param.ty.clone())
+}
+
 fn is_indexable_var_type(var_type: &VarType) -> bool {
     match var_type {
         VarType::Array(..) => true,
@@ -407,9 +434,10 @@ pub(super) fn validate_expr(
                     ));
                 }
                 if let Some(init) = type_sig.subs.get("initialize") {
+                    let init = init.substitute_generics(&bindings);
                     validate_arguments(
                         "Sub",
-                        init,
+                        &init,
                         args,
                         expr.span,
                         ExprValidation::new(symbols, types, signatures, context, option_explicit),
@@ -438,9 +466,12 @@ pub(super) fn validate_expr(
                 .get("initialize")
                 .or_else(|| class_sig.subs.get("class_initialize"))
             {
+                // `New Box(Of String)("x")` must check the argument against
+                // String, not against the class's unbound `T`.
+                let init = init.substitute_generics(&bindings);
                 validate_arguments(
                     "Sub",
-                    init,
+                    &init,
                     args,
                     expr.span,
                     ExprValidation::new(symbols, types, signatures, context, option_explicit),
@@ -452,7 +483,6 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 ));
             }
-            let _ = bindings;
             Ok(types.canonical_type_name(&class_name))
         }
         ExprKind::Variable(name) => {
@@ -1292,6 +1322,17 @@ pub(super) fn validate_expr(
                     }
                 }
                 BinaryOp::Concat => Ok(wrap_nullable(TypeName::String)),
+                // A shift keeps the left operand's type; the count only has to
+                // be a whole number.
+                BinaryOp::ShiftLeft | BinaryOp::ShiftRight => {
+                    ensure_assignable(&TypeName::Int64, &left_type, left.span)?;
+                    ensure_assignable(&TypeName::Int64, &right_type, right.span)?;
+                    Ok(wrap_nullable(if left_type.is_integral() {
+                        left_type
+                    } else {
+                        TypeName::Int64
+                    }))
+                }
                 BinaryOp::LogicalAnd
                 | BinaryOp::LogicalAndAlso
                 | BinaryOp::LogicalOr
@@ -1333,8 +1374,11 @@ pub(super) fn validate_expr(
                     Ok(TypeName::Boolean)
                 }
                 BinaryOp::Is | BinaryOp::IsNot => {
-                    if is_object_reference_expr(left, &left_type, types)
-                        && is_object_reference_expr(right, &right_type, types)
+                    // Compare against the declared types: a `T?` operand was
+                    // already unwrapped above, and `value Is Nothing` is the
+                    // idiomatic emptiness test for a nullable.
+                    if is_object_reference_expr(left, &left_type_raw, types)
+                        && is_object_reference_expr(right, &right_type_raw, types)
                     {
                         Ok(TypeName::Boolean)
                     } else {
@@ -1356,7 +1400,11 @@ pub(super) fn validate_expr(
                 | BinaryOp::Greater
                 | BinaryOp::LessEqual
                 | BinaryOp::GreaterEqual => {
-                    if (is_numeric_type(&left_type) && is_numeric_type(&right_type))
+                    // A Variant carries its type at runtime, so an ordering
+                    // comparison involving one can only be resolved there.
+                    if left_type.same_type(&TypeName::Variant)
+                        || right_type.same_type(&TypeName::Variant)
+                        || (is_numeric_type(&left_type) && is_numeric_type(&right_type))
                         || (left_type.same_type(&TypeName::String)
                             && right_type.same_type(&TypeName::String))
                     {
@@ -3376,6 +3424,18 @@ fn validate_structure_method_call(
             Some(span),
         )
     })?;
+    // `record.Items(0)` indexes an array field; it only looks like a method call.
+    if let Some(field_sig) = type_sig.fields.get(&key(method))
+        && field_sig.array.is_some()
+    {
+        for arg in args {
+            let index_type =
+                validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+            ensure_assignable(&TypeName::Int64, &index_type, arg.span)?;
+        }
+        return Ok(field_sig.ty.substitute_generics(&bindings));
+    }
+
     if !type_sig.is_structure {
         return Err(Diagnostic::new(
             crate::runtime::DiagnosticCode::TYPE_MISMATCH,
@@ -4310,6 +4370,9 @@ pub(super) fn is_object_reference_expr(expr: &Expr, ty: &TypeName, types: &TypeR
     matches!(expr.kind, ExprKind::Nothing)
         || is_class_type(ty, types)
         || ty.same_type(&TypeName::Variant)
+        // A nullable holds Nothing when it has no value, so `value Is Nothing`
+        // is the idiomatic emptiness test for `T?`.
+        || matches!(ty, TypeName::Nullable(_))
 }
 
 pub(super) fn is_class_type(ty: &TypeName, types: &TypeRegistry) -> bool {
@@ -4464,6 +4527,30 @@ fn ensure_case_orderable(ty: &TypeName, span: crate::runtime::Span) -> Result<()
         )
         .with_primary_label("range or comparison is not orderable"))
     }
+}
+
+/// Checks that `Continue For`, `Continue While`, and `Continue Do` each appear
+/// inside a loop of the matching kind.
+pub(super) fn validate_continue(
+    target: ContinueTarget,
+    span: crate::runtime::Span,
+    loop_context: LoopContext,
+) -> Result<(), Diagnostic> {
+    let inside = match target {
+        ContinueTarget::For => loop_context.for_depth > 0,
+        ContinueTarget::While => loop_context.while_depth > 0,
+        ContinueTarget::Do => loop_context.do_depth > 0,
+    };
+    if inside {
+        return Ok(());
+    }
+    let keyword = target.keyword();
+    Err(Diagnostic::new(
+        crate::runtime::DiagnosticCode::CONTROL_FLOW,
+        format!("Continue {keyword} is only valid inside {keyword}"),
+        Some(span),
+    )
+    .with_primary_label(format!("invalid Continue {keyword}")))
 }
 
 pub(super) fn validate_exit(

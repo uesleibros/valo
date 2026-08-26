@@ -1803,3 +1803,84 @@ End Sub
 
     assert_eq!(output, vec!["1", "2", "3"]);
 }
+
+#[test]
+fn continue_for_skips_to_the_next_iteration() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim i As Integer
+    For i = 1 To 5
+        If i Mod 2 = 0 Then
+            Continue For
+        End If
+        Console.WriteLine(i)
+    Next i
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["1", "3", "5"]);
+}
+
+#[test]
+fn continue_do_and_continue_while_skip_to_the_next_iteration() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim n As Integer = 0
+    Do While n < 4
+        n = n + 1
+        If n = 2 Then Continue Do
+        Console.WriteLine("do " & n)
+    Loop
+
+    Dim w As Integer = 0
+    While w < 3
+        w = w + 1
+        If w = 1 Then Continue While
+        Console.WriteLine("while " & w)
+    Wend
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["do 1", "do 3", "do 4", "while 2", "while 3"]);
+}
+
+#[test]
+fn continue_for_inside_a_nested_do_advances_the_outer_for() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim i As Integer
+    For i = 1 To 3
+        Do
+            If i = 2 Then Continue For
+            Console.WriteLine(i)
+            Exit Do
+        Loop
+    Next i
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["1", "3"]);
+}
+
+#[test]
+fn continue_outside_a_matching_loop_is_rejected() {
+    let diagnostic = source_diagnostic(
+        r#"
+Sub Main()
+    Continue For
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        diagnostic.code,
+        crate::runtime::DiagnosticCode::CONTROL_FLOW
+    );
+    assert!(diagnostic.message.contains("Continue For"));
+}

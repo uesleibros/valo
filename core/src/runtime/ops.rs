@@ -14,6 +14,8 @@ pub enum RuntimeBinaryOp {
     IntegerDivide,
     Modulo,
     Concat,
+    ShiftLeft,
+    ShiftRight,
     LogicalAnd,
     LogicalOr,
     LogicalXor,
@@ -126,6 +128,8 @@ pub fn eval_binary(
             }
             Ok(Value::Int64(a % b))
         }
+        RuntimeBinaryOp::ShiftLeft => shift(left, right, span, ShiftDirection::Left),
+        RuntimeBinaryOp::ShiftRight => shift(left, right, span, ShiftDirection::Right),
         RuntimeBinaryOp::Concat => Ok(Value::String(format!(
             "{}{}",
             left.to_output_string(),
@@ -157,5 +161,61 @@ pub fn eval_binary(
         RuntimeBinaryOp::GreaterEqual => {
             compare_values(left, right, compare, span, |ord| ord.is_ge())
         }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ShiftDirection {
+    Left,
+    Right,
+}
+
+/// Evaluates `<<` and `>>` with VB.NET semantics: the result keeps the left
+/// operand's type, the shift count is masked to that type's width, and `>>` is
+/// arithmetic, so the sign bit is preserved.
+fn shift(
+    left: Value,
+    right: Value,
+    span: Span,
+    direction: ShiftDirection,
+) -> Result<Value, Diagnostic> {
+    let count = crate::runtime::numeric::value_to_i64(&right).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            format!(
+                "Shift count must be an integer, found {}",
+                right.type_name().display_name()
+            ),
+            Some(span),
+        )
+    })?;
+
+    macro_rules! shifted {
+        ($value:expr, $ty:ty, $mask:expr, $wrap:expr) => {{
+            let amount = (count & $mask) as u32;
+            let result = match direction {
+                ShiftDirection::Left => (($value as $ty).wrapping_shl(amount)),
+                ShiftDirection::Right => (($value as $ty).wrapping_shr(amount)),
+            };
+            Ok($wrap(result))
+        }};
+    }
+
+    match left {
+        Value::Byte(value) => shifted!(value, u8, 7, Value::Byte),
+        Value::Int16(value) => shifted!(value, i16, 15, Value::Int16),
+        Value::Int32(value) => shifted!(value, i32, 31, Value::Int32),
+        Value::Int64(value) => shifted!(value, i64, 63, Value::Int64),
+        Value::UInt32(value) => shifted!(value, u32, 31, Value::UInt32),
+        Value::UInt64(value) => shifted!(value, u64, 63, Value::UInt64),
+        Value::Boolean(value) => shifted!(i16::from(value), i16, 15, Value::Int16),
+        other => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            format!(
+                "Shift requires a whole-number operand, found {}",
+                other.type_name().display_name()
+            ),
+            Some(span),
+        )),
     }
 }

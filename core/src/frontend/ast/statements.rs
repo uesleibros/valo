@@ -183,6 +183,10 @@ pub enum Stmt {
         target: ExitTarget,
         span: Span,
     },
+    Continue {
+        target: ContinueTarget,
+        span: Span,
+    },
     TryCatch {
         try_body: Vec<Stmt>,
         catch_block: Option<CatchBlock>,
@@ -435,6 +439,24 @@ pub enum DoLoopCondition {
     PreUntil(Expr),
     PostWhile(Expr),
     PostUntil(Expr),
+}
+
+/// The loop that a `Continue` statement advances.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContinueTarget {
+    For,
+    While,
+    Do,
+}
+
+impl ContinueTarget {
+    pub fn keyword(self) -> &'static str {
+        match self {
+            ContinueTarget::For => "For",
+            ContinueTarget::While => "While",
+            ContinueTarget::Do => "Do",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

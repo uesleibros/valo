@@ -212,6 +212,8 @@ pub enum BinaryOp {
     IntegerDivide,
     Modulo,
     Concat,
+    ShiftLeft,
+    ShiftRight,
     LogicalAnd,
     LogicalAndAlso,
     LogicalOr,
