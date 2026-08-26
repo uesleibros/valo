@@ -37,9 +37,9 @@ pub(crate) fn write_array_element(
     let array = Rc::make_mut(array);
     ensure_allocated(array.allocated, span)?;
     let index = calculate_index(indices, &array.bounds, span)?;
-    let old = array.elements[index].clone();
-    array.elements[index] = coerce_assignment(&array.element_type, new_value, span)?;
-    Ok(old)
+    let coerced = coerce_assignment(&array.element_type, new_value, span)?;
+    let previous = std::mem::replace(&mut array.elements[index], coerced);
+    Ok(previous)
 }
 
 pub(crate) fn array_element_mut<'a>(

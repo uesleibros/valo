@@ -255,3 +255,26 @@ fn eval_const_default(
 pub(crate) fn key(name: &str) -> String {
     name.to_lowercase()
 }
+
+/// Longest identifier that `with_key` folds without touching the heap.
+const KEY_STACK_LEN: usize = 96;
+
+/// Calls `f` with the case-folded lookup key for `name`.
+///
+/// Identifier lookup is the hottest operation in the interpreter, and `key`
+/// allocates a `String` for every single one. Valo identifiers are ASCII and
+/// short in practice, so fold them into a stack buffer instead and fall back to
+/// `key` only for the rare long or non-ASCII name.
+pub(crate) fn with_key<R>(name: &str, f: impl FnOnce(&str) -> R) -> R {
+    let bytes = name.as_bytes();
+    if bytes.len() <= KEY_STACK_LEN && bytes.is_ascii() {
+        let mut buffer = [0u8; KEY_STACK_LEN];
+        let folded = &mut buffer[..bytes.len()];
+        folded.copy_from_slice(bytes);
+        folded.make_ascii_lowercase();
+        if let Ok(folded) = std::str::from_utf8(folded) {
+            return f(folded);
+        }
+    }
+    f(&key(name))
+}

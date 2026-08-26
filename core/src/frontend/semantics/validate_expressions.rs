@@ -268,6 +268,21 @@ pub(super) fn validate_assignment_target(
     }
 }
 
+/// Reports whether a symbol can legitimately appear on the left of `(...)`
+/// as an index or default-member access rather than as a call.
+fn is_indexable_var_type(var_type: &VarType) -> bool {
+    match var_type {
+        VarType::Array(..) => true,
+        VarType::Scalar(_, ty) | VarType::Optional(_, ty) | VarType::Const(_, ty) => {
+            matches!(
+                ty,
+                TypeName::User(_) | TypeName::GenericInstance { .. } | TypeName::Variant
+            )
+        }
+        _ => false,
+    }
+}
+
 fn unknown_variable(name: &str, span: Span, symbols: &HashMap<String, VarType>) -> Diagnostic {
     Diagnostic::new(
         crate::runtime::DiagnosticCode::UNKNOWN_NAME,
@@ -935,7 +950,16 @@ pub(super) fn validate_expr(
                 }
                 return Ok(TypeName::Integer);
             }
-            if let Some(var_type) = symbols.get(&key(name)).cloned() {
+            // A function's own name is in scope as its implicit return variable.
+            // Calling it with arguments is recursion, not indexing, unless the
+            // symbol really is an array or an indexable object.
+            let recurses_through_own_name = symbols
+                .get(&key(name))
+                .is_some_and(|var_type| !is_indexable_var_type(var_type))
+                && signatures.functions.contains_key(&key(name));
+            if let Some(var_type) = symbols.get(&key(name)).cloned()
+                && !recurses_through_own_name
+            {
                 match var_type {
                     VarType::Array(Visibility::Public, element_type, _) => {
                         for arg in args {

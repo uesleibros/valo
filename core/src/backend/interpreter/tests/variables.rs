@@ -807,3 +807,37 @@ End Sub
         crate::runtime::DiagnosticCode::TYPE_MISMATCH
     );
 }
+
+#[test]
+fn dim_inside_a_loop_body_rebinds_each_iteration() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim i As Long
+    For i = 1 To 3
+        Dim doubled As Long = i * 2
+        Console.WriteLine(doubled)
+    Next i
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["2", "4", "6"]);
+}
+
+#[test]
+fn duplicate_dim_in_the_same_scope_is_still_rejected() {
+    let diagnostic = source_diagnostic(
+        r#"
+Sub Main()
+    Dim value As Long
+    Dim value As Long
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        diagnostic.code,
+        crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION
+    );
+}

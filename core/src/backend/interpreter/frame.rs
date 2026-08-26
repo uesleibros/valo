@@ -10,7 +10,7 @@ use crate::runtime::{
 use super::Interpreter;
 use super::arrays::{read_array_element, redim_array, write_array_element};
 use super::records::{RuntimeInterface, RuntimeType};
-use super::values::{default_value, key};
+use super::values::{default_value, key, with_key};
 
 #[derive(Debug, Clone)]
 pub(crate) enum VariableCell {
@@ -38,7 +38,7 @@ impl VariableCell {
             }),
             VariableCell::Member { object, member } => Ref::map(object.borrow(), |v| {
                 if let Value::Record(record) = v {
-                    record.fields.get(&key(member)).expect("field missing")
+                    with_key(member, |k| record.fields.get(k)).expect("field missing")
                 } else {
                     panic!("Expected record in VariableCell::Member");
                 }
@@ -58,15 +58,32 @@ impl VariableCell {
             }),
             VariableCell::Member { object, member } => RefMut::map(object.borrow_mut(), |v| {
                 if let Value::Record(record) = v {
-                    Rc::make_mut(record)
-                        .fields
-                        .get_mut(&key(member))
+                    with_key(member, |k| Rc::make_mut(record).fields.get_mut(k))
                         .expect("field missing")
                 } else {
                     panic!("Expected record in VariableCell::Member");
                 }
             }),
         }
+    }
+}
+
+/// Returns the value that assignment must hand back so the caller can run
+/// deterministic termination on it.
+///
+/// Only object values have a `Class_Terminate` hook, so cloning anything else
+/// (an array or record can be arbitrarily large) is pure waste.
+/// Builds the frame key that holds a function's implicit return value.
+///
+/// Must stay in sync with the slot names produced during semantic validation.
+pub(crate) fn return_slot_key(name: &str) -> String {
+    format!("__return_{}", name)
+}
+
+fn previous_for_termination(current: &Value) -> Value {
+    match current {
+        Value::Object(_) => current.clone(),
+        _ => Value::Empty,
     }
 }
 
@@ -90,6 +107,16 @@ impl Frame {
 
     pub(crate) fn get_return_slot(&self, slot: &str) -> Option<Value> {
         self.return_slots.get(slot).cloned()
+    }
+
+    /// Reports whether this frame holds the return slot that assigning to
+    /// `name` would target.
+    ///
+    /// Every plain assignment asks this question, so short-circuit on the
+    /// common case (a frame with no return slots at all) before paying for the
+    /// `__return_<name>` key.
+    pub(crate) fn has_return_slot_for(&self, name: &str) -> bool {
+        !self.return_slots.is_empty() && self.return_slots.contains_key(&return_slot_key(name))
     }
     pub(crate) fn set_yield_mode(&mut self) {
         self.yielded_values = Some(Vec::new());
@@ -144,12 +171,16 @@ impl Frame {
         interpreter: &Interpreter,
     ) -> Result<(), Diagnostic> {
         let key = key(name);
-        if self.variables.contains_key(&key) {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
-                format!("Variable '{}' is already declared", name),
-                Some(span),
-            ));
+        if let Some(existing) = self.variables.get(&key) {
+            // The same declaration running again means we re-entered its block,
+            // so rebind it fresh instead of rejecting it as a duplicate.
+            if existing.declared_at != Some(span) {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+                    format!("Variable '{}' is already declared", name),
+                    Some(span),
+                ));
+            }
         }
 
         let dynamic_array = matches!(array, Some(ArrayDecl::Dynamic));
@@ -195,6 +226,7 @@ impl Frame {
                 dynamic_array,
                 is_const: false,
                 module_level: false,
+                declared_at: Some(span),
             },
         );
         Ok(())
@@ -234,7 +266,9 @@ impl Frame {
         span: Span,
     ) -> Result<(), Diagnostic> {
         let key = key(name);
-        if self.variables.contains_key(&key) {
+        if let Some(existing) = self.variables.get(&key)
+            && existing.declared_at != Some(span)
+        {
             return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
                 format!("Variable '{}' is already declared", name),
@@ -252,6 +286,7 @@ impl Frame {
                 dynamic_array: false,
                 is_const: true,
                 module_level: false,
+                declared_at: Some(span),
             },
         );
         Ok(())
@@ -376,6 +411,7 @@ impl Frame {
                 dynamic_array: false,
                 is_const: false,
                 module_level: false,
+                declared_at: Some(span),
             },
         );
         Ok(())
@@ -387,14 +423,10 @@ impl Frame {
         value: Value,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let variable_key = key(name);
-        if !self.variables.contains_key(&variable_key) {
+        if with_key(name, |k| !self.variables.contains_key(k)) {
             return Err(self.unknown_variable(name, span));
         }
-        let variable = self
-            .variables
-            .get_mut(&variable_key)
-            .expect("checked above");
+        let variable = with_key(name, |k| self.variables.get_mut(k)).expect("checked above");
         if variable.is_const {
             return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::INVALID_ASSIGNMENT,
@@ -405,7 +437,7 @@ impl Frame {
             .with_help("remove the assignment or use a non-Const variable"));
         }
 
-        let old = variable.borrow().clone();
+        let old = previous_for_termination(&variable.borrow());
         *variable.borrow_mut() = coerce_assignment(&variable.ty, value, span)?;
         Ok(old)
     }
@@ -427,38 +459,60 @@ impl Frame {
     }
 
     pub(crate) fn assign_missing(&mut self, name: &str, span: Span) -> Result<(), Diagnostic> {
-        let variable_key = key(name);
-        if !self.variables.contains_key(&variable_key) {
+        if with_key(name, |k| !self.variables.contains_key(k)) {
             return Err(self.unknown_variable(name, span));
         }
-        let variable = self
-            .variables
-            .get_mut(&variable_key)
-            .expect("checked above");
+        let variable = with_key(name, |k| self.variables.get_mut(k)).expect("checked above");
         *variable.borrow_mut() = Value::Missing;
         Ok(())
     }
 
     pub(crate) fn get(&self, name: &str, span: Span) -> Result<Value, Diagnostic> {
-        self.variables
-            .get(&key(name))
+        with_key(name, |k| self.variables.get(k))
             .map(|variable| variable.borrow().clone())
             .ok_or_else(|| self.unknown_variable(name, span))
     }
 
+    /// Returns the variable's value only when it is an object-like target that
+    /// indexing could dispatch to a default member.
+    ///
+    /// Indexed assignment needs to know whether `name(i) = x` means "write an
+    /// array slot" or "invoke a default property". Cloning the value to find out
+    /// would copy the entire array on every element write, so clone only the
+    /// object cases, where a clone is just a refcount bump.
+    pub(crate) fn get_if_indexable_object(
+        &self,
+        name: &str,
+        span: Span,
+    ) -> Result<Option<Value>, Diagnostic> {
+        let variable = self
+            .variable_ref(name)
+            .ok_or_else(|| self.unknown_variable(name, span))?;
+        let current = variable.borrow();
+        Ok(match &*current {
+            Value::Object(_) | Value::ComObject(_) => Some(current.clone()),
+            _ => None,
+        })
+    }
+
+    /// Borrows a variable in place, skipping the `Variable` clone that `variable`
+    /// performs. Prefer this wherever the caller only needs to read or borrow.
+    pub(crate) fn variable_ref(&self, name: &str) -> Option<&Variable> {
+        with_key(name, |k| self.variables.get(k))
+    }
+
     pub(crate) fn variable(&self, name: &str, span: Span) -> Result<Variable, Diagnostic> {
-        self.variables
-            .get(&key(name))
+        with_key(name, |k| self.variables.get(k))
             .cloned()
             .ok_or_else(|| self.unknown_variable(name, span))
     }
 
     pub(crate) fn remove_variable(&mut self, name: &str) -> Option<Variable> {
-        self.variables.remove(&key(name))
+        with_key(name, |k| self.variables.remove(k))
     }
 
     pub(crate) fn has_variable(&self, name: &str) -> bool {
-        self.variables.contains_key(&key(name))
+        with_key(name, |k| self.variables.contains_key(k))
     }
 
     pub(crate) fn get_array_element(
@@ -479,7 +533,9 @@ impl Frame {
         value: Value,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        let variable = self.variable(name, span)?;
+        let variable = self
+            .variable_ref(name)
+            .ok_or_else(|| self.unknown_variable(name, span))?;
         let mut array = variable.borrow_mut();
         write_array_element(&mut array, indices, value, span)
     }
@@ -632,6 +688,13 @@ pub(crate) struct Variable {
     pub(crate) dynamic_array: bool,
     pub(crate) is_const: bool,
     pub(crate) module_level: bool,
+    /// Source span of the declaration that introduced this variable.
+    ///
+    /// Re-executing the same `Dim` (a declaration inside a loop body) must
+    /// reinitialize the variable rather than report a duplicate, which is how
+    /// VB.NET block scoping behaves. Comparing spans distinguishes that from a
+    /// genuine second declaration elsewhere in the same scope.
+    pub(crate) declared_at: Option<Span>,
 }
 
 impl Variable {

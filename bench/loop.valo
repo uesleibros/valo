@@ -1,0 +1,13 @@
+' Arithmetic and loop benchmark: nested counting loops with integer math.
+
+Sub Main()
+    Dim total As Long
+    Dim i As Long
+    Dim j As Long
+    For i = 1 To 2000
+        For j = 1 To 1000
+            total = total + (i * j) Mod 7
+        Next j
+    Next i
+    Console.WriteLine("total=" & total)
+End Sub

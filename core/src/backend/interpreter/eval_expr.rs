@@ -306,7 +306,26 @@ impl Interpreter {
                 {
                     return Ok(value);
                 }
-                if frame.has_variable(name) {
+                // A function's own name is bound in its frame as the implicit
+                // return variable. When that name is called with arguments and
+                // holds no indexable value, the call is a recursive one, not an
+                // attempt to index the return slot.
+                let shadows_enclosing_function = frame.has_variable(name)
+                    && self.has_callable_function(name, frame)
+                    && !matches!(
+                        frame
+                            .variable_ref(name)
+                            .map(|variable| variable.borrow().clone()),
+                        Some(
+                            Value::Array(_)
+                                | Value::Collection(_)
+                                | Value::Object(_)
+                                | Value::ComObject(_)
+                                | Value::Record(_)
+                                | Value::Lambda(_)
+                        )
+                    );
+                if frame.has_variable(name) && !shadows_enclosing_function {
                     let value = frame.get(name, expr.span)?;
                     match value {
                         Value::Array(_) => {

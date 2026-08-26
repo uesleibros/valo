@@ -1,0 +1,22 @@
+' Object benchmark: allocation, field writes, and method dispatch.
+
+Class Point
+    Public X As Long
+    Public Y As Long
+
+    Public Function LengthSquared() As Long
+        Return X * X + Y * Y
+    End Function
+End Class
+
+Sub Main()
+    Dim total As Long
+    Dim i As Long
+    For i = 1 To 50000
+        Dim p As New Point()
+        p.X = i Mod 100
+        p.Y = (i + 1) Mod 100
+        total = (total + p.LengthSquared()) Mod 100000
+    Next i
+    Console.WriteLine("total=" & total)
+End Sub

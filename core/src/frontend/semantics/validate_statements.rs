@@ -893,11 +893,16 @@ pub fn validate_statements(
                     ));
                 };
 
-                if !matches!(ty.scalar_type(), Some(scalar) if scalar.same_type(&TypeName::Integer))
-                {
+                if !matches!(
+                    ty.scalar_type(),
+                    Some(scalar) if scalar.is_integral() || scalar.same_type(&TypeName::Variant)
+                ) {
                     return Err(Diagnostic::new(
                         crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                        format!("For loop variable '{}' must be Integer", variable),
+                        format!(
+                            "For loop variable '{}' must be a whole-number type",
+                            variable
+                        ),
                         Some(*span),
                     ));
                 }

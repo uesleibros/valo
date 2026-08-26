@@ -1,0 +1,14 @@
+' Array benchmark: element writes and reads over a large fixed array.
+
+Sub Main()
+    Dim data(0 To 99999) As Long
+    Dim i As Long
+    Dim total As Long
+    For i = 0 To 99999
+        data(i) = i * 3
+    Next i
+    For i = 0 To 99999
+        total = total + data(i) Mod 11
+    Next i
+    Console.WriteLine("total=" & total)
+End Sub

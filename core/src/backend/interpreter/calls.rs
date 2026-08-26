@@ -2463,6 +2463,7 @@ impl Interpreter {
                                     dynamic_array: false,
                                     is_const: false,
                                     module_level: false,
+                                    declared_at: Some(param.span),
                                 };
                                 callee_frame.declare_alias(
                                     &param.name,
@@ -2543,6 +2544,7 @@ impl Interpreter {
                                             dynamic_array: false,
                                             is_const: false,
                                             module_level: false,
+                                            declared_at: Some(param.span),
                                         };
                                         callee_frame.declare_alias(
                                             &param.name,
@@ -2619,6 +2621,7 @@ impl Interpreter {
                                             dynamic_array: false,
                                             is_const: false,
                                             module_level: false,
+                                            declared_at: Some(param.span),
                                         };
                                         callee_frame.declare_alias(
                                             &param.name,
@@ -2683,6 +2686,20 @@ impl Interpreter {
             }
         }
         Ok(())
+    }
+}
+
+impl Interpreter {
+    /// Reports whether `name` resolves to a declared function reachable from
+    /// `frame`, checking both the bare and module-qualified keys.
+    pub(crate) fn has_callable_function(&self, name: &str, frame: &Frame) -> bool {
+        if self.functions.contains_key(&qualified_key(None, name)) {
+            return true;
+        }
+        frame.module_key().is_some_and(|module| {
+            self.functions
+                .contains_key(&qualified_key(Some(module), name))
+        })
     }
 }
 

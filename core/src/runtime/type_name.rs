@@ -92,6 +92,22 @@ impl TypeName {
         }
     }
 
+    /// Reports whether this type holds whole numbers.
+    ///
+    /// Counting loops accept any integral width, so `For i As Long` is as valid
+    /// as `For i As Integer`.
+    pub fn is_integral(&self) -> bool {
+        matches!(
+            self,
+            TypeName::Byte
+                | TypeName::Integer
+                | TypeName::Long
+                | TypeName::Int64
+                | TypeName::UInt32
+                | TypeName::UInt64
+        )
+    }
+
     pub fn same_type(&self, other: &TypeName) -> bool {
         match (self, other) {
             (TypeName::User(left), TypeName::User(right)) => left.eq_ignore_ascii_case(right),

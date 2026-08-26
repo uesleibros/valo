@@ -396,7 +396,7 @@ End Sub
 "#,
     );
 
-    assert!(error.contains("For loop variable 'i' must be Integer"));
+    assert!(error.contains("For loop variable 'i' must be a whole-number type"));
 }
 
 #[test]
@@ -1786,4 +1786,20 @@ End Sub
 "#,
     );
     assert_eq!(text, vec!["True", "True", "range", "is"]);
+}
+
+#[test]
+fn for_loop_variable_accepts_any_whole_number_type() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim i As Long
+    For i = 1 To 3
+        Console.WriteLine(i)
+    Next i
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["1", "2", "3"]);
 }

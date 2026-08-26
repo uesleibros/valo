@@ -20,8 +20,11 @@ impl Interpreter {
         statements: &[Stmt],
         frame: &mut Frame,
     ) -> Result<ControlFlow, Diagnostic> {
-        let labels = index_labels(statements);
-        let line_numbers = index_line_numbers(statements);
+        // Label and line-number indexes are only consulted by GoTo, Resume, and
+        // error handling. Building them eagerly rebuilt two hash maps on every
+        // single loop iteration, so keep them lazy and pay only on the cold paths.
+        let mut labels: Option<HashMap<String, usize>> = None;
+        let mut line_numbers: Option<HashMap<usize, i64>> = None;
         let mut ip = 0;
         while ip < statements.len() {
             self.temporary_strings.clear();
@@ -30,6 +33,7 @@ impl Interpreter {
                 Ok(ControlFlow::Continue) => ip += 1,
                 Ok(ControlFlow::GoTo(label)) => {
                     ip = labels
+                        .get_or_insert_with(|| index_labels(statements))
                         .get(&super::values::key(&label))
                         .copied()
                         .expect("GoTo label validated");
@@ -47,6 +51,7 @@ impl Interpreter {
                         ResumeTarget::Retry => failing_ip,
                         ResumeTarget::Next => failing_ip + 1,
                         ResumeTarget::Label(label) => labels
+                            .get_or_insert_with(|| index_labels(statements))
                             .get(&super::values::key(&label))
                             .copied()
                             .expect("Resume label validated"),
@@ -55,16 +60,27 @@ impl Interpreter {
                 }
                 Ok(flow) => return Ok(flow),
                 Err(error) if frame.resume_next() => {
-                    self.set_err(&error, line_numbers.get(&ip).copied().unwrap_or(0));
+                    let line = line_numbers
+                        .get_or_insert_with(|| index_line_numbers(statements))
+                        .get(&ip)
+                        .copied()
+                        .unwrap_or(0);
+                    self.set_err(&error, line);
                     ip += 1;
                 }
                 Err(error)
                     if frame.error_handler().is_some() && frame.handled_error_ip().is_none() =>
                 {
-                    self.set_err(&error, line_numbers.get(&ip).copied().unwrap_or(0));
+                    let line = line_numbers
+                        .get_or_insert_with(|| index_line_numbers(statements))
+                        .get(&ip)
+                        .copied()
+                        .unwrap_or(0);
+                    self.set_err(&error, line);
                     frame.set_handled_error_ip(ip);
                     let handler = frame.error_handler().expect("checked").to_string();
                     ip = labels
+                        .get_or_insert_with(|| index_labels(statements))
                         .get(&super::values::key(&handler))
                         .copied()
                         .expect("On Error label validated");
@@ -1203,24 +1219,23 @@ impl Interpreter {
     ) -> Result<(), Diagnostic> {
         match target {
             AssignTarget::Variable { name, .. } => {
-                if let Some(_slot) = frame.get_return_slot(&format!("__return_{}", name)) {
-                    // This logic will be used when `name` is the function name.
-                    // However, we need a way to detect if it's the current function.
-                    // For now, assume if it's in the return_slots, it's a return assignment.
-                    frame.set_return_slot(format!("__return_{}", name), value);
+                // Assigning to the enclosing function's own name sets its result.
+                if frame.has_return_slot_for(name) {
+                    frame.set_return_slot(super::frame::return_slot_key(name), value);
                     return Ok(());
                 }
 
-                if let Ok(owner_variable) = frame.variable("me", span) {
+                if let Some(owner_variable) = frame.variable_ref("me") {
                     let is_record_field = {
                         let owner = owner_variable.borrow();
                         matches!(
                             &*owner,
                             Value::Record(record)
-                                if record.fields.contains_key(&super::values::key(name))
+                                if super::values::with_key(name, |k| record.fields.contains_key(k))
                         )
                     };
                     if is_record_field {
+                        let owner_variable = owner_variable.clone();
                         return self.assign_member_to_variable(owner_variable, name, value, span);
                     }
                 }
@@ -1248,8 +1263,11 @@ impl Interpreter {
                 }
 
                 let old = if frame.has_variable(name) {
-                    let target = frame.get(name, span)?;
-                    if let Value::Object(ref object) = target {
+                    // Only object-like targets route through a default member, and
+                    // cloning them is a refcount bump. Cloning the variable outright
+                    // would copy the whole array on every single element write.
+                    let target = frame.get_if_indexable_object(name, span)?;
+                    if let Some(Value::Object(ref object)) = target {
                         let class_name = object.borrow().class_name.clone();
                         if let Some(default_member) = self
                             .classes
@@ -1257,8 +1275,9 @@ impl Interpreter {
                             .and_then(|class| class.default_member.clone())
                         {
                             index_values.push(value);
+                            let target = object.clone();
                             self.call_property_set_values(
-                                target,
+                                Value::Object(target),
                                 &default_member,
                                 &index_values,
                                 span,
@@ -1266,7 +1285,7 @@ impl Interpreter {
                             return Ok(());
                         }
                     }
-                    if let Value::ComObject(ref com_obj) = target {
+                    if let Some(Value::ComObject(ref com_obj)) = target {
                         let mut property_args = index_values;
                         property_args.push(value);
                         crate::runtime::com::invoke_default_com(

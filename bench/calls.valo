@@ -1,0 +1,13 @@
+' Recursive call benchmark: exercises frame setup, parameter binding,
+' and function dispatch.
+
+Function Fib(ByVal n As Long) As Long
+    If n < 2 Then
+        Return n
+    End If
+    Return Fib(n - 1) + Fib(n - 2)
+End Function
+
+Sub Main()
+    Console.WriteLine("fib(24)=" & Fib(24))
+End Sub

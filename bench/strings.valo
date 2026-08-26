@@ -1,0 +1,12 @@
+' String benchmark: concatenation and builtin string calls.
+
+Sub Main()
+    Dim acc As String
+    Dim i As Long
+    Dim n As Long
+    For i = 1 To 40000
+        acc = "item-" & i
+        n = n + Len(acc)
+    Next i
+    Console.WriteLine("n=" & n)
+End Sub
