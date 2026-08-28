@@ -1,6 +1,6 @@
 use crate::runtime::{Diagnostic, FileId, SourcePos, Span};
 
-use super::{Token, TokenKind};
+use super::{InterpolationSegment, Token, TokenKind};
 
 pub struct Lexer<'a> {
     file_id: FileId,
@@ -109,7 +109,13 @@ impl<'a> Lexer<'a> {
                 '#' => tokens.push(self.single_char(TokenKind::Hash)),
                 '?' => tokens.push(self.single_char(TokenKind::Question)),
                 '@' => tokens.push(self.single_char(TokenKind::At)),
-                '$' => tokens.push(self.single_char(TokenKind::Dollar)),
+                '$' => {
+                    if self.peek_next() == Some('"') {
+                        tokens.push(self.interpolated_string()?)
+                    } else {
+                        tokens.push(self.single_char(TokenKind::Dollar))
+                    }
+                }
                 ';' => tokens.push(self.single_char(TokenKind::Semicolon)),
                 '=' => tokens.push(self.single_char(TokenKind::Equal)),
                 '<' => tokens.push(self.less_or_not_equal()),
@@ -537,6 +543,196 @@ impl<'a> Lexer<'a> {
             "Unterminated string literal",
             Some(Span::new(self.file_id, start, self.pos())),
         ))
+    }
+
+    /// Scans an interpolated string literal, `$"before {expr:F2} after"`.
+    ///
+    /// Holes are captured as raw source text and parsed later; the scanner only
+    /// has to find where each one ends. `{{` and `}}` are literal braces, and
+    /// `""` is a literal quote, as in an ordinary string.
+    fn interpolated_string(&mut self) -> Result<Token, Diagnostic> {
+        let start = self.pos();
+        self.advance(); // '$'
+        self.advance(); // '"'
+
+        let mut segments = Vec::new();
+        let mut literal = String::new();
+
+        loop {
+            let Some(ch) = self.peek() else {
+                return Err(self.unterminated_interpolation(start));
+            };
+
+            match ch {
+                '"' => {
+                    self.advance();
+                    if self.peek() == Some('"') {
+                        literal.push('"');
+                        self.advance();
+                        continue;
+                    }
+                    if !literal.is_empty() {
+                        segments.push(InterpolationSegment::Literal(literal));
+                    }
+                    return Ok(Token {
+                        kind: TokenKind::InterpolatedString(segments),
+                        span: Span::new(self.file_id, start, self.pos()),
+                    });
+                }
+                '\n' => return Err(self.unterminated_interpolation(start)),
+                '{' if self.peek_next() == Some('{') => {
+                    literal.push('{');
+                    self.advance();
+                    self.advance();
+                }
+                '}' if self.peek_next() == Some('}') => {
+                    literal.push('}');
+                    self.advance();
+                    self.advance();
+                }
+                '{' => {
+                    if !literal.is_empty() {
+                        segments.push(InterpolationSegment::Literal(std::mem::take(&mut literal)));
+                    }
+                    segments.push(self.interpolation_hole(start)?);
+                }
+                '}' => {
+                    return Err(Diagnostic::new(
+                        crate::runtime::DiagnosticCode::PARSE,
+                        "Unmatched '}' in interpolated string; write '}}' for a literal brace",
+                        Some(Span::new(self.file_id, start, self.pos())),
+                    ));
+                }
+                _ => {
+                    literal.push(ch);
+                    self.advance();
+                }
+            }
+        }
+    }
+
+    /// Scans one `{expression[,alignment][:format]}` hole.
+    fn interpolation_hole(
+        &mut self,
+        literal_start: SourcePos,
+    ) -> Result<InterpolationSegment, Diagnostic> {
+        let hole_start = self.pos();
+        self.advance(); // '{'
+
+        let mut source = String::new();
+        let mut depth = 0usize;
+        let mut in_string = false;
+        // Whether the loop below already consumed the hole's closing brace, in
+        // which case there is no alignment or format specifier to read and the
+        // next character belongs to the surrounding literal.
+        let mut closed = false;
+
+        loop {
+            let Some(ch) = self.peek() else {
+                return Err(self.unterminated_interpolation(literal_start));
+            };
+            match ch {
+                '"' => {
+                    in_string = !in_string;
+                    source.push(ch);
+                    self.advance();
+                }
+                '\n' => return Err(self.unterminated_interpolation(literal_start)),
+                '(' | '[' if !in_string => {
+                    depth += 1;
+                    source.push(ch);
+                    self.advance();
+                }
+                ')' | ']' if !in_string => {
+                    depth = depth.saturating_sub(1);
+                    source.push(ch);
+                    self.advance();
+                }
+                '}' if !in_string && depth == 0 => {
+                    self.advance();
+                    closed = true;
+                    break;
+                }
+                ',' | ':' if !in_string && depth == 0 => break,
+                _ => {
+                    source.push(ch);
+                    self.advance();
+                }
+            }
+        }
+
+        let mut alignment = None;
+        let mut format = None;
+
+        if !closed && self.peek() == Some(',') {
+            self.advance();
+            let mut text = String::new();
+            while let Some(ch) = self.peek() {
+                if ch == '}' || ch == ':' {
+                    break;
+                }
+                text.push(ch);
+                self.advance();
+            }
+            alignment = Some(text.trim().parse::<i32>().map_err(|_| {
+                Diagnostic::new(
+                    crate::runtime::DiagnosticCode::PARSE,
+                    format!(
+                        "Interpolation alignment '{}' is not a whole number",
+                        text.trim()
+                    ),
+                    Some(Span::new(self.file_id, hole_start, self.pos())),
+                )
+            })?);
+        }
+
+        if !closed && self.peek() == Some(':') {
+            self.advance();
+            let mut text = String::new();
+            let mut depth = 0usize;
+            while let Some(ch) = self.peek() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => depth = depth.saturating_sub(1),
+                    '}' if depth == 0 => break,
+                    '\n' => return Err(self.unterminated_interpolation(literal_start)),
+                    _ => {}
+                }
+                text.push(ch);
+                self.advance();
+            }
+            format = Some(text);
+        }
+
+        if !closed {
+            if self.peek() != Some('}') {
+                return Err(self.unterminated_interpolation(literal_start));
+            }
+            self.advance();
+        }
+
+        if source.trim().is_empty() {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::PARSE,
+                "Interpolation hole is empty",
+                Some(Span::new(self.file_id, hole_start, self.pos())),
+            ));
+        }
+
+        Ok(InterpolationSegment::Hole {
+            source,
+            alignment,
+            format,
+            span: Span::new(self.file_id, hole_start, self.pos()),
+        })
+    }
+
+    fn unterminated_interpolation(&self, start: SourcePos) -> Diagnostic {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::PARSE,
+            "Unterminated interpolated string literal",
+            Some(Span::new(self.file_id, start, self.pos())),
+        )
     }
 
     /// Scans a single-character operator, upgrading it to its `op=` compound

@@ -148,6 +148,24 @@ impl Parser {
         let mut attributes = Vec::new();
         self.skip_newlines();
         while !self.is_at_end() && !self.matches_block_end(&[BlockEnd::EndClass]) {
+            // VB.NET puts `Inherits` on its own line inside the class body; the
+            // header form `Class Dog Inherits Animal` is also accepted above.
+            if self.match_simple(&TokenKind::Inherits) {
+                let base = self.parse_type_name()?;
+                if base_class.is_some() {
+                    return Err(Diagnostic::new(
+                        crate::runtime::DiagnosticCode::PARSE,
+                        format!("Class '{}' already declares a base class", name),
+                        Some(self.previous().span),
+                    )
+                    .with_help("a class can inherit from at most one base class"));
+                }
+                base_class = Some(base);
+                self.expect_statement_end("Expected newline after Inherits")?;
+                self.skip_newlines();
+                continue;
+            }
+
             if self.match_simple(&TokenKind::Implements) {
                 loop {
                     implements.push(self.parse_type_name()?);

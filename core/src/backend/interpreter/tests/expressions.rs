@@ -278,3 +278,135 @@ End Sub
 
     assert_eq!(output, vec!["True"]);
 }
+
+#[test]
+fn interpolated_strings_render_values_escapes_and_formats() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim name As String = "Valo"
+    Dim count As Long = 3
+    Console.WriteLine($"Hello, {name}! You have {count} items.")
+    Console.WriteLine($"Sum: {count + 1}")
+    Console.WriteLine($"Braces: {{literal}}")
+    Console.WriteLine($"Quote: ""quoted"" and {name}")
+    Console.WriteLine($"Nested call: {Mid(name, 2, 2)}")
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        output,
+        vec![
+            "Hello, Valo! You have 3 items.",
+            "Sum: 4",
+            "Braces: {literal}",
+            "Quote: \"quoted\" and Valo",
+            "Nested call: al",
+        ]
+    );
+}
+
+#[test]
+fn interpolation_applies_format_specifiers_and_alignment() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim price As Double = 12.5
+    Dim name As String = "Valo"
+    Console.WriteLine($"{price:0.00}")
+    Console.WriteLine($"[{name,8}]")
+    Console.WriteLine($"[{name,-8}]")
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["12.50", "[    Valo]", "[Valo    ]"]);
+}
+
+#[test]
+fn an_empty_interpolation_hole_is_rejected() {
+    let diagnostic = source_diagnostic(
+        r#"
+Sub Main()
+    Console.WriteLine($"empty {}")
+End Sub
+"#,
+    );
+
+    assert_eq!(diagnostic.code, crate::runtime::DiagnosticCode::PARSE);
+}
+
+#[test]
+fn ctype_converts_and_nameof_and_gettype_report_names() {
+    let output = run_source(
+        r#"
+Class Dog
+    Public Breed As String
+End Class
+
+Sub Main()
+    Dim total As Long = 7
+    Console.WriteLine(CType("42", Integer) + 1)
+    Console.WriteLine(NameOf(total))
+    Console.WriteLine(GetType(Dog))
+    Console.WriteLine(GetType(Integer))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["43", "total", "Dog", "Integer"]);
+}
+
+#[test]
+fn directcast_reinterprets_and_trycast_yields_nothing_on_mismatch() {
+    let output = run_source(
+        r#"
+Class Animal
+    Public Name As String
+End Class
+
+Class Dog Inherits Animal
+    Public Breed As String
+End Class
+
+Sub Main()
+    Dim d As New Dog()
+    d.Name = "Rex"
+    Dim a As Animal = DirectCast(d, Animal)
+    Console.WriteLine(a.Name)
+
+    Dim plain As Animal = New Animal()
+    Dim maybe As Dog = TryCast(plain, Dog)
+    Console.WriteLine(maybe Is Nothing)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["Rex", "True"]);
+}
+
+#[test]
+fn directcast_rejects_an_unrelated_type() {
+    let diagnostic = source_diagnostic(
+        r#"
+Class Animal
+    Public Name As String
+End Class
+
+Class Machine
+    Public Serial As String
+End Class
+
+Sub Main()
+    Dim m As New Machine()
+    Dim a As Animal = DirectCast(m, Animal)
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        diagnostic.code,
+        crate::runtime::DiagnosticCode::TYPE_MISMATCH
+    );
+}

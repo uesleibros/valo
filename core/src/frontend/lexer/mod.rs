@@ -6,4 +6,4 @@ mod scanner;
 mod token;
 
 pub use scanner::Lexer;
-pub use token::{Token, TokenKind};
+pub use token::{InterpolationSegment, Token, TokenKind};

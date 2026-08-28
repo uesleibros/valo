@@ -2298,3 +2298,34 @@ End Sub
 
     assert_eq!(output, vec!["10", "Balance cannot be negative."]);
 }
+
+#[test]
+fn inherits_can_appear_on_its_own_line_inside_the_class_body() {
+    let output = run_source(
+        r#"
+Class Animal
+    Public Name As String
+
+    Public Overridable Sub Speak()
+        Console.WriteLine("...")
+    End Sub
+End Class
+
+Class Dog
+    Inherits Animal
+
+    Public Overrides Sub Speak()
+        Console.WriteLine(Name & " says woof")
+    End Sub
+End Class
+
+Sub Main()
+    Dim d As New Dog()
+    d.Name = "Rex"
+    d.Speak()
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["Rex says woof"]);
+}

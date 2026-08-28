@@ -9,6 +9,18 @@ pub struct Expr {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     String(String),
+    /// An interpolated string, `$"total: {count:0.00}"`.
+    Interpolated(Vec<InterpolationPart>),
+    /// `CType(x, T)`, `DirectCast(x, T)`, or `TryCast(x, T)`.
+    Convert {
+        expr: Box<Expr>,
+        target: TypeName,
+        kind: ConversionKind,
+    },
+    /// `GetType(T)`, which yields the type's name.
+    GetType(TypeName),
+    /// `NameOf(x)`, which yields the source name of its operand.
+    NameOf(String),
     Integer(i64),
     Long(i32),
     LongLong(i64),
@@ -200,6 +212,30 @@ impl ExprKind {
             _ => self.clone(),
         }
     }
+}
+
+/// How a conversion expression treats a value whose type does not match.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConversionKind {
+    /// `CType`: converts between compatible types, as the `C*` builtins do.
+    Convert,
+    /// `DirectCast`: reinterprets a reference, failing if the type is wrong.
+    Direct,
+    /// `TryCast`: like `DirectCast` but yields `Nothing` instead of failing.
+    Try,
+}
+
+/// One piece of an interpolated string.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpolationPart {
+    Literal(String),
+    /// A hole: the value to render, optionally padded to `alignment` (negative
+    /// pads on the right) and rendered through `format`.
+    Value {
+        expr: Box<Expr>,
+        alignment: Option<i32>,
+        format: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

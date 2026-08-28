@@ -57,6 +57,13 @@ COM examples require Windows and the relevant COM server. They are skipped by th
 - [Events](events.valo) and [Global Event Handlers](events_global.valo)
 - [Shared Auto Property](shared_auto_property.valo)
 
+## Modern VB.NET Syntax
+
+- [String Interpolation](string_interpolation.valo)
+- [Compound Assignment and Shift Operators](compound_operators.valo)
+- [Continue For / While / Do](continue_loops.valo)
+- [Conversions and Reflection](conversions.valo) (`CType`, `DirectCast`, `TryCast`, `GetType`, `NameOf`)
+
 ## Generics, Advanced Syntax, and Modern Features
 
 - [Generic Box](generic_box.valo), [Generic Pair](generic_pair.valo), [Generic Identity](generic_identity.valo), [Generic Nested](generic_nested.valo), and [Generic Runtime](generic_runtime.valo)

@@ -2462,6 +2462,15 @@ pub(super) fn ensure_const_expr(
     types: &TypeRegistry,
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
+        // NameOf and GetType resolve entirely at compile time.
+        ExprKind::NameOf(_) | ExprKind::GetType(_) => Ok(()),
+        // An interpolated string evaluates its holes at run time, so it can
+        // never stand in for a constant.
+        ExprKind::Interpolated(_) | ExprKind::Convert { .. } => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "This expression is evaluated at run time and cannot initialize a constant",
+            Some(expr.span),
+        )),
         ExprKind::String(_)
         | ExprKind::Integer(_)
         | ExprKind::Long(_)

@@ -9,6 +9,128 @@ use crate::runtime::compare::RuntimeOptionCompare;
 use crate::runtime::ops::{RuntimeBinaryOp, eval_binary};
 
 impl Interpreter {
+    /// Renders a resolved type using the casing it was declared with.
+    ///
+    /// Type resolution yields a lookup key, which is lower-cased. `GetType`
+    /// reports a name to the user, so recover the declared spelling the way
+    /// `TypeName` does for a live value.
+    fn declared_type_name(&self, ty: &crate::runtime::TypeName) -> String {
+        let Some(name) = ty.base_user_name() else {
+            return ty.display_name();
+        };
+        let lookup = super::values::key(name);
+        if let Some(class) = self.classes.get(&lookup) {
+            return class.name.clone();
+        }
+        if let Some(record) = self.types.get(&lookup) {
+            return record.name.clone();
+        }
+        if let Some(interface) = self.interfaces.get(&lookup) {
+            return interface.name.clone();
+        }
+        ty.display_name()
+    }
+
+    /// Applies `CType`, `DirectCast`, or `TryCast`.
+    ///
+    /// `CType` converts, so it accepts anything the assignment rules accept.
+    /// `DirectCast` only reinterprets, so a value that is not already of the
+    /// target type is an error, and `TryCast` answers `Nothing` in that case
+    /// rather than failing.
+    fn eval_conversion(
+        &mut self,
+        value: Value,
+        target: &crate::runtime::TypeName,
+        kind: crate::ConversionKind,
+        span: crate::runtime::Span,
+    ) -> Result<Value, Diagnostic> {
+        match kind {
+            crate::ConversionKind::Convert => {
+                crate::runtime::coerce_assignment(target, value, span)
+            }
+            crate::ConversionKind::Direct | crate::ConversionKind::Try => {
+                if self.value_has_type(&value, target) {
+                    return Ok(value);
+                }
+                if matches!(kind, crate::ConversionKind::Try) {
+                    return Ok(Value::Nothing);
+                }
+                Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                    format!(
+                        "DirectCast cannot reinterpret {} as {}",
+                        value.type_name().display_name(),
+                        target.display_name()
+                    ),
+                    Some(span),
+                )
+                .with_help("use CType to convert between types instead of reinterpreting"))
+            }
+        }
+    }
+
+    /// Reports whether a value already is of the given type, following class
+    /// inheritance and interface implementation for objects.
+    fn value_has_type(&self, value: &Value, target: &crate::runtime::TypeName) -> bool {
+        if matches!(value, Value::Nothing) {
+            return true;
+        }
+        if let Some(target_name) = target.base_user_name()
+            && let Value::Object(object) = value
+        {
+            let class_name = object.borrow().class_name.clone();
+            return self.class_derives_from(&class_name, target_name);
+        }
+        value.type_name().same_type(target)
+    }
+
+    /// Renders an interpolated string.
+    ///
+    /// A hole's format specifier goes through the same `Format` implementation
+    /// the builtin uses, so `$"{total:0.00}"` and `Format(total, "0.00")` agree.
+    /// Alignment pads to the given width, on the left for a positive number and
+    /// on the right for a negative one, and never truncates.
+    fn eval_interpolation(
+        &mut self,
+        parts: &[crate::InterpolationPart],
+        frame: &mut Frame,
+    ) -> Result<Value, Diagnostic> {
+        let mut rendered = String::new();
+        for part in parts {
+            match part {
+                crate::InterpolationPart::Literal(text) => rendered.push_str(text),
+                crate::InterpolationPart::Value {
+                    expr,
+                    alignment,
+                    format,
+                } => {
+                    let value = self.eval_expr(expr, frame)?;
+                    let text = match format {
+                        Some(format) if !format.is_empty() => {
+                            super::builtins::strings::format_value(&value, format)
+                        }
+                        _ => value.to_output_string(),
+                    };
+                    match alignment {
+                        Some(width) => {
+                            let pad = (width.unsigned_abs() as usize)
+                                .saturating_sub(text.chars().count());
+                            if *width < 0 {
+                                rendered.push_str(&text);
+                                rendered.extend(std::iter::repeat_n(' ', pad));
+                            } else {
+                                rendered.extend(std::iter::repeat_n(' ', pad));
+                                rendered.push_str(&text);
+                            }
+                        }
+                        None => rendered.push_str(&text),
+                    }
+                }
+            }
+        }
+        Ok(Value::String(rendered))
+    }
+
     pub(crate) fn eval_expr(
         &mut self,
         expr: &Expr,
@@ -16,6 +138,21 @@ impl Interpreter {
     ) -> Result<Value, Diagnostic> {
         match &expr.kind {
             ExprKind::String(value) => Ok(Value::String(value.clone())),
+            ExprKind::Interpolated(parts) => self.eval_interpolation(parts, frame),
+            ExprKind::Convert {
+                expr: value_expr,
+                target,
+                kind,
+            } => {
+                let value = self.eval_expr(value_expr, frame)?;
+                let target = self.resolve_type_name(target, frame, expr.span)?;
+                self.eval_conversion(value, &target, *kind, expr.span)
+            }
+            ExprKind::GetType(target) => {
+                let target = self.resolve_type_name(target, frame, expr.span)?;
+                Ok(Value::String(self.declared_type_name(&target)))
+            }
+            ExprKind::NameOf(name) => Ok(Value::String(name.clone())),
             ExprKind::DateLiteral(value) => parse_date_literal(value, expr.span),
             ExprKind::Integer(value) => {
                 let val = *value;

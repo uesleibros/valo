@@ -2021,6 +2021,12 @@ fn do_condition_uses_with_target(condition: &DoLoopCondition, _context: &Context
 fn expr_uses_with_target(expr: &Expr, _context: &Context<'_>) -> bool {
     match &expr.kind {
         ExprKind::WithTarget => true,
+        ExprKind::Convert { expr, .. } => expr_uses_with_target(expr, _context),
+        ExprKind::GetType(_) | ExprKind::NameOf(_) => false,
+        ExprKind::Interpolated(parts) => parts.iter().any(|part| match part {
+            crate::InterpolationPart::Literal(_) => false,
+            crate::InterpolationPart::Value { expr, .. } => expr_uses_with_target(expr, _context),
+        }),
         ExprKind::New {
             args, initializer, ..
         } => {

@@ -1,0 +1,62 @@
+' Conversions and Reflection
+' Demonstrates CType, DirectCast, TryCast, GetType, and NameOf.
+
+Class Animal
+    Public Name As String
+
+    Public Overridable Function Describe() As String
+        Return "an animal named " & Name
+    End Function
+End Class
+
+Class Dog
+    Inherits Animal
+
+    Public Breed As String
+
+    Public Overrides Function Describe() As String
+        Return Name & " the " & Breed
+    End Function
+End Class
+
+Class Machine
+    Public Serial As String
+End Class
+
+Sub Main()
+    ' CType converts between compatible types.
+    Console.WriteLine(CType("42", Integer) + 1)
+    Console.WriteLine(CType(7, String) & "!")
+
+    ' GetType and NameOf report names, resolved at compile time.
+    Dim total As Long = 0
+    Console.WriteLine("type:  " & GetType(Dog))
+    Console.WriteLine("name:  " & NameOf(total))
+
+    Dim rex As New Dog()
+    rex.Name = "Rex"
+    rex.Breed = "collie"
+
+    ' DirectCast reinterprets a reference along its inheritance chain.
+    Dim asAnimal As Animal = DirectCast(rex, Animal)
+    Console.WriteLine(asAnimal.Describe())
+
+    ' TryCast answers Nothing instead of failing when the type does not match.
+    Dim plain As New Animal()
+    plain.Name = "Generic"
+
+    Dim maybeDog As Dog = TryCast(plain, Dog)
+    If maybeDog Is Nothing Then
+        Console.WriteLine("plain is not a Dog")
+    End If
+
+    Dim backToDog As Dog = TryCast(asAnimal, Dog)
+    If backToDog IsNot Nothing Then
+        Console.WriteLine("recovered: " & backToDog.Describe())
+    End If
+
+    ' An unrelated type never survives a TryCast either.
+    Dim device As New Machine()
+    device.Serial = "SN-1"
+    Console.WriteLine("machine is an Animal: " & (TryCast(device, Animal) IsNot Nothing))
+End Sub

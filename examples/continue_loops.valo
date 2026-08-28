@@ -1,0 +1,41 @@
+' Continue For / While / Do
+' Demonstrates skipping to the next iteration of a specific enclosing loop.
+
+Sub Main()
+    Dim i As Long
+
+    Console.WriteLine("odd numbers:")
+    For i = 1 To 10
+        If i Mod 2 = 0 Then
+            Continue For
+        End If
+        Console.WriteLine("  " & i)
+    Next i
+
+    Console.WriteLine("skipping 3 in a Do loop:")
+    Dim n As Long = 0
+    Do While n < 5
+        n += 1
+        If n = 3 Then Continue Do
+        Console.WriteLine("  " & n)
+    Loop
+
+    Console.WriteLine("skipping 2 in a While loop:")
+    Dim w As Long = 0
+    While w < 4
+        w += 1
+        If w = 2 Then Continue While
+        Console.WriteLine("  " & w)
+    Wend
+
+    ' Continue names the loop it advances, so this skips the outer For
+    ' from inside the inner Do.
+    Console.WriteLine("Continue For from a nested Do:")
+    For i = 1 To 4
+        Do
+            If i Mod 2 = 0 Then Continue For
+            Console.WriteLine("  outer " & i)
+            Exit Do
+        Loop
+    Next i
+End Sub

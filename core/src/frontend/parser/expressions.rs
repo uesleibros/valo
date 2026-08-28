@@ -1,4 +1,5 @@
 use super::*;
+use crate::frontend::lexer::InterpolationSegment;
 use crate::runtime::{Diagnostic, Span};
 
 impl Parser {
@@ -393,6 +394,10 @@ impl Parser {
                 kind: ExprKind::String(value),
                 span,
             },
+            TokenKind::InterpolatedString(segments) => Expr {
+                kind: ExprKind::Interpolated(self.parse_interpolation_parts(segments, span)?),
+                span,
+            },
             TokenKind::Integer(value) => Expr {
                 kind: ExprKind::Integer(value),
                 span,
@@ -627,6 +632,55 @@ impl Parser {
                     Expr {
                         kind: ExprKind::MyClass,
                         span,
+                    }
+                } else if let Some(kind) = conversion_kind(&name)
+                    && self.check_simple(&TokenKind::LeftParen)
+                {
+                    self.advance();
+                    let value = self.parse_expression()?;
+                    self.expect_simple(TokenKind::Comma, "Expected ',' before the target type")?;
+                    let target = self.parse_type_name()?;
+                    self.expect_simple(
+                        TokenKind::RightParen,
+                        "Expected ')' after the target type",
+                    )?;
+                    let end = self.previous().span;
+                    Expr {
+                        kind: ExprKind::Convert {
+                            expr: Box::new(value),
+                            target,
+                            kind,
+                        },
+                        span: Span::new(self.file_id, span.start, end.end),
+                    }
+                } else if name.eq_ignore_ascii_case("GetType")
+                    && self.check_simple(&TokenKind::LeftParen)
+                {
+                    self.advance();
+                    let target = self.parse_type_name()?;
+                    self.expect_simple(TokenKind::RightParen, "Expected ')' after GetType")?;
+                    let end = self.previous().span;
+                    Expr {
+                        kind: ExprKind::GetType(target),
+                        span: Span::new(self.file_id, span.start, end.end),
+                    }
+                } else if name.eq_ignore_ascii_case("NameOf")
+                    && self.check_simple(&TokenKind::LeftParen)
+                {
+                    self.advance();
+                    let operand = self.parse_expression()?;
+                    self.expect_simple(TokenKind::RightParen, "Expected ')' after NameOf")?;
+                    let end = self.previous().span;
+                    let Some(name) = source_name_of(&operand) else {
+                        return Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::PARSE,
+                            "NameOf requires a variable, member, or type name",
+                            Some(operand.span),
+                        ));
+                    };
+                    Expr {
+                        kind: ExprKind::NameOf(name),
+                        span: Span::new(self.file_id, span.start, end.end),
                     }
                 } else if name.eq_ignore_ascii_case("iif")
                     && self.match_simple(&TokenKind::LeftParen)
@@ -911,6 +965,74 @@ impl Parser {
         self.parse_expression()
     }
 
+    /// Turns the scanner's interpolation segments into AST parts.
+    ///
+    /// Each hole carries raw source text, so it is tokenized and parsed here as
+    /// a standalone expression. Diagnostics from a hole are re-pointed at the
+    /// literal, since the hole's own text has no independent source location.
+    fn parse_interpolation_parts(
+        &mut self,
+        segments: Vec<InterpolationSegment>,
+        literal_span: Span,
+    ) -> Result<Vec<InterpolationPart>, Diagnostic> {
+        let mut parts = Vec::with_capacity(segments.len());
+        for segment in segments {
+            match segment {
+                InterpolationSegment::Literal(text) => {
+                    parts.push(InterpolationPart::Literal(text));
+                }
+                InterpolationSegment::Hole {
+                    source,
+                    alignment,
+                    format,
+                    span,
+                } => {
+                    let expr = self.parse_embedded_expression(&source, span, literal_span)?;
+                    parts.push(InterpolationPart::Value {
+                        expr: Box::new(expr),
+                        alignment,
+                        format,
+                    });
+                }
+            }
+        }
+        Ok(parts)
+    }
+
+    /// Parses a standalone expression from source text embedded in a literal.
+    fn parse_embedded_expression(
+        &mut self,
+        source: &str,
+        span: Span,
+        literal_span: Span,
+    ) -> Result<Expr, Diagnostic> {
+        let repoint = |error: Diagnostic| -> Diagnostic {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::PARSE,
+                format!("Invalid interpolation expression: {}", error.message),
+                Some(literal_span),
+            )
+        };
+
+        let tokens = crate::frontend::lexer::Lexer::new(source)
+            .with_id(self.file_id)
+            .tokenize()
+            .map_err(repoint)?;
+        let mut parser = Parser::new(tokens, self.file_id);
+        let mut expr = parser.parse_expression().map_err(repoint)?;
+        if !matches!(parser.peek_kind(), TokenKind::Eof | TokenKind::Newline) {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::PARSE,
+                "Interpolation hole must contain a single expression",
+                Some(literal_span),
+            ));
+        }
+        // The embedded tokens were scanned from their own buffer, so their spans
+        // do not line up with the enclosing file.
+        expr.span = span;
+        Ok(expr)
+    }
+
     fn match_comparison_op(&mut self) -> Option<BinaryOp> {
         let op = match self.peek_kind() {
             TokenKind::Equal => BinaryOp::Equal,
@@ -926,6 +1048,37 @@ impl Parser {
         };
         self.advance();
         Some(op)
+    }
+}
+
+/// Maps `CType`, `DirectCast`, and `TryCast` to the conversion they perform.
+///
+/// These read like calls but take a type as their second operand, so they are
+/// recognized here rather than resolved as ordinary functions.
+fn conversion_kind(name: &str) -> Option<ConversionKind> {
+    if name.eq_ignore_ascii_case("CType") {
+        Some(ConversionKind::Convert)
+    } else if name.eq_ignore_ascii_case("DirectCast") {
+        Some(ConversionKind::Direct)
+    } else if name.eq_ignore_ascii_case("TryCast") {
+        Some(ConversionKind::Try)
+    } else {
+        None
+    }
+}
+
+/// Returns the name `NameOf` should report for an operand.
+///
+/// `NameOf(customer.Address)` yields `"Address"`, matching VB.NET, which names
+/// the final member rather than the whole path.
+fn source_name_of(expr: &Expr) -> Option<String> {
+    match &expr.kind {
+        ExprKind::Variable(name) => Some(name.clone()),
+        ExprKind::MemberAccess { field, .. } => Some(field.clone()),
+        ExprKind::Call { name, .. } => Some(name.clone()),
+        ExprKind::MemberCall { method, .. } => Some(method.clone()),
+        ExprKind::Me => Some("Me".to_string()),
+        _ => None,
     }
 }
 

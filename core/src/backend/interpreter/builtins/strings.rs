@@ -700,7 +700,7 @@ fn val_number(text: &str) -> f64 {
     trimmed[..end].parse::<f64>().unwrap_or(0.0)
 }
 
-fn format_value(value: &Value, format: &str) -> String {
+pub(crate) fn format_value(value: &Value, format: &str) -> String {
     if format.is_empty() {
         return value.to_output_string();
     }

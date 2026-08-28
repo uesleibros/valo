@@ -1,0 +1,45 @@
+' String Interpolation Example
+' Demonstrates VB.NET-style $"..." literals, format specifiers, and alignment.
+
+Class Product
+    Public Name As String
+    Public Price As Double
+    Public Stock As Long
+End Class
+
+Sub Main()
+    Dim user As String = "Ada"
+    Dim items As Long = 3
+    Console.WriteLine($"Hello, {user}! You have {items} items.")
+
+    ' Holes hold any expression, including calls.
+    Console.WriteLine($"Upper: {UCase(user)}, initial: {Left(user, 1)}")
+    Console.WriteLine($"Next year you will have {items + 1}.")
+
+    ' Doubled braces are literal braces; doubled quotes are a literal quote.
+    Console.WriteLine($"Literal braces: {{not a hole}}")
+    Console.WriteLine($"She said ""hello"", {user}.")
+
+    ' A format specifier goes through the same engine as Format().
+    Dim catalog(0 To 2) As Product
+    Dim index As Long
+
+    Set catalog(0) = MakeProduct("Keyboard", 49.9, 12)
+    Set catalog(1) = MakeProduct("Monitor", 219.5, 4)
+    Set catalog(2) = MakeProduct("Cable", 7.25, 130)
+
+    Console.WriteLine($"{"Product",-12}{"Price",10}{"Stock",8}")
+    For index = 0 To 2
+        Dim item As Product
+        Set item = catalog(index)
+        Console.WriteLine($"{item.Name,-12}{item.Price,10:0.00}{item.Stock,8}")
+    Next index
+End Sub
+
+Function MakeProduct(ByVal name As String, ByVal price As Double, ByVal stock As Long) As Product
+    Dim result As New Product()
+    result.Name = name
+    result.Price = price
+    result.Stock = stock
+    Return result
+End Function

@@ -1,0 +1,44 @@
+' Compound Assignment and Shift Operators
+' Demonstrates +=, -=, *=, /=, \=, ^=, &=, <<=, >>=, and the << >> operators.
+
+Sub Main()
+    Dim total As Long = 10
+    total += 5
+    Console.WriteLine("after += 5:  " & total)
+    total -= 3
+    Console.WriteLine("after -= 3:  " & total)
+    total *= 4
+    Console.WriteLine("after *= 4:  " & total)
+    total \= 6
+    Console.WriteLine("after \= 6:  " & total)
+    total ^= 2
+    Console.WriteLine("after ^= 2:  " & total)
+
+    ' &= appends to a string.
+    Dim message As String = "Valo"
+    message &= " compound"
+    message &= " operators"
+    Console.WriteLine(message)
+
+    ' Shifts keep the left operand's type; >> preserves the sign.
+    Console.WriteLine("1 << 10  = " & (1 << 10))
+    Console.WriteLine("1024 >> 3 = " & (1024 >> 3))
+    Console.WriteLine("-16 >> 2  = " & (-16 >> 2))
+
+    ' Bit flags read naturally with shifts and compound assignment.
+    Dim flags As Long = 0
+    flags = flags Or (1 << 0)
+    flags = flags Or (1 << 3)
+    Console.WriteLine("flags     = " & flags)
+    flags <<= 1
+    Console.WriteLine("flags << 1 = " & flags)
+
+    ' Compound assignment works on array elements and fields too.
+    Dim counts(0 To 2) As Long
+    Dim i As Long
+    For i = 0 To 2
+        counts(i) = i
+        counts(i) += 10
+    Next i
+    Console.WriteLine("counts    = " & counts(0) & ", " & counts(1) & ", " & counts(2))
+End Sub

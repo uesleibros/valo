@@ -283,6 +283,35 @@ pub(super) fn validate_assignment_target(
 ///
 /// The type comes from the `Get` accessor's return type, falling back to the
 /// value parameter of `Let`/`Set` for a write-only property.
+/// Reports whether a type can take part in a bitwise `And`/`Or`/`Xor`.
+///
+/// VB.NET allows every integral width here, not just `Integer`, plus enums and
+/// the runtime-typed Variant.
+fn is_bitwise_operand(ty: &TypeName, types: &TypeRegistry) -> bool {
+    ty.is_integral() || ty.same_type(&TypeName::Variant) || is_enum_type(ty, types)
+}
+
+/// Returns the type a bitwise operation produces for the given operands.
+fn wider_bitwise_result(left: &TypeName, right: &TypeName) -> TypeName {
+    let rank = |ty: &TypeName| match ty {
+        TypeName::Byte => 0,
+        TypeName::Integer => 1,
+        TypeName::Long | TypeName::UInt32 => 2,
+        TypeName::Int64 | TypeName::UInt64 => 3,
+        _ => 1,
+    };
+    if !left.is_integral() && !right.is_integral() {
+        return TypeName::Integer;
+    }
+    if !right.is_integral() || rank(left) >= rank(right) {
+        if left.is_integral() {
+            return left.clone();
+        }
+        return right.clone();
+    }
+    right.clone()
+}
+
 fn bare_property_type(property: &ClassPropertySig) -> Option<TypeName> {
     if let Some(get) = &property.get
         && let Some(return_type) = &get.return_type
@@ -331,6 +360,48 @@ pub(super) fn validate_expr(
 ) -> Result<TypeName, Diagnostic> {
     match &expr.kind {
         ExprKind::String(_) => Ok(TypeName::String),
+        ExprKind::Interpolated(parts) => {
+            for part in parts {
+                if let crate::InterpolationPart::Value { expr, .. } = part {
+                    validate_expr(expr, symbols, types, signatures, context, option_explicit)?;
+                }
+            }
+            Ok(TypeName::String)
+        }
+        ExprKind::Convert {
+            expr: value_expr,
+            target,
+            kind,
+        } => {
+            validate_expr(
+                value_expr,
+                symbols,
+                types,
+                signatures,
+                context,
+                option_explicit,
+            )?;
+            ensure_known_type(target, types, expr.span)?;
+            // TryCast answers Nothing when the value is not of the target type,
+            // so its result is only meaningful for reference types.
+            if matches!(kind, crate::ConversionKind::Try) && !is_class_type(target, types) {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                    format!(
+                        "TryCast requires a reference type, found '{}'",
+                        target.display_name()
+                    ),
+                    Some(expr.span),
+                )
+                .with_help("use CType for value types"));
+            }
+            Ok(types.canonical_type_name(target))
+        }
+        ExprKind::GetType(target) => {
+            ensure_known_type(target, types, expr.span)?;
+            Ok(TypeName::String)
+        }
+        ExprKind::NameOf(_) => Ok(TypeName::String),
         ExprKind::DateLiteral(_) => Ok(TypeName::Date),
         ExprKind::Integer(value) => {
             let val = *value;
@@ -1346,19 +1417,12 @@ pub(super) fn validate_expr(
                             || right_type.same_type(&TypeName::Variant))
                     {
                         Ok(TypeName::Boolean)
-                    } else if (left_type.same_type(&TypeName::Integer)
-                        || left_type.same_type(&TypeName::Variant))
-                        && (right_type.same_type(&TypeName::Integer)
-                            || right_type.same_type(&TypeName::Variant))
-                        || (is_enum_type(&left_type, types)
-                            && (right_type.same_type(&TypeName::Integer)
-                                || right_type.same_type(&TypeName::Variant)))
-                        || ((left_type.same_type(&TypeName::Integer)
-                            || left_type.same_type(&TypeName::Variant))
-                            && is_enum_type(&right_type, types))
-                        || (is_enum_type(&left_type, types) && is_enum_type(&right_type, types))
+                    } else if is_bitwise_operand(&left_type, types)
+                        && is_bitwise_operand(&right_type, types)
                     {
-                        Ok(TypeName::Integer)
+                        // A bitwise result keeps the wider operand's width, so
+                        // masking a Long does not silently narrow to Integer.
+                        Ok(wider_bitwise_result(&left_type, &right_type))
                     } else {
                         Err(Diagnostic::new(
                             crate::runtime::DiagnosticCode::GENERIC,

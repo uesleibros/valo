@@ -6,10 +6,28 @@ pub struct Token {
     pub span: Span,
 }
 
+/// One piece of an interpolated string literal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InterpolationSegment {
+    /// Literal text, with `{{` and `}}` already reduced to `{` and `}`.
+    Literal(String),
+    /// A `{expression[,alignment][:format]}` hole. The source text is parsed
+    /// later, by the parser, so the scanner stays free of expression grammar.
+    Hole {
+        source: String,
+        alignment: Option<i32>,
+        format: Option<String>,
+        span: Span,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     Identifier(String, Option<crate::runtime::TypeName>),
     String(String),
+    /// An interpolated string literal, `$"total: {count}"`, already split into
+    /// its literal and hole segments by the scanner.
+    InterpolatedString(Vec<InterpolationSegment>),
     Integer(i64),
     Float(String),
     Sub,
