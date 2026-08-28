@@ -12,6 +12,7 @@ const STACK_LEN: usize = 96;
 /// Returns the case-folded lookup key for `name`.
 ///
 /// Prefer [`with_folded`] on hot paths; this allocates.
+#[inline]
 pub fn fold(name: &str) -> String {
     name.to_lowercase()
 }
@@ -21,6 +22,7 @@ pub fn fold(name: &str) -> String {
 ///
 /// Valo identifiers are short and ASCII, so they fold into a stack buffer.
 /// Anything longer or non-ASCII falls back to [`fold`].
+#[inline]
 pub fn with_folded<R>(name: &str, f: impl FnOnce(&str) -> R) -> R {
     let bytes = name.as_bytes();
     if bytes.len() <= STACK_LEN && bytes.is_ascii() {

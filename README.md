@@ -298,11 +298,14 @@ cargo build --release -p valo_cli
 Recent work removed a quadratic array-write path and the per-statement
 allocations on the interpreter's hot path:
 
-| Benchmark | Before | After |
-|---|---|---|
-| Array fill and read (100k elements) | 139.4 s | 0.16 s |
-| Nested arithmetic loop (2M iterations) | 3.24 s | 0.81 s |
-| String building (40k iterations) | 0.20 s | 0.07 s |
+| Benchmark | Before | After | Speedup |
+|---|---|---|---|
+| Array fill and read (100k elements) | 195 s | 0.72 s | 270x |
+| Nested arithmetic loop (2M iterations) | 4.74 s | 1.16 s | 4.1x |
+| String building (40k iterations) | 0.25 s | 0.07 s | 3.6x |
+
+Both columns were measured on the same machine, back to back, comparing the
+commit before this work against the current build.
 
 The interpreter is still a tree walker. A bytecode VM is the next significant
 step, and these benchmarks exist to keep that work honest.
