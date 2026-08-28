@@ -1,6 +1,7 @@
 use crate::runtime::numeric::{
     is_integer_type, is_really_float, value_to_f64, value_to_i64, value_to_u64,
 };
+use crate::runtime::well_known;
 use crate::runtime::{Diagnostic, Span, TypeName, Value};
 
 pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Value, Diagnostic> {
@@ -14,7 +15,7 @@ pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Valu
     if matches!(value, Value::Nothing) && matches!(ty, TypeName::User(_)) {
         return Ok(value);
     }
-    if matches!(ty, TypeName::User(name) if name.rsplit('.').next().is_some_and(|name| name.eq_ignore_ascii_case("Object")))
+    if matches!(ty, TypeName::User(name) if name.rsplit('.').next().is_some_and(|name| name.eq_ignore_ascii_case(well_known::OBJECT)))
         && matches!(
             value,
             Value::Object(_) | Value::ComObject(_) | Value::Nothing | Value::Collection(_)

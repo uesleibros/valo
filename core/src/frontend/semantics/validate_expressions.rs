@@ -2,6 +2,7 @@ use super::*;
 use crate::ContinueTarget;
 use crate::runtime::Span;
 use crate::runtime::builtins::{self, strip_vba_namespace};
+use crate::runtime::well_known;
 
 #[derive(Clone, Copy)]
 pub(super) struct ExprValidation<'a, 'ctx> {
@@ -47,7 +48,7 @@ pub(super) fn validate_assignment_target(
                 if let Some(class_sig) = types.get_class(owner_name)
                     && let Some(field_sig) = class_sig.fields.get(&key(name))
                 {
-                    if field_sig.is_shared || symbols.contains_key("me") {
+                    if field_sig.is_shared || symbols.contains_key(well_known::SELF_KEY) {
                         VarType::Scalar(Visibility::Public, field_sig.ty.clone())
                     } else {
                         return Err(Diagnostic::new(
@@ -107,7 +108,7 @@ pub(super) fn validate_assignment_target(
                 if let Some(class_sig) = types.get_class(owner_name)
                     && let Some(field_sig) = class_sig.fields.get(&key(name))
                 {
-                    if field_sig.is_shared || symbols.contains_key("me") {
+                    if field_sig.is_shared || symbols.contains_key(well_known::SELF_KEY) {
                         if let Some(ref array_decl) = field_sig.array {
                             VarType::Array(
                                 Visibility::Public,
@@ -170,8 +171,8 @@ pub(super) fn validate_assignment_target(
                 VarType::Scalar(_, TypeName::User(class_name))
                 | VarType::Optional(_, TypeName::User(class_name))
                 | VarType::Const(_, TypeName::User(class_name))
-                    if class_name.eq_ignore_ascii_case("Object")
-                        || class_name.eq_ignore_ascii_case("Collection") =>
+                    if class_name.eq_ignore_ascii_case(well_known::OBJECT)
+                        || class_name.eq_ignore_ascii_case(well_known::COLLECTION) =>
                 {
                     for index in indices {
                         validate_expr(index, symbols, types, signatures, context, option_explicit)?;
@@ -504,7 +505,7 @@ pub(super) fn validate_expr(
                 ))
             }
         }
-        ExprKind::Me => match symbols.get("me").cloned() {
+        ExprKind::Me => match symbols.get(well_known::SELF_KEY).cloned() {
             Some(VarType::Scalar(_, ty))
             | Some(VarType::Optional(_, ty))
             | Some(VarType::Const(_, ty)) => Ok(ty),
@@ -514,7 +515,7 @@ pub(super) fn validate_expr(
                 Some(expr.span),
             )),
         },
-        ExprKind::MyBase | ExprKind::MyClass => match symbols.get("me").cloned() {
+        ExprKind::MyBase | ExprKind::MyClass => match symbols.get(well_known::SELF_KEY).cloned() {
             Some(VarType::Scalar(_, ty))
             | Some(VarType::Optional(_, ty))
             | Some(VarType::Const(_, ty)) => Ok(ty),
@@ -538,7 +539,7 @@ pub(super) fn validate_expr(
             }
 
             if let TypeName::User(name) = class_name
-                && name.eq_ignore_ascii_case("Collection")
+                && name.eq_ignore_ascii_case(well_known::COLLECTION)
             {
                 return Ok(TypeName::User("Collection".to_string()));
             }
@@ -556,7 +557,7 @@ pub(super) fn validate_expr(
                         Some(expr.span),
                     ));
                 }
-                if let Some(init) = type_sig.subs.get("initialize") {
+                if let Some(init) = well_known::find_constructor(&type_sig.subs) {
                     let init = init.substitute_generics(&bindings);
                     validate_arguments(
                         "Sub",
@@ -584,11 +585,7 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 )
             })?;
-            if let Some(init) = class_sig
-                .subs
-                .get("initialize")
-                .or_else(|| class_sig.subs.get("class_initialize"))
-            {
+            if let Some(init) = well_known::find_constructor(&class_sig.subs) {
                 // `New Box(Of String)("x")` must check the argument against
                 // String, not against the class's unbound `T`.
                 let init = init.substitute_generics(&bindings);
@@ -674,7 +671,7 @@ pub(super) fn validate_expr(
                     }
                 }
             }
-            if name.eq_ignore_ascii_case("Err") {
+            if name.eq_ignore_ascii_case(well_known::ERR) {
                 return Ok(TypeName::Variant);
             }
             if name.eq_ignore_ascii_case("Erl") {
@@ -692,10 +689,10 @@ pub(super) fn validate_expr(
             {
                 return Ok(TypeName::Date);
             }
-            if name.eq_ignore_ascii_case("Console") {
+            if name.eq_ignore_ascii_case(well_known::CONSOLE) {
                 return Ok(TypeName::Variant);
             }
-            if name.eq_ignore_ascii_case("VBA") {
+            if name.eq_ignore_ascii_case(well_known::VBA) {
                 return Ok(TypeName::Variant);
             }
             if let Some(constant) = crate::runtime::vba::vba_constant(name) {
@@ -719,7 +716,7 @@ pub(super) fn validate_expr(
                 if let Some(class_sig) = types.get_class(owner_name) {
                     let member_key = key(name);
                     if let Some(field_sig) = class_sig.fields.get(&member_key)
-                        && (field_sig.is_shared || symbols.contains_key("me"))
+                        && (field_sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
                     {
                         if field_sig.array.is_some() {
                             return Err(Diagnostic::new(
@@ -731,7 +728,7 @@ pub(super) fn validate_expr(
                         return Ok(field_sig.ty.clone());
                     }
                     if let Some(func_sig) = class_sig.functions.get(&member_key)
-                        && (func_sig.is_shared || symbols.contains_key("me"))
+                        && (func_sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
                     {
                         validate_arguments(
                             "Function",
@@ -749,7 +746,7 @@ pub(super) fn validate_expr(
                         return Ok(func_sig.return_type.clone().expect("function return type"));
                     }
                     if let Some(prop_sig) = class_sig.properties.get(&member_key)
-                        && (prop_sig.is_shared || symbols.contains_key("me"))
+                        && (prop_sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
                         && let Some(get) = &prop_sig.get
                     {
                         let callable = CallableSig {
@@ -867,7 +864,7 @@ pub(super) fn validate_expr(
         }
         ExprKind::MemberAccess { object, field, .. } => {
             if let ExprKind::Variable(name) = &object.kind
-                && name.eq_ignore_ascii_case("Err")
+                && name.eq_ignore_ascii_case(well_known::ERR)
             {
                 if field.eq_ignore_ascii_case("Number") {
                     return Ok(TypeName::Integer);
@@ -888,7 +885,7 @@ pub(super) fn validate_expr(
                 ));
             }
             if let ExprKind::Variable(name) = &object.kind
-                && name.eq_ignore_ascii_case("VBA")
+                && name.eq_ignore_ascii_case(well_known::VBA)
             {
                 if let Some(constant) = crate::runtime::vba::vba_constant(field) {
                     return Ok(constant.type_name());
@@ -947,7 +944,7 @@ pub(super) fn validate_expr(
                 return Ok(TypeName::Variant);
             }
             if let TypeName::User(name) = &object_type
-                && name.eq_ignore_ascii_case("Object")
+                && name.eq_ignore_ascii_case(well_known::OBJECT)
             {
                 return Ok(TypeName::Variant);
             }
@@ -968,7 +965,7 @@ pub(super) fn validate_expr(
             ..
         } => {
             if let ExprKind::Variable(name) = &object.kind
-                && name.eq_ignore_ascii_case("VBA")
+                && name.eq_ignore_ascii_case(well_known::VBA)
             {
                 if let Some(ty) = validate_builtin_function(
                     method,
@@ -985,7 +982,7 @@ pub(super) fn validate_expr(
                 ));
             }
             if let ExprKind::Variable(name) = &object.kind
-                && name.eq_ignore_ascii_case("Err")
+                && name.eq_ignore_ascii_case(well_known::ERR)
             {
                 if method.eq_ignore_ascii_case("Clear") && args.is_empty() {
                     return Ok(TypeName::Variant);
@@ -1176,8 +1173,8 @@ pub(super) fn validate_expr(
                     VarType::Scalar(_, TypeName::User(class_name))
                     | VarType::Optional(_, TypeName::User(class_name))
                     | VarType::Const(_, TypeName::User(class_name)) => {
-                        if class_name.eq_ignore_ascii_case("Object")
-                            || class_name.eq_ignore_ascii_case("Func")
+                        if class_name.eq_ignore_ascii_case(well_known::OBJECT)
+                            || class_name.eq_ignore_ascii_case(well_known::FUNC)
                         {
                             for arg in args {
                                 validate_expr(
@@ -1263,7 +1260,7 @@ pub(super) fn validate_expr(
                 }
             }
             if let Some(VarType::Scalar(Visibility::Public, TypeName::User(class_name))) =
-                symbols.get("me").cloned()
+                symbols.get(well_known::SELF_KEY).cloned()
                 && let Some(class_sig) = types.get_class(&class_name)
                 && let Some(field_sig) = class_sig.fields.get(&key(name))
             {
@@ -1299,12 +1296,12 @@ pub(super) fn validate_expr(
             {
                 let member_key = key(name);
                 if let Some(func_sig) = class_sig.functions.get(&member_key) {
-                    if func_sig.is_shared || symbols.contains_key("me") {
+                    if func_sig.is_shared || symbols.contains_key(well_known::SELF_KEY) {
                         function = Some(func_sig.clone());
                     }
                 } else if let Some(prop_sig) = class_sig.properties.get(&member_key)
                     && let Some(get) = &prop_sig.get
-                    && (prop_sig.is_shared || symbols.contains_key("me"))
+                    && (prop_sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
                 {
                     function = Some(CallableSig {
                         attributes: Vec::new(),
@@ -1679,7 +1676,7 @@ pub(super) fn validate_array_expr(
     match &expr.kind {
         ExprKind::Variable(name) => match symbols.get(&key(name)).cloned() {
             Some(VarType::Array(_, element_type, _)) => Ok(element_type),
-            Some(v) if v.is_variant() || v.scalar_type().is_some_and(|ty| matches!(ty, TypeName::User(ref name) if name.eq_ignore_ascii_case("Func") || name.eq_ignore_ascii_case("Object"))) => {
+            Some(v) if v.is_variant() || v.scalar_type().is_some_and(|ty| matches!(ty, TypeName::User(ref name) if name.eq_ignore_ascii_case(well_known::FUNC) || name.eq_ignore_ascii_case(well_known::OBJECT))) => {
                 Ok(TypeName::Variant)
             }
             Some(VarType::Scalar(_, _ty))
@@ -1701,7 +1698,7 @@ pub(super) fn validate_array_expr(
             )),
             None => {
                 if let Some(VarType::Scalar(_, TypeName::User(class_name))) =
-                    symbols.get("me").cloned()
+                    symbols.get(well_known::SELF_KEY).cloned()
                     && let Some(class_sig) = types.get_class(&class_name)
                     && let Some(field_sig) = class_sig.fields.get(&key(name))
                 {
@@ -2263,7 +2260,7 @@ pub(super) fn validate_method_call(
     option_explicit: bool,
 ) -> Result<TypeName, Diagnostic> {
     if object_type.same_type(&TypeName::Variant)
-        || matches!(object_type, TypeName::User(name) if name.eq_ignore_ascii_case("Object"))
+        || matches!(object_type, TypeName::User(name) if name.eq_ignore_ascii_case(well_known::OBJECT))
     {
         for arg in args {
             validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
@@ -2868,7 +2865,7 @@ pub(super) fn member_read_type(
         ));
     }
     if object_type.same_type(&TypeName::Variant)
-        || matches!(object_type, TypeName::User(name) if name.eq_ignore_ascii_case("Object"))
+        || matches!(object_type, TypeName::User(name) if name.eq_ignore_ascii_case(well_known::OBJECT))
     {
         return Ok(TypeName::Variant);
     }
@@ -3154,8 +3151,8 @@ pub(super) fn ensure_known_type(
         | TypeName::FuncPtr => Ok(()),
         TypeName::User(name) => {
             if types.generic_params.contains(&key(name))
-                || name.eq_ignore_ascii_case("Object")
-                || name.eq_ignore_ascii_case("Collection")
+                || name.eq_ignore_ascii_case(well_known::OBJECT)
+                || name.eq_ignore_ascii_case(well_known::COLLECTION)
                 || name.contains('.')
                 || is_builtin_vba_enum_type(name)
             {
@@ -3375,8 +3372,8 @@ fn is_reference_type(ty: &TypeName, types: &TypeRegistry) -> bool {
     match ty {
         TypeName::String | TypeName::Array(_) => true,
         TypeName::User(name) => {
-            name.eq_ignore_ascii_case("Object")
-                || name.eq_ignore_ascii_case("Collection")
+            name.eq_ignore_ascii_case(well_known::OBJECT)
+                || name.eq_ignore_ascii_case(well_known::COLLECTION)
                 || types.get_class(name).is_some()
                 || types.get_interface(name).is_some()
         }
@@ -3420,7 +3417,7 @@ fn has_parameterless_constructor(ty: &TypeName, types: &TypeRegistry) -> bool {
         return true;
     }
     match ty {
-        TypeName::User(name) if name.eq_ignore_ascii_case("Object") => true,
+        TypeName::User(name) if name.eq_ignore_ascii_case(well_known::OBJECT) => true,
         TypeName::User(name) => types
             .get_class(name)
             .is_some_and(class_has_public_default_new),
@@ -3437,10 +3434,7 @@ fn class_has_public_default_new(class: &ClassSig) -> bool {
     }
 
     // Check for explicit constructor (Sub New or Class_Initialize)
-    let ctor = class
-        .subs
-        .get("initialize")
-        .or_else(|| class.subs.get("class_initialize"));
+    let ctor = well_known::find_constructor(&class.subs);
 
     match ctor {
         Some(init) => init.visibility == Visibility::Public && init.params.is_empty(),
@@ -3453,7 +3447,7 @@ fn satisfies_type_bound(arg: &TypeName, bound: &TypeName, types: &TypeRegistry) 
         return true;
     }
     match (arg, bound) {
-        (_, TypeName::User(name)) if name.eq_ignore_ascii_case("Object") => {
+        (_, TypeName::User(name)) if name.eq_ignore_ascii_case(well_known::OBJECT) => {
             is_reference_type(arg, types)
         }
         (TypeName::User(arg_name), TypeName::User(bound_name))
@@ -3606,8 +3600,8 @@ pub(super) fn is_class_type(ty: &TypeName, types: &TypeRegistry) -> bool {
         TypeName::User(name) => {
             types.get_class(name).is_some()
                 || types.get_interface(name).is_some()
-                || name.eq_ignore_ascii_case("Object")
-                || name.eq_ignore_ascii_case("Collection")
+                || name.eq_ignore_ascii_case(well_known::OBJECT)
+                || name.eq_ignore_ascii_case(well_known::COLLECTION)
         }
         TypeName::GenericInstance { name, .. } => {
             types.get_class(name).is_some() || types.get_interface(name).is_some()
@@ -3886,7 +3880,7 @@ pub(super) fn ensure_assignable(
         || (is_numeric_type(target) && matches!(source, TypeName::Ptr | TypeName::FuncPtr))
         || (matches!(target, TypeName::Ptr | TypeName::FuncPtr)
             && matches!(source, TypeName::Ptr | TypeName::FuncPtr))
-        || matches!(target, TypeName::User(name) if name.rsplit('.').next().is_some_and(|name| name.eq_ignore_ascii_case("Object")))
+        || matches!(target, TypeName::User(name) if name.rsplit('.').next().is_some_and(|name| name.eq_ignore_ascii_case(well_known::OBJECT)))
             && matches!(source, TypeName::User(_))
         || is_inherited_class_assignable(target, source)
         || (matches!(target, TypeName::Nullable(_))

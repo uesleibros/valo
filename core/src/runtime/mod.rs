@@ -18,6 +18,7 @@ pub mod stdlib;
 mod type_name;
 mod value;
 pub mod vba;
+pub mod well_known;
 
 pub use coerce::coerce_assignment;
 pub use diagnostic::{

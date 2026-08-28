@@ -1,3 +1,4 @@
+use crate::runtime::well_known;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -47,7 +48,7 @@ pub(crate) fn default_value(
         }
         _ => unreachable!("builtin types are handled above"),
     };
-    if name.eq_ignore_ascii_case("Object") {
+    if name.eq_ignore_ascii_case(well_known::OBJECT) {
         return Ok(Value::Nothing);
     }
     if interpreter.enums.contains_key(&key(&name)) {

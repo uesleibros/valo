@@ -1,3 +1,4 @@
+use crate::runtime::well_known;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -86,10 +87,10 @@ impl TypeRegistry {
                     return TypeName::User(canonical);
                 }
                 // Handle Object
-                if name.eq_ignore_ascii_case("Object") {
+                if name.eq_ignore_ascii_case(well_known::OBJECT) {
                     return TypeName::User("Object".to_string());
                 }
-                if name.eq_ignore_ascii_case("Collection") {
+                if name.eq_ignore_ascii_case(well_known::COLLECTION) {
                     return TypeName::User("Collection".to_string());
                 }
                 TypeName::User(name.clone())

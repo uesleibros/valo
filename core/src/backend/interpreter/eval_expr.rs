@@ -1,3 +1,4 @@
+use crate::runtime::well_known;
 use std::rc::Rc;
 
 use crate::runtime::numeric::{unary_negate, unary_positive};
@@ -214,7 +215,9 @@ impl Interpreter {
                 };
                 Ok(Value::Boolean(result))
             }
-            ExprKind::Me | ExprKind::MyBase | ExprKind::MyClass => frame.get("me", expr.span),
+            ExprKind::Me | ExprKind::MyBase | ExprKind::MyClass => {
+                frame.get(well_known::SELF_KEY, expr.span)
+            }
             ExprKind::WithTarget => frame.current_with_target(expr.span),
             ExprKind::New {
                 class_name,
@@ -284,16 +287,16 @@ impl Interpreter {
                         Some(value) => Ok(value),
                         None => unreachable!("bare zero-argument builtin should dispatch"),
                     }
-                } else if name.eq_ignore_ascii_case("VBA")
-                    || name.eq_ignore_ascii_case("Console")
-                    || name.eq_ignore_ascii_case("Err")
+                } else if name.eq_ignore_ascii_case(well_known::VBA)
+                    || name.eq_ignore_ascii_case(well_known::CONSOLE)
+                    || name.eq_ignore_ascii_case(well_known::ERR)
                 {
                     Ok(Value::Empty)
                 } else {
                     match frame.get(name, expr.span) {
                         Ok(value) => Ok(value),
                         Err(error) => {
-                            if let Ok(me) = frame.get("me", expr.span) {
+                            if let Ok(me) = frame.get(well_known::SELF_KEY, expr.span) {
                                 if let Ok(value) = self.read_member(&me, name, frame, expr.span) {
                                     return Ok(value);
                                 }
@@ -338,12 +341,12 @@ impl Interpreter {
                 conditional,
             } => {
                 if let ExprKind::Variable(name) = &object.kind {
-                    if name.eq_ignore_ascii_case("Err")
+                    if name.eq_ignore_ascii_case(well_known::ERR)
                         && let Some(val) = super::builtins::err::eval_err(self, field, expr.span)?
                     {
                         return Ok(val);
                     }
-                    if name.eq_ignore_ascii_case("VBA") {
+                    if name.eq_ignore_ascii_case(well_known::VBA) {
                         if let Some(constant) = crate::runtime::vba::vba_constant(field) {
                             return Ok(constant.value());
                         }
@@ -365,7 +368,7 @@ impl Interpreter {
                             }
                         }
                     }
-                    if name.eq_ignore_ascii_case("Console") {
+                    if name.eq_ignore_ascii_case(well_known::CONSOLE) {
                         // Console doesn't have fields in our current builtin model, but we handle it
                         // here to prevent it being treated as a potential module qualifier.
                     }
@@ -589,7 +592,7 @@ impl Interpreter {
                         }
                     }
                 }
-                if let Ok(me) = frame.get("me", expr.span) {
+                if let Ok(me) = frame.get(well_known::SELF_KEY, expr.span) {
                     if let Ok(field_value) = self.read_member(&me, name, frame, expr.span)
                         && matches!(field_value, Value::Array(_))
                     {

@@ -1,3 +1,4 @@
+use crate::runtime::well_known;
 use crate::runtime::{ArrayValue, Diagnostic, Span, TypeName, Value, coerce_assignment};
 use crate::{ClassProperty, Expr, PropertyKind, Stmt};
 use std::rc::Rc;
@@ -53,7 +54,7 @@ impl Interpreter {
             frame.set_module_key(module_key.to_string());
         }
         frame.declare_const(
-            "me",
+            well_known::SELF_KEY,
             TypeName::User(structure.name.clone()),
             record_val.clone(),
             span,
@@ -197,7 +198,7 @@ impl Interpreter {
         };
         let mut frame = Frame::default();
         frame.declare_alias(
-            "me",
+            well_known::SELF_KEY,
             TypeName::User(structure.name.clone()),
             variable,
             span,
@@ -282,7 +283,7 @@ impl Interpreter {
             frame.set_module_key(module_key.to_string());
         }
         // Property frames see module-level state like Sub and Function calls.
-        frame.declare_object_alias("me", &class.name, instance, span)?;
+        frame.declare_object_alias(well_known::SELF_KEY, &class.name, instance, span)?;
         self.bind_parameters(&accessor.params, args, caller_frame, &mut frame)?;
 
         let return_type = accessor
@@ -392,7 +393,7 @@ impl Interpreter {
                     frame.set_class_context(class_name.clone());
                 }
                 if let Value::Object(obj_rc) = me_val {
-                    frame.declare_object_alias("me", &class_name, obj_rc, span)?;
+                    frame.declare_object_alias(well_known::SELF_KEY, &class_name, obj_rc, span)?;
                 }
             }
             self.bind_parameter_values(&accessor.params, args, &mut frame, span)?;
@@ -480,7 +481,7 @@ impl Interpreter {
                     frame.set_class_context(class_name.clone());
                 }
                 if let Value::Object(obj_rc) = me_val {
-                    frame.declare_object_alias("me", &class_name, obj_rc, span)?;
+                    frame.declare_object_alias(well_known::SELF_KEY, &class_name, obj_rc, span)?;
                 }
             }
             self.bind_parameter_values(&accessor.params, args, &mut frame, span)?;
@@ -562,7 +563,7 @@ impl Interpreter {
             )
         })?;
         let mut frame = Frame::default();
-        frame.declare_object_alias("me", &class.name, instance, span)?;
+        frame.declare_object_alias(well_known::SELF_KEY, &class.name, instance, span)?;
         self.bind_parameter_values(&accessor.params, values, &mut frame, span)?;
         self.scope_stack
             .push(format!("{}.{}", class.name, accessor.name));

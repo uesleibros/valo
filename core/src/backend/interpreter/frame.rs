@@ -1,3 +1,4 @@
+use crate::runtime::well_known;
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -74,10 +75,8 @@ impl VariableCell {
 /// Only object values have a `Class_Terminate` hook, so cloning anything else
 /// (an array or record can be arbitrarily large) is pure waste.
 /// Builds the frame key that holds a function's implicit return value.
-///
-/// Must stay in sync with the slot names produced during semantic validation.
 pub(crate) fn return_slot_key(name: &str) -> String {
-    format!("__return_{}", name)
+    crate::runtime::well_known::return_slot(name)
 }
 
 fn previous_for_termination(current: &Value) -> Value {
@@ -153,7 +152,7 @@ impl Frame {
             return Some(context.clone());
         }
         self.variables
-            .get("me")
+            .get(well_known::SELF_KEY)
             .and_then(|variable| match &variable.ty {
                 TypeName::User(name) => Some(name.clone()),
                 _ => None,

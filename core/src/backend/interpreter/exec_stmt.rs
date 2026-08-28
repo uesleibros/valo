@@ -1,3 +1,4 @@
+use crate::runtime::well_known;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -239,7 +240,7 @@ impl Interpreter {
                     return Ok(flow);
                 }
 
-                if let Ok(me) = frame.get("me", *span)
+                if let Ok(me) = frame.get(well_known::SELF_KEY, *span)
                     && let Value::Object(ref obj) = me
                 {
                     let class_name = obj.borrow().class_name.clone();
@@ -292,7 +293,7 @@ impl Interpreter {
                     return Ok(ControlFlow::Continue);
                 }
                 if matches!(object.kind, crate::ExprKind::Me)
-                    && let Ok(variable) = frame.variable("me", object.span)
+                    && let Ok(variable) = frame.variable(well_known::SELF_KEY, object.span)
                     && matches!(
                         &*variable.borrow(),
                         Value::Record(_) | Value::BoxedRecord(_, _)
@@ -374,7 +375,8 @@ impl Interpreter {
                         ExprKind::Variable(name) => {
                             // If it's a simple variable name, we check if it's a member of "me".
                             // If so, it's a method call. Otherwise it's global.
-                            if let Ok(Value::Object(me_rc)) = frame.get("me", *span) {
+                            if let Ok(Value::Object(me_rc)) = frame.get(well_known::SELF_KEY, *span)
+                            {
                                 let class_name = me_rc.borrow().class_name.clone();
                                 if let Some(class) = self.classes.get(&key(&class_name)) {
                                     if class.subs.contains_key(&key(name))
@@ -429,7 +431,8 @@ impl Interpreter {
                             (Value::Object(obj_rc), field.clone())
                         }
                         ExprKind::Variable(name) => {
-                            if let Ok(Value::Object(me_rc)) = frame.get("me", *span) {
+                            if let Ok(Value::Object(me_rc)) = frame.get(well_known::SELF_KEY, *span)
+                            {
                                 let class_name = me_rc.borrow().class_name.clone();
                                 if let Some(class) = self.classes.get(&key(&class_name)) {
                                     if class.subs.contains_key(&key(name))
@@ -1252,7 +1255,7 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                if let Some(owner_variable) = frame.variable_ref("me") {
+                if let Some(owner_variable) = frame.variable_ref(well_known::SELF_KEY) {
                     let is_record_field = {
                         let owner = owner_variable.borrow();
                         matches!(
@@ -1269,7 +1272,7 @@ impl Interpreter {
                 if frame.has_variable(name) {
                     let old = frame.assign(name, value, span)?;
                     self.maybe_terminate(old, span)
-                } else if let Ok(owner_variable) = frame.variable("me", span) {
+                } else if let Ok(owner_variable) = frame.variable(well_known::SELF_KEY, span) {
                     if matches!(&*owner_variable.borrow(), Value::Record(_)) {
                         self.assign_member_to_variable(owner_variable, name, value, span)
                     } else {
@@ -1358,7 +1361,7 @@ impl Interpreter {
                             }
                         });
                     }
-                    let owner = frame.get("me", span)?;
+                    let owner = frame.get(well_known::SELF_KEY, span)?;
                     self.assign_bare_class_field_array_element(owner, name, &dims, value, span)?
                 };
                 self.maybe_terminate(old, span)

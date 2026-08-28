@@ -1,3 +1,4 @@
+use crate::runtime::well_known;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -299,7 +300,7 @@ impl Interpreter {
         frame: &mut Frame,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        let source = frame.get("me", span)?;
+        let source = frame.get(well_known::SELF_KEY, span)?;
         let Value::Object(source) = source else {
             return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
@@ -406,7 +407,7 @@ impl Interpreter {
         let class_ty = self.resolve_type_name(class_ty, caller_frame, span)?;
         let class_name = class_ty.display_name();
 
-        if class_name.eq_ignore_ascii_case("Collection") {
+        if class_name.eq_ignore_ascii_case(well_known::COLLECTION) {
             return Ok(Value::Collection(Rc::new(RefCell::new(
                 crate::runtime::CollectionValue::default(),
             ))));
@@ -426,7 +427,9 @@ impl Interpreter {
                 ));
             }
             let record = default_value(&TypeName::User(type_def.name.clone()), self, span)?;
-            if let Some(init) = type_def.subs.get("initialize").cloned() {
+            if let Some(init) =
+                crate::runtime::well_known::find_constructor(&type_def.subs).cloned()
+            {
                 let mut frame = Frame::default();
                 frame.inherit_modules_from(caller_frame)?;
                 if let Some((module_key, _)) = key(&type_def.name).split_once('.') {
@@ -440,7 +443,7 @@ impl Interpreter {
                     init_frame.set_module_key(module_key.to_string());
                 }
                 init_frame.declare_alias(
-                    "me",
+                    well_known::SELF_KEY,
                     TypeName::User(type_def.name.clone()),
                     variable,
                     span,
@@ -523,11 +526,7 @@ impl Interpreter {
             event_bindings: Vec::new(),
             terminated: false,
         })));
-        if let Some(init) = class
-            .subs
-            .get("initialize")
-            .or_else(|| class.subs.get("class_initialize"))
-        {
+        if let Some(init) = crate::runtime::well_known::find_constructor(&class.subs) {
             self.call_method_sub(object.clone(), &init.name, args, caller_frame, span)?;
         } else if !args.is_empty() {
             return Err(Diagnostic::new(
@@ -815,7 +814,7 @@ impl Interpreter {
                 span: expr.span,
             },
             ExprKind::Me => AssignTarget::Variable {
-                name: "me".to_string(),
+                name: well_known::SELF_KEY.to_string(),
                 span: expr.span,
             },
             _ => {
@@ -877,7 +876,7 @@ impl Interpreter {
                 self.assign_member_to_variable(variable, member, value, span)
             }
             ExprKind::Me => {
-                let variable = frame.variable("me", target.span)?;
+                let variable = frame.variable(well_known::SELF_KEY, target.span)?;
                 self.assign_member_to_variable(variable, member, value, span)
             }
             ExprKind::Call { name, args, .. } => {
@@ -886,7 +885,7 @@ impl Interpreter {
                     indices.push(frame.simple_index_value(arg, span)?);
                 }
                 if !frame.has_variable(name) {
-                    let owner = frame.get("me", span)?;
+                    let owner = frame.get(well_known::SELF_KEY, span)?;
                     return self.assign_member_to_bare_class_field_array_element(
                         owner, name, &indices, member, value, span,
                     );
@@ -1213,7 +1212,7 @@ impl Interpreter {
                 if frame.has_variable(name) {
                     frame.redim_array(name, new_bounds, preserve, self, span)
                 } else {
-                    let owner = frame.get("me", span)?;
+                    let owner = frame.get(well_known::SELF_KEY, span)?;
                     self.redim_value_member(owner, name, new_bounds, preserve, span)
                 }
             }

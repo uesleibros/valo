@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::well_known;
 use crate::runtime::{Diagnostic, Span, TypeName};
 
 #[derive(Clone)]
@@ -1974,9 +1975,9 @@ impl Parser {
                     Ok(TypeName::Int64)
                 } else if name.eq_ignore_ascii_case("FuncPtr") {
                     Ok(TypeName::FuncPtr)
-                } else if name.eq_ignore_ascii_case("Object") {
+                } else if name.eq_ignore_ascii_case(well_known::OBJECT) {
                     Ok(TypeName::Variant)
-                } else if name.eq_ignore_ascii_case("Collection") {
+                } else if name.eq_ignore_ascii_case(well_known::COLLECTION) {
                     Ok(TypeName::User("Collection".to_string()))
                 } else {
                     while self.match_simple(&TokenKind::Dot) {

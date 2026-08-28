@@ -1,4 +1,5 @@
 use crate::interpreter::values::{default_value, key};
+use crate::runtime::well_known;
 use crate::runtime::{
     ArrayValue, Diagnostic, LambdaValue, Span, TypeName, Value, coerce_assignment,
 };
@@ -301,7 +302,7 @@ impl Interpreter {
             frame.set_module_key(module_key.to_string());
         }
         frame.declare_alias(
-            "me",
+            well_known::SELF_KEY,
             TypeName::User(structure.name.clone()),
             variable,
             span,
@@ -365,7 +366,12 @@ impl Interpreter {
             if let Some((module_key, _)) = key(&structure.name).split_once('.') {
                 frame.set_module_key(module_key.to_string());
             }
-            frame.declare_const("me", TypeName::User(structure.name.clone()), record, span)?;
+            frame.declare_const(
+                well_known::SELF_KEY,
+                TypeName::User(structure.name.clone()),
+                record,
+                span,
+            )?;
             self.bind_parameters(&function.params, args, caller_frame, &mut frame)?;
             let return_type = self.resolve_type_name(&function.return_type, &frame, span)?;
             if let Some(slot) = &function.return_slot {
@@ -1486,7 +1492,7 @@ impl Interpreter {
         for arg in args {
             eval_args.push(self.eval_expr(arg, caller_frame)?);
         }
-        let me = caller_frame.get("me", span).ok();
+        let me = caller_frame.get(well_known::SELF_KEY, span).ok();
         self.call_property_accessor(
             get,
             &eval_args,
@@ -1526,7 +1532,7 @@ impl Interpreter {
                 Some(span),
             )
         })?;
-        let me = caller_frame.get("me", span).ok();
+        let me = caller_frame.get(well_known::SELF_KEY, span).ok();
         self.call_property_accessor_sub(
             set.clone(),
             &[value],
@@ -1639,7 +1645,7 @@ impl Interpreter {
         if let Some((module_key, _)) = key(&class.name).split_once('.') {
             frame.set_module_key(module_key.to_string());
         }
-        frame.declare_object_alias("me", &class.name, instance, span)?;
+        frame.declare_object_alias(well_known::SELF_KEY, &class.name, instance, span)?;
         frame.set_class_context(class.name.clone());
         self.bind_class_constants(&class, &mut frame)?;
         self.bind_parameters(&procedure.params, args, caller_frame, &mut frame)?;
@@ -1768,7 +1774,7 @@ impl Interpreter {
         if let Some((module_key, _)) = key(&class.name).split_once('.') {
             frame.set_module_key(module_key.to_string());
         }
-        frame.declare_object_alias("me", &class.name, instance, span)?;
+        frame.declare_object_alias(well_known::SELF_KEY, &class.name, instance, span)?;
         frame.set_class_context(class.name.clone());
         self.bind_class_constants(&class, &mut frame)?;
         self.bind_parameter_values(&procedure.params, args, &mut frame, span)?;
@@ -1940,7 +1946,12 @@ impl Interpreter {
                     if let Some((module_key, _)) = key(&class.name).split_once('.') {
                         frame.set_module_key(module_key.to_string());
                     }
-                    frame.declare_object_alias("me", &class.name, instance, span)?;
+                    frame.declare_object_alias(
+                        well_known::SELF_KEY,
+                        &class.name,
+                        instance,
+                        span,
+                    )?;
                     self.bind_class_constants(&class, &mut frame)?;
                     self.bind_parameters(&function.params, args, caller_frame, &mut frame)?;
                     let return_type =
@@ -2230,7 +2241,7 @@ impl Interpreter {
         if let Some((module_key, _)) = key(&class.name).split_once('.') {
             frame.set_module_key(module_key.to_string());
         }
-        frame.declare_object_alias("me", &class.name, instance, span)?;
+        frame.declare_object_alias(well_known::SELF_KEY, &class.name, instance, span)?;
         frame.set_class_context(class.name.clone());
         self.bind_class_constants(&class, &mut frame)?;
         let return_type = self.resolve_type_name(&function.return_type, &frame, span)?;

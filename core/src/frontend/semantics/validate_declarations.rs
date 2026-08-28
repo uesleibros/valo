@@ -1,5 +1,6 @@
 use super::*;
 use crate::runtime::Span;
+use crate::runtime::well_known;
 use crate::{OperatorKind, TypeKind};
 
 pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnostic> {
@@ -424,7 +425,7 @@ pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnosti
                 }
                 ClassMember::Sub(method) => {
                     let method_key = key(&method.procedure.name);
-                    if method_key == "terminate" || method_key == "class_terminate" {
+                    if well_known::is_destructor_key(&method_key) {
                         return Err(Diagnostic::new(
                             crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                             "Structure cannot declare Terminate or Class_Terminate",
@@ -1447,7 +1448,7 @@ pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnosti
                         }
                         let last_param = property.params.last().unwrap();
                         if property.kind == PropertyKind::Set
-                            && !matches!(&last_param.ty, TypeName::User(name) if registry.get_class(name).is_some() || name.eq_ignore_ascii_case("Object"))
+                            && !matches!(&last_param.ty, TypeName::User(name) if registry.get_class(name).is_some() || name.eq_ignore_ascii_case(well_known::OBJECT))
                         {
                             return Err(Diagnostic::new(
                                 crate::runtime::DiagnosticCode::TYPE_MISMATCH,
@@ -1570,7 +1571,7 @@ pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnosti
                         }
                         let last_param = property.params.last().unwrap();
                         if property.kind == PropertyKind::Set
-                            && !matches!(&last_param.ty, TypeName::User(name) if registry.get_class(name).is_some() || name.eq_ignore_ascii_case("Object"))
+                            && !matches!(&last_param.ty, TypeName::User(name) if registry.get_class(name).is_some() || name.eq_ignore_ascii_case(well_known::OBJECT))
                         {
                             return Err(Diagnostic::new(
                                 crate::runtime::DiagnosticCode::TYPE_MISMATCH,
@@ -1985,11 +1986,11 @@ fn validate_class_field_type(
 }
 
 fn is_constructor_name(name: &str) -> bool {
-    name == "initialize" || name == "class_initialize"
+    well_known::is_constructor_key(name)
 }
 
 fn is_terminator_name(name: &str) -> bool {
-    name == "terminate" || name == "class_terminate"
+    well_known::is_destructor_key(name)
 }
 
 fn validate_withevents_handlers(
@@ -2594,7 +2595,7 @@ pub(super) fn validate_function(
     add_parameters(&function.params, &mut symbols)?;
 
     // Assign a unique return slot
-    let return_slot = format!("__return_{}", function.name);
+    let return_slot = well_known::return_slot(&function.name);
     symbols.insert(
         key(&function.name),
         VarType::FunctionReturn(function.return_type.clone()),

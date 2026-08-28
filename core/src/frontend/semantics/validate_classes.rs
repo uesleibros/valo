@@ -1,5 +1,6 @@
 use super::*;
 use crate::runtime::Span;
+use crate::runtime::well_known;
 
 pub(super) fn validate_class(
     class_decl: &crate::ClassDecl,
@@ -30,7 +31,7 @@ pub(super) fn validate_class(
                 add_module_symbols(module_symbols, &mut symbols);
                 add_module_symbols(&class_consts, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(class_decl.name.clone())),
                 );
                 add_parameters(&op.params, &mut symbols)?;
@@ -62,7 +63,7 @@ pub(super) fn validate_class(
                 add_module_symbols(module_symbols, &mut symbols);
                 add_module_symbols(&class_consts, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(class_decl.name.clone())),
                 );
                 add_parameters(&method.procedure.params, &mut symbols)?;
@@ -87,7 +88,7 @@ pub(super) fn validate_class(
                 add_module_symbols(module_symbols, &mut symbols);
                 add_module_symbols(&class_consts, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(class_decl.name.clone())),
                 );
                 add_parameters(&method.function.params, &mut symbols)?;
@@ -106,7 +107,7 @@ pub(super) fn validate_class(
                         context: &mut Context::MethodFunction {
                             class_name: class_decl.name.clone(),
                             return_type: method.function.return_type.clone(),
-                            return_slot: Some(format!("__return_{}", method.function.name)),
+                            return_slot: Some(well_known::return_slot(&method.function.name)),
                             is_iterator: method.function.is_iterator,
                             is_async: method.function.is_async,
                             saw_return: &mut saw_return,
@@ -153,7 +154,7 @@ pub(super) fn validate_class(
                 add_module_symbols(module_symbols, &mut symbols);
                 add_module_symbols(&class_consts, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(class_decl.name.clone())),
                 );
                 add_parameters(&method.function.params, &mut symbols)?;
@@ -172,7 +173,7 @@ pub(super) fn validate_class(
                         context: &mut Context::MethodFunction {
                             class_name: class_decl.name.clone(),
                             return_type: method.function.return_type.clone(),
-                            return_slot: Some(format!("__return_{}", method.function.name)),
+                            return_slot: Some(well_known::return_slot(&method.function.name)),
                             is_iterator: true,
                             is_async: method.function.is_async,
                             saw_return: &mut saw_return,
@@ -199,7 +200,7 @@ pub(super) fn validate_class(
                 add_module_symbols(module_symbols, &mut symbols);
                 add_module_symbols(&class_consts, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(class_decl.name.clone())),
                 );
                 add_parameters(&property.params, &mut symbols)?;
@@ -224,7 +225,7 @@ pub(super) fn validate_class(
                                 context: &mut Context::PropertyGet {
                                     class_name: class_decl.name.clone(),
                                     return_type,
-                                    return_slot: Some(format!("__return_{}", property.name)),
+                                    return_slot: Some(well_known::return_slot(&property.name)),
                                     is_iterator: property.is_iterator,
                                     is_async: false,
                                     saw_return: &mut saw_return,
@@ -718,7 +719,7 @@ pub(super) fn validate_structure(
                 let mut symbols = HashMap::new();
                 add_module_symbols(module_symbols, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(type_decl.name.clone())),
                 );
                 add_parameters(&op.params, &mut symbols)?;
@@ -748,7 +749,7 @@ pub(super) fn validate_structure(
                 let mut symbols = HashMap::new();
                 add_module_symbols(module_symbols, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(type_decl.name.clone())),
                 );
                 add_parameters(&method.procedure.params, &mut symbols)?;
@@ -772,7 +773,7 @@ pub(super) fn validate_structure(
                 let mut symbols = HashMap::new();
                 add_module_symbols(module_symbols, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(type_decl.name.clone())),
                 );
                 add_parameters(&method.function.params, &mut symbols)?;
@@ -791,7 +792,7 @@ pub(super) fn validate_structure(
                         context: &mut Context::MethodFunction {
                             class_name: type_decl.name.clone(),
                             return_type: method.function.return_type.clone(),
-                            return_slot: Some(format!("__return_{}", method.function.name)),
+                            return_slot: Some(well_known::return_slot(&method.function.name)),
                             is_iterator: method.function.is_iterator,
                             is_async: method.function.is_async,
                             saw_return: &mut saw_return,
@@ -837,7 +838,7 @@ pub(super) fn validate_structure(
                 let mut symbols = HashMap::new();
                 add_module_symbols(module_symbols, &mut symbols);
                 symbols.insert(
-                    "me".to_string(),
+                    well_known::SELF_KEY.to_string(),
                     VarType::Scalar(Visibility::Public, TypeName::User(type_decl.name.clone())),
                 );
                 add_parameters(&property.params, &mut symbols)?;
@@ -862,7 +863,7 @@ pub(super) fn validate_structure(
                                 context: &mut Context::PropertyGet {
                                     class_name: type_decl.name.clone(),
                                     return_type,
-                                    return_slot: Some(format!("__return_{}", property.name)),
+                                    return_slot: Some(well_known::return_slot(&property.name)),
                                     is_iterator: property.is_iterator,
                                     is_async: false,
                                     saw_return: &mut saw_return,

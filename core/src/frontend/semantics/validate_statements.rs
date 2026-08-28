@@ -1,6 +1,7 @@
 use super::*;
 use crate::UsingResource;
 use crate::runtime::builtins::{is_builtin_statement, strip_vba_namespace};
+use crate::runtime::well_known;
 use std::collections::HashSet;
 
 fn validate_const_decl(
@@ -492,7 +493,7 @@ pub fn validate_statements(
                 span,
             } => {
                 if let ExprKind::Variable(name) = &object.kind
-                    && name.eq_ignore_ascii_case("VBA")
+                    && name.eq_ignore_ascii_case(well_known::VBA)
                 {
                     validate_sub_call(
                         method,
@@ -503,7 +504,7 @@ pub fn validate_statements(
                     continue;
                 }
                 if let ExprKind::Variable(name) = &object.kind
-                    && name.eq_ignore_ascii_case("Err")
+                    && name.eq_ignore_ascii_case(well_known::ERR)
                 {
                     if method.eq_ignore_ascii_case("Clear") && args.is_empty() {
                         continue;
@@ -1401,7 +1402,7 @@ fn validate_using_disposable(
     span: crate::runtime::Span,
 ) -> Result<(), Diagnostic> {
     if ty.same_type(&TypeName::Variant)
-        || matches!(ty, TypeName::User(name) if name.eq_ignore_ascii_case("Object"))
+        || matches!(ty, TypeName::User(name) if name.eq_ignore_ascii_case(well_known::OBJECT))
     {
         return Ok(());
     }
@@ -1532,7 +1533,7 @@ fn validate_sub_call(
     {
         let member_key = key(effective_name);
         if let Some(sub_sig) = class_sig.subs.get(&member_key)
-            && (sub_sig.is_shared || validation.symbols.contains_key("me"))
+            && (sub_sig.is_shared || validation.symbols.contains_key(well_known::SELF_KEY))
         {
             sub = Some(sub_sig.clone());
         }
@@ -1578,7 +1579,7 @@ fn holds_callable_value(name: &str, symbols: &HashMap<String, VarType>) -> bool 
     match var_type {
         VarType::Scalar(_, ty) | VarType::Optional(_, ty) | VarType::Const(_, ty) => {
             matches!(ty, TypeName::Variant)
-                || matches!(ty, TypeName::User(name) if name.eq_ignore_ascii_case("Func"))
+                || matches!(ty, TypeName::User(name) if name.eq_ignore_ascii_case(well_known::FUNC))
         }
         _ => false,
     }

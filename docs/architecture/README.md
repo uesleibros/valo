@@ -100,3 +100,31 @@ thousand lines.
 Two tests in the interpreter's builtin module hold the registry to its promise:
 every declared builtin is reachable through the analyzer, and the arity a row
 declares is the arity actually enforced.
+
+## Cross-cutting: well-known names
+
+The implementation depends on a set of identifiers of its own: the implicit
+receiver `Me`, the lifecycle hooks, the pseudo-objects a call site can name
+(`VBA`, `Err`, `Console`, `Debug`), and the built-in type names. Each appeared
+as a bare string literal wherever it was needed — `"me"` alone in more than
+fifty places across the lexer, analyzer, and interpreter.
+
+Written that way they were invisible to the compiler. A typo in one comparison
+would simply stop matching, with nothing to catch it, and a rule spread across
+files could be updated in one place and missed in another.
+
+[`runtime::well_known`](../../core/src/runtime/well_known.rs) names them once.
+Because names are case-insensitive, the ones used as symbol-table keys are
+stored both as written and folded, with a test asserting the two agree.
+
+It also owns the rules that were previously restated at each use:
+
+- `find_constructor` and `find_destructor` try both spellings of a lifecycle
+  hook — `Initialize` and `Class_Initialize` name the same thing, and every
+  lookup has to know that.
+- `return_slot` builds the frame key holding a function's implicit result. The
+  analyzer records it and the interpreter reads it back, so the two must derive
+  it identically.
+
+The lexer's keyword table is the deliberate exception: a keyword is *defined*
+there, and a literal reads better among the other keywords than a constant would.

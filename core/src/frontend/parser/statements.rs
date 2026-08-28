@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime::well_known;
 use crate::runtime::{Diagnostic, Span};
 
 impl Parser {
@@ -891,7 +892,7 @@ impl Parser {
                 conditional,
             } => {
                 if let ExprKind::Variable(name) = &object.kind
-                    && name.eq_ignore_ascii_case("Debug")
+                    && name.eq_ignore_ascii_case(well_known::DEBUG)
                     && field.eq_ignore_ascii_case("Print")
                 {
                     let args = self.parse_bare_call_arguments()?;
@@ -935,7 +936,7 @@ impl Parser {
                 ..
             } => {
                 if let ExprKind::Variable(name) = &object.kind
-                    && name.eq_ignore_ascii_case("Debug")
+                    && name.eq_ignore_ascii_case(well_known::DEBUG)
                     && method.eq_ignore_ascii_case("Print")
                 {
                     return Ok(Stmt::DebugPrint {

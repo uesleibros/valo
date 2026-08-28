@@ -10,6 +10,7 @@ use super::{ControlFlow, Frame, Interpreter};
 use crate::runtime::builtins::{
     BuiltinGroup, is_builtin_function, is_in_group, strip_vba_namespace,
 };
+use crate::runtime::well_known;
 use crate::runtime::{Diagnostic, Value};
 use crate::{Expr, ExprKind};
 
@@ -28,16 +29,16 @@ pub(crate) fn dispatch_stmt(
         return Ok(Some(ControlFlow::Continue));
     }
     // Handle VBA namespace fallback: VBA.MsgBox(...) -> MsgBox(...)
-    let effective_object_name = if object_name.eq_ignore_ascii_case("VBA") {
+    let effective_object_name = if object_name.eq_ignore_ascii_case(well_known::VBA) {
         "VBA"
     } else {
         object_name
     };
 
-    if effective_object_name.eq_ignore_ascii_case("Console")
-        || effective_object_name.eq_ignore_ascii_case("Debug")
+    if effective_object_name.eq_ignore_ascii_case(well_known::CONSOLE)
+        || effective_object_name.eq_ignore_ascii_case(well_known::DEBUG)
     {
-        if effective_object_name.eq_ignore_ascii_case("Debug")
+        if effective_object_name.eq_ignore_ascii_case(well_known::DEBUG)
             && method.eq_ignore_ascii_case("Assert")
         {
             dispatch_function(interpreter, "Debug.Assert", args, frame, span)?;
@@ -51,7 +52,7 @@ pub(crate) fn dispatch_stmt(
             values.push(resolved);
         }
 
-        if effective_object_name.eq_ignore_ascii_case("Console") {
+        if effective_object_name.eq_ignore_ascii_case(well_known::CONSOLE) {
             if method.eq_ignore_ascii_case("ReadLine") {
                 let result = console::exec_console(method, &values, span)?;
                 if let Some(_line) = result {
@@ -74,11 +75,11 @@ pub(crate) fn dispatch_stmt(
         }
     }
 
-    if effective_object_name.eq_ignore_ascii_case("Err") {
+    if effective_object_name.eq_ignore_ascii_case(well_known::ERR) {
         return err::exec_err(interpreter, method, args, frame, span);
     }
 
-    if effective_object_name.eq_ignore_ascii_case("VBA") {
+    if effective_object_name.eq_ignore_ascii_case(well_known::VBA) {
         if is_in_group(method, BuiltinGroup::Dialog) {
             dispatch_function(interpreter, method, args, frame, span)?;
             return Ok(Some(ControlFlow::Continue));

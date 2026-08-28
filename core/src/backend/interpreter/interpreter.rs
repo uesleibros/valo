@@ -1289,10 +1289,8 @@ impl Interpreter {
                 drop(borrow);
 
                 if let Some(class) = self.classes.get(&key(&class_name)).cloned()
-                    && let Some(terminate) = class
-                        .subs
-                        .get("terminate")
-                        .or_else(|| class.subs.get("class_terminate"))
+                    && let Some(terminate) =
+                        crate::runtime::well_known::find_destructor(&class.subs)
                 {
                     let mut frame = Frame::default();
                     frame.set_module_key(key(class_name.split('.').next().unwrap_or(&class_name)));
