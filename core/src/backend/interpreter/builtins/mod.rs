@@ -8,8 +8,7 @@
 
 use super::{ControlFlow, Frame, Interpreter};
 use crate::runtime::builtins::{
-    DATE_TIME_FUNCTIONS, DIALOG_STATEMENT_FUNCTIONS, FILE_FUNCTIONS,
-    FILE_SYSTEM_STATEMENT_FUNCTIONS, is_builtin_function, is_name_in, strip_vba_namespace,
+    BuiltinGroup, is_builtin_function, is_in_group, strip_vba_namespace,
 };
 use crate::runtime::{Diagnostic, Value};
 use crate::{Expr, ExprKind};
@@ -24,7 +23,7 @@ pub(crate) fn dispatch_stmt(
     frame: &mut Frame,
     span: crate::runtime::Span,
 ) -> Result<Option<ControlFlow>, Diagnostic> {
-    if object_name.is_empty() && is_name_in(method, DIALOG_STATEMENT_FUNCTIONS) {
+    if object_name.is_empty() && is_in_group(method, BuiltinGroup::Dialog) {
         dispatch_function(interpreter, method, args, frame, span)?;
         return Ok(Some(ControlFlow::Continue));
     }
@@ -80,7 +79,7 @@ pub(crate) fn dispatch_stmt(
     }
 
     if effective_object_name.eq_ignore_ascii_case("VBA") {
-        if is_name_in(method, DIALOG_STATEMENT_FUNCTIONS) {
+        if is_in_group(method, BuiltinGroup::Dialog) {
             dispatch_function(interpreter, method, args, frame, span)?;
             return Ok(Some(ControlFlow::Continue));
         }
@@ -451,7 +450,7 @@ pub(crate) fn dispatch_function(
         )?));
     }
 
-    if is_name_in(effective_name, FILE_FUNCTIONS) {
+    if is_in_group(effective_name, BuiltinGroup::File) {
         let mut values = Vec::with_capacity(args.len());
         for arg in args {
             values.push(interpreter.eval_expr(arg, frame)?);
@@ -525,7 +524,7 @@ pub(crate) fn dispatch_function(
         .with_help("replace MacScript with a platform API, shell command, or host-specific adapter"));
     }
 
-    if is_name_in(effective_name, DATE_TIME_FUNCTIONS) {
+    if is_in_group(effective_name, BuiltinGroup::DateTime) {
         let mut values = Vec::with_capacity(args.len());
         for arg in args {
             values.push(interpreter.eval_expr(arg, frame)?);
@@ -533,7 +532,7 @@ pub(crate) fn dispatch_function(
         return dispatch_datetime_function(effective_name, &values, span);
     }
 
-    if is_name_in(effective_name, FILE_SYSTEM_STATEMENT_FUNCTIONS) {
+    if is_in_group(effective_name, BuiltinGroup::FileSystem) {
         expect_arg_count(effective_name, args, 1, span)?;
         let path = interpreter.eval_expr(&args[0], frame)?.to_output_string();
         match effective_name.to_ascii_lowercase().as_str() {

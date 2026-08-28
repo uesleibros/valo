@@ -457,3 +457,75 @@ End Sub
 
     assert_eq!(output, vec!["override"]);
 }
+
+/// Every builtin in the registry must be reachable through the analyzer.
+///
+/// The registry is the single declaration of a builtin's name and arity. This
+/// guards the property that makes it worth having: a name in the table cannot
+/// be a name the analyzer has never heard of, and the arity it declares is the
+/// arity actually enforced.
+#[test]
+fn every_registered_builtin_is_known_to_the_analyzer() {
+    use crate::runtime::builtins::{Arity, BUILTINS};
+
+    for builtin in BUILTINS {
+        let arg_count = match builtin.arity {
+            Arity::Range { min, .. } => min,
+            Arity::Pairs => 2,
+        };
+        let args = vec!["0"; arg_count].join(", ");
+        let source = format!(
+            "Sub Main()\n    Dim probe As Variant\n    probe = {}({})\nEnd Sub\n",
+            builtin.name, args
+        );
+
+        if let Err(error) = parse_and_validate(&source) {
+            let message = error.message.to_string();
+            assert!(
+                !message.contains("is not defined"),
+                "builtin '{}' is in the registry but the analyzer does not know it: {message}",
+                builtin.name
+            );
+            assert!(
+                !message.contains("expects"),
+                "builtin '{}' rejects the {arg_count} arguments its own registry entry allows: {message}",
+                builtin.name
+            );
+        }
+    }
+}
+
+/// The registry's arity is the one enforced, in both directions.
+#[test]
+fn builtins_reject_argument_counts_their_arity_excludes() {
+    use crate::runtime::builtins::{Arity, BUILTINS};
+
+    for builtin in BUILTINS {
+        let Arity::Range { min, max } = builtin.arity else {
+            continue;
+        };
+        if max == usize::MAX {
+            continue;
+        }
+
+        let args = vec!["0"; max + 1].join(", ");
+        let source = format!(
+            "Sub Main()\n    Dim probe As Variant\n    probe = {}({})\nEnd Sub\n",
+            builtin.name, args
+        );
+        let error = parse_and_validate(&source).err().unwrap_or_else(|| {
+            panic!(
+                "builtin '{}' accepted {} arguments, one more than the {max} it declares",
+                builtin.name,
+                max + 1
+            )
+        });
+        assert!(
+            error.message.to_string().contains(builtin.name),
+            "builtin '{}' rejected too many arguments without naming itself: {}",
+            builtin.name,
+            error.message
+        );
+        let _ = min;
+    }
+}

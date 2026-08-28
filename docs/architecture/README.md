@@ -70,3 +70,33 @@ with project validation stopping before procedure bodies, and the result was tha
 `valo check` reported success on programs that failed the moment they ran.
 
 Learn more in **[Performance](performance.md)** and **[Diagnostics](diagnostics.md)**.
+
+## Cross-cutting: the builtin registry
+
+A builtin has a name, an arity, a result type, and an implementation. Those used
+to live in three places — name lists in `runtime::builtins`, arity and result
+type as `if` branches in the analyzer, and the implementation as more `if`
+branches in the interpreter — with nothing tying them together. Adding a builtin
+meant three edits in three files, and nothing detected it when they disagreed.
+
+[`runtime::builtins`](../../core/src/runtime/builtins.rs) is now the single
+declaration. Each row states the name, arity, result type, whether the builtin
+may stand alone as a statement, and which dispatcher handles it:
+
+```rust
+f("Mid", 2, 3, BuiltinReturn::String),
+grouped(f("DateAdd", 3, 3, BuiltinReturn::Date), BuiltinGroup::DateTime),
+```
+
+The analyzer looks the name up, checks the arity, and reports the result type.
+The interpreter routes on the group. Neither keeps its own list.
+
+A handful of builtins constrain an argument beyond counting it — `LBound`,
+`UBound`, and `Filter` take an array; `IsMissing` takes an optional parameter;
+`IsArray` accepts anything by design. Those are named explicitly in the
+analyzer, so the exceptions are visible rather than buried in a chain of a
+thousand lines.
+
+Two tests in the interpreter's builtin module hold the registry to its promise:
+every declared builtin is reachable through the analyzer, and the arity a row
+declares is the arity actually enforced.

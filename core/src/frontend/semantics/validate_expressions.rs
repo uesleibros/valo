@@ -1,10 +1,7 @@
 use super::*;
 use crate::ContinueTarget;
 use crate::runtime::Span;
-use crate::runtime::builtins::{
-    BOOLEAN_ONE_ARG_FUNCTIONS, DOUBLE_ONE_ARG_FUNCTIONS, INTEGER_ONE_ARG_FUNCTIONS,
-    STRING_FIXED_ARG_FUNCTIONS, STRING_ONE_ARG_FUNCTIONS, is_name_in, strip_vba_namespace,
-};
+use crate::runtime::builtins::{self, strip_vba_namespace};
 
 #[derive(Clone, Copy)]
 pub(super) struct ExprValidation<'a, 'ctx> {
@@ -1745,828 +1742,57 @@ fn validate_builtin_function(
     let context = validation.context;
     let option_explicit = validation.option_explicit;
 
-    // Handle VBA namespace fallback
     let effective_name = strip_vba_namespace(name);
+    let Some(builtin) = builtins::lookup(effective_name) else {
+        return Ok(None);
+    };
 
-    if effective_name.eq_ignore_ascii_case("IsArray") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        if validate_array_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
+    if !builtin.arity.accepts(args.len()) {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            format!(
+                "{} expects {}, found {}",
+                builtin.name,
+                builtin.arity.describe(),
+                args.len()
+            ),
+            Some(span),
         )
-        .is_err()
-        {
-            validate_expr(
+        .with_primary_label("wrong number of arguments"));
+    }
+
+    // A few builtins constrain an argument beyond simply counting it.
+    match builtin.name {
+        "IsArray" => {
+            // Answers whether the argument is an array, so a non-array argument
+            // is a legitimate question rather than an error.
+            if validate_array_expr(
                 &args[0],
-                validation.symbols,
-                validation.types,
-                validation.signatures,
-                validation.context,
-                validation.option_explicit,
-            )?;
-        }
-        return Ok(Some(TypeName::Boolean));
-    }
-    if is_name_in(effective_name, BOOLEAN_ONE_ARG_FUNCTIONS) {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Boolean));
-    }
-    if is_name_in(effective_name, DOUBLE_ONE_ARG_FUNCTIONS) {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Double));
-    }
-    if effective_name.eq_ignore_ascii_case("Round") {
-        validate_arg_range(effective_name, args, 1, 2, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Double));
-    }
-    if effective_name.eq_ignore_ascii_case("TypeName") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("Split") {
-        if args.is_empty() || args.len() > 4 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Split expects 1 to 4 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(
-                arg,
-                validation.symbols,
-                validation.types,
-                validation.signatures,
-                validation.context,
-                validation.option_explicit,
-            )?;
-        }
-        return Ok(Some(TypeName::Array(Box::new(TypeName::String))));
-    }
-    if effective_name.eq_ignore_ascii_case("Join") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Join expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        validate_array_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        if args.len() == 2 {
-            validate_expr(
-                &args[1],
-                validation.symbols,
-                validation.types,
-                validation.signatures,
-                validation.context,
-                validation.option_explicit,
-            )?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("IsMissing") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        let arg = &args[0];
-        if let ExprKind::Variable(name) = &arg.kind {
-            if let Some(var_type) = symbols.get(&key(name))
-                && !matches!(var_type, VarType::Optional(Visibility::Public, _))
+                symbols,
+                types,
+                signatures,
+                context,
+                option_explicit,
+            )
+            .is_err()
             {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                    "IsMissing is only valid for Optional parameters",
-                    Some(arg.span),
-                ));
-            }
-        } else {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "IsMissing is only valid for Optional parameters",
-                Some(arg.span),
-            ));
-        }
-        return Ok(Some(TypeName::Boolean));
-    }
-    if is_name_in(effective_name, INTEGER_ONE_ARG_FUNCTIONS)
-        || effective_name.eq_ignore_ascii_case("FreeFile")
-    {
-        let expected = if effective_name.eq_ignore_ascii_case("FreeFile") {
-            0
-        } else {
-            1
-        };
-        validate_arg_count(effective_name, args, expected, span)?;
-        if expected == 1 {
-            validate_expr(
-                &args[0],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
-        }
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("Timer") {
-        validate_arg_count(effective_name, args, 0, span)?;
-        return Ok(Some(TypeName::Double));
-    }
-    if effective_name.eq_ignore_ascii_case("Now")
-        || effective_name.eq_ignore_ascii_case("Date")
-        || effective_name.eq_ignore_ascii_case("Time")
-    {
-        validate_arg_count(effective_name, args, 0, span)?;
-        return Ok(Some(TypeName::Date));
-    }
-    if effective_name.eq_ignore_ascii_case("DateSerial")
-        || effective_name.eq_ignore_ascii_case("TimeSerial")
-    {
-        validate_arg_count(effective_name, args, 3, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Date));
-    }
-    if effective_name.eq_ignore_ascii_case("DateAdd") {
-        validate_arg_count(effective_name, args, 3, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Date));
-    }
-    if effective_name.eq_ignore_ascii_case("DateDiff") {
-        validate_arg_range(effective_name, args, 3, 5, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("DatePart") {
-        validate_arg_range(effective_name, args, 2, 4, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("DateValue")
-        || effective_name.eq_ignore_ascii_case("TimeValue")
-    {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Date));
-    }
-    if effective_name.eq_ignore_ascii_case("Weekday") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Weekday expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("MonthName") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "MonthName expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("WeekdayName") {
-        if args.is_empty() || args.len() > 3 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "WeekdayName expects 1 to 3 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("FileDateTime") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Date));
-    }
-    if effective_name.eq_ignore_ascii_case("FileAttr") {
-        validate_arg_count(effective_name, args, 2, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("EOF") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Boolean));
-    }
-    if effective_name.eq_ignore_ascii_case("Dir") {
-        if args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Dir expects 0 to 2 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("CurDir") {
-        if args.len() > 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "CurDir expects 0 to 1 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("Environ") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("VarPtr")
-        || effective_name.eq_ignore_ascii_case("StrPtr")
-        || effective_name.eq_ignore_ascii_case("ObjPtr")
-    {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Ptr));
-    }
-    if effective_name.eq_ignore_ascii_case("TypeName") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("CreateObject")
-        || effective_name.eq_ignore_ascii_case("GetObject")
-    {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                format!("{effective_name} expects 1 to 2 arguments"),
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::User("Object".to_string())));
-    }
-    if effective_name.eq_ignore_ascii_case("CStr") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("CVar") || effective_name.eq_ignore_ascii_case("CVErr") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("CByte") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Byte));
-    }
-    if effective_name.eq_ignore_ascii_case("CInt") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("CLng") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Long));
-    }
-    if effective_name.eq_ignore_ascii_case("CLngLng")
-        || effective_name.eq_ignore_ascii_case("CLngPtr")
-        || effective_name.eq_ignore_ascii_case("CInt64")
-    {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Int64));
-    }
-    if effective_name.eq_ignore_ascii_case("CSng") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Single));
-    }
-    if effective_name.eq_ignore_ascii_case("CDbl") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Double));
-    }
-    if effective_name.eq_ignore_ascii_case("CDec") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Decimal));
-    }
-    if effective_name.eq_ignore_ascii_case("CCur") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Currency));
-    }
-    if effective_name.eq_ignore_ascii_case("CDate") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Date));
-    }
-    if effective_name.eq_ignore_ascii_case("CBool") {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        return Ok(Some(TypeName::Boolean));
-    }
-    if effective_name.eq_ignore_ascii_case("Array") {
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("Split") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Split expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        if args.len() == 2 {
-            validate_expr(
-                &args[1],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
-        }
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("Join") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Join expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        validate_array_expr(
-            &args[0],
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
-        if args.len() == 2 {
-            validate_expr(
-                &args[1],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("Filter") {
-        if args.len() < 2 || args.len() > 4 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Filter expects 2 to 4 arguments",
-                Some(span),
-            ));
-        }
-        validate_array_expr(
-            &args[0],
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
-        validate_expr(
-            &args[1],
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
-        if args.len() >= 3 {
-            validate_expr(
-                &args[2],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
-        }
-        if args.len() == 4 {
-            validate_expr(
-                &args[3],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
-        }
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("IIf") {
-        validate_arg_count(effective_name, args, 3, span)?;
-        ensure_assignable(
-            &TypeName::Boolean,
-            &validate_expr(
-                &args[0],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?,
-            args[0].span,
-        )?;
-        validate_expr(
-            &args[1],
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
-        validate_expr(
-            &args[2],
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("Choose") {
-        validate_arg_range(effective_name, args, 2, usize::MAX, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("Switch") {
-        if args.is_empty() || !args.len().is_multiple_of(2) {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Switch expects expression/value pairs",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("StrComp") {
-        if args.len() < 2 || args.len() > 3 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "StrComp expects two strings and optional compare mode",
-                Some(span),
-            ));
-        }
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        validate_expr(
-            &args[1],
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
-        if args.len() == 3 {
-            ensure_assignable(
-                &TypeName::Integer,
-                &validate_expr(
-                    &args[2],
+                validate_expr(
+                    &args[0],
                     symbols,
                     types,
                     signatures,
                     context,
                     option_explicit,
-                )?,
-                args[2].span,
-            )?;
+                )?;
+            }
         }
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("Format")
-        || effective_name.eq_ignore_ascii_case("FormatCurrency")
-        || effective_name.eq_ignore_ascii_case("FormatDateTime")
-        || effective_name.eq_ignore_ascii_case("FormatNumber")
-        || effective_name.eq_ignore_ascii_case("FormatPercent")
-    {
-        validate_arg_range(effective_name, args, 1, 5, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+        "IsMissing" => {
+            validate_is_missing_argument(&args[0], symbols)?;
         }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("StrConv") {
-        validate_arg_range(effective_name, args, 2, 3, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("Partition") {
-        validate_arg_count(effective_name, args, 4, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if is_name_in(effective_name, STRING_ONE_ARG_FUNCTIONS) {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            validation.symbols,
-            validation.types,
-            validation.signatures,
-            validation.context,
-            validation.option_explicit,
-        )?;
-        let return_type = if effective_name.eq_ignore_ascii_case("Val") {
-            TypeName::Double
-        } else {
-            TypeName::String
-        };
-        return Ok(Some(return_type));
-    }
-    if is_name_in(effective_name, STRING_FIXED_ARG_FUNCTIONS) {
-        validate_arg_count(
-            effective_name,
-            args,
-            if effective_name.eq_ignore_ascii_case("Space") {
-                1
-            } else {
-                2
-            },
-            span,
-        )?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("Mid") {
-        if args.len() < 2 || args.len() > 3 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Mid expects 2 to 3 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("Replace") {
-        if args.len() < 3 || args.len() > 6 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Replace expects 3 to 6 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("InStr")
-        || effective_name.eq_ignore_ascii_case("InStrRev")
-    {
-        if args.len() < 2 || args.len() > 4 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                format!("{effective_name} expects 2 to 4 arguments"),
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("Randomize") {
-        if args.len() > 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Randomize expects at most 1 argument",
-                Some(span),
-            ));
-        }
-        if !args.is_empty() {
-            validate_expr(
+        // These take an array as their first argument, which the ordinary
+        // expression rules would reject as "an array used as a scalar".
+        "Filter" | "LBound" | "UBound" => {
+            validate_array_expr(
                 &args[0],
                 symbols,
                 types,
@@ -2574,218 +1800,25 @@ fn validate_builtin_function(
                 context,
                 option_explicit,
             )?;
+            for arg in &args[1..] {
+                validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+            }
         }
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("Rnd") {
-        if args.len() > 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "Rnd expects at most 1 argument",
-                Some(span),
-            ));
+        _ => {
+            for arg in args {
+                validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+            }
         }
-        if !args.is_empty() {
-            validate_expr(
-                &args[0],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
-        }
-        return Ok(Some(TypeName::Double));
-    }
-    if effective_name.eq_ignore_ascii_case("CallByName") {
-        if args.len() < 3 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                "CallByName expects at least 3 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("Command")
-        || effective_name.eq_ignore_ascii_case("DoEvents")
-        || effective_name.eq_ignore_ascii_case("IMEStatus")
-    {
-        validate_arg_count(effective_name, args, 0, span)?;
-        return Ok(Some(if effective_name.eq_ignore_ascii_case("Command") {
-            TypeName::String
-        } else {
-            TypeName::Integer
-        }));
-    }
-    if effective_name.eq_ignore_ascii_case("Error") {
-        validate_arg_range(effective_name, args, 0, 1, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("Input") {
-        validate_arg_count(effective_name, args, 2, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("InputBox") {
-        validate_arg_range(effective_name, args, 1, 7, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("MsgBox") {
-        validate_arg_range(effective_name, args, 1, 5, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Integer));
-    }
-    if effective_name.eq_ignore_ascii_case("GetSetting") {
-        validate_arg_range(effective_name, args, 3, 4, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::String));
-    }
-    if effective_name.eq_ignore_ascii_case("GetAllSettings") {
-        validate_arg_count(effective_name, args, 2, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Variant));
-    }
-    if effective_name.eq_ignore_ascii_case("MacID")
-        || effective_name.eq_ignore_ascii_case("MacScript")
-    {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
-        return Ok(Some(if effective_name.eq_ignore_ascii_case("MacID") {
-            TypeName::Long
-        } else {
-            TypeName::String
-        }));
-    }
-    if effective_name.eq_ignore_ascii_case("Shell") {
-        validate_arg_range(effective_name, args, 1, 2, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Long));
-    }
-    if effective_name.eq_ignore_ascii_case("RGB") {
-        validate_arg_count(effective_name, args, 3, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Long));
-    }
-    if effective_name.eq_ignore_ascii_case("QBColor")
-        || effective_name.eq_ignore_ascii_case("Spc")
-        || effective_name.eq_ignore_ascii_case("Tab")
-    {
-        validate_arg_count(effective_name, args, 1, span)?;
-        validate_expr(
-            &args[0],
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
-        return Ok(Some(if effective_name.eq_ignore_ascii_case("QBColor") {
-            TypeName::Long
-        } else {
-            TypeName::String
-        }));
-    }
-    if matches!(
-        effective_name.to_ascii_lowercase().as_str(),
-        "ddb"
-            | "fv"
-            | "ipmt"
-            | "irr"
-            | "mirr"
-            | "nper"
-            | "npv"
-            | "pmt"
-            | "ppmt"
-            | "pv"
-            | "rate"
-            | "sln"
-            | "syd"
-    ) {
-        validate_arg_range(effective_name, args, 1, usize::MAX, span)?;
-        for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        }
-        return Ok(Some(TypeName::Double));
     }
 
-    Ok(None)
-}
-
-fn validate_arg_range(
-    name: &str,
-    args: &[Expr],
-    min: usize,
-    max: usize,
-    span: crate::runtime::Span,
-) -> Result<(), Diagnostic> {
-    if args.len() >= min && (max == usize::MAX || args.len() <= max) {
-        Ok(())
-    } else {
-        Err(Diagnostic::new(
-            if args.len() < min {
-                crate::runtime::DiagnosticCode::ARGUMENT_NOT_OPTIONAL
-            } else {
-                crate::runtime::DiagnosticCode::GENERIC
-            },
-            if max == usize::MAX {
-                format!("{name} expects at least {min} argument(s)")
-            } else {
-                format!("{name} expects {min} to {max} argument(s)")
-            },
+    let return_type = builtin.returns.type_name().ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            format!("Builtin '{}' has no result type", builtin.name),
             Some(span),
-        ))
-    }
-}
-
-fn validate_arg_count(
-    name: &str,
-    args: &[Expr],
-    expected: usize,
-    span: crate::runtime::Span,
-) -> Result<(), Diagnostic> {
-    if args.len() == expected {
-        Ok(())
-    } else {
-        let code = if args.len() < expected {
-            crate::runtime::DiagnosticCode::ARGUMENT_NOT_OPTIONAL
-        } else {
-            crate::runtime::DiagnosticCode::GENERIC
-        };
-        Err(Diagnostic::new(
-            code,
-            format!("{name} expects exactly {expected} argument(s)"),
-            Some(span),
-        ))
-    }
+        )
+    })?;
+    Ok(Some(return_type))
 }
 
 pub(super) fn enum_member_value_type(name: &str, types: &TypeRegistry) -> Option<TypeName> {
@@ -2901,6 +1934,32 @@ pub(super) fn validate_arguments(
     Ok(())
 }
 
+/// Checks that `IsMissing` is asked about an optional parameter.
+///
+/// Anything else is always present, so the question has no meaning and is far
+/// more likely to be a mistake than an intent.
+fn validate_is_missing_argument(
+    arg: &Expr,
+    symbols: &HashMap<String, VarType>,
+) -> Result<(), Diagnostic> {
+    let ExprKind::Variable(name) = &arg.kind else {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "IsMissing is only valid for Optional parameters",
+            Some(arg.span),
+        ));
+    };
+    if let Some(var_type) = symbols.get(&key(name))
+        && !matches!(var_type, VarType::Optional(Visibility::Public, _))
+    {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "IsMissing is only valid for Optional parameters",
+            Some(arg.span),
+        ));
+    }
+    Ok(())
+}
 fn validate_argument_value(
     param: &ParamSig,
     arg: &Expr,

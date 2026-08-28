@@ -1,6 +1,6 @@
 use super::*;
 use crate::UsingResource;
-use crate::runtime::builtins::{BUILTIN_STATEMENT_FUNCTIONS, is_name_in, strip_vba_namespace};
+use crate::runtime::builtins::{is_builtin_statement, strip_vba_namespace};
 use std::collections::HashSet;
 
 fn validate_const_decl(
@@ -1507,7 +1507,7 @@ fn validate_sub_call(
 ) -> Result<(), Diagnostic> {
     let effective_name = strip_vba_namespace(name);
 
-    if is_name_in(effective_name, BUILTIN_STATEMENT_FUNCTIONS) {
+    if is_builtin_statement(effective_name) {
         for arg in args {
             validate_expr(
                 arg,
