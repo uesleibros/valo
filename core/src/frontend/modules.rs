@@ -287,16 +287,17 @@ fn decode_source_bytes(bytes: &[u8]) -> Option<String> {
 }
 
 fn decode_utf16(bytes: &[u8], little_endian: bool) -> Option<String> {
-    let chunks = bytes.chunks_exact(2);
-    if !chunks.remainder().is_empty() {
+    let (pairs, remainder) = bytes.as_chunks::<2>();
+    if !remainder.is_empty() {
         return None;
     }
-    let units: Vec<u16> = chunks
-        .map(|chunk| {
+    let units: Vec<u16> = pairs
+        .iter()
+        .map(|pair| {
             if little_endian {
-                u16::from_le_bytes([chunk[0], chunk[1]])
+                u16::from_le_bytes(*pair)
             } else {
-                u16::from_be_bytes([chunk[0], chunk[1]])
+                u16::from_be_bytes(*pair)
             }
         })
         .collect();
