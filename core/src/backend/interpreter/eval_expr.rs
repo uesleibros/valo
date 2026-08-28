@@ -9,6 +9,25 @@ use crate::runtime::compare::RuntimeOptionCompare;
 use crate::runtime::ops::{RuntimeBinaryOp, eval_binary};
 
 impl Interpreter {
+    /// Assigns each `.Member = value` entry of an object initializer.
+    ///
+    /// The object is fully constructed first, so an initializer can reference
+    /// members the constructor set, and each entry is written through the same
+    /// path as an ordinary member assignment so properties still run their
+    /// setters.
+    pub(crate) fn apply_object_initializer(
+        &mut self,
+        object: &Value,
+        inits: &[crate::MemberInit],
+        frame: &mut Frame,
+    ) -> Result<(), Diagnostic> {
+        for init in inits {
+            let value = self.eval_expr(&init.value, frame)?;
+            self.assign_member_to_value(object.clone(), &init.name, value, init.span)?;
+        }
+        Ok(())
+    }
+
     /// Renders a resolved type using the casing it was declared with.
     ///
     /// Type resolution yields a lookup key, which is lower-cased. `GetType`
@@ -201,8 +220,12 @@ impl Interpreter {
                 class_name,
                 args,
                 initializer,
+                member_initializer,
             } => {
                 let obj = self.new_object(class_name, args, frame, expr.span)?;
+                if let Some(inits) = member_initializer {
+                    self.apply_object_initializer(&obj, inits, frame)?;
+                }
                 if let Some(init_list) = initializer {
                     for init_expr in init_list {
                         let val = self.eval_expr(init_expr, frame)?;
@@ -662,7 +685,7 @@ impl Interpreter {
             ExprKind::PassingModeOverride { expr: inner, .. } => self.eval_expr(inner, frame),
             ExprKind::Lambda { params, body } => Ok(Value::Lambda(Rc::new(LambdaValue {
                 params: params.clone(),
-                body: (**body).clone(),
+                body: body.clone(),
             }))),
             ExprKind::Await(expr) => self.eval_expr(expr, frame),
             ExprKind::Binary { left, op, right } => {

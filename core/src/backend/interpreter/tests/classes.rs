@@ -2329,3 +2329,126 @@ End Sub
 
     assert_eq!(output, vec!["Rex says woof"]);
 }
+
+#[test]
+fn object_initializer_sets_fields_after_construction() {
+    let output = run_source(
+        r#"
+Class Point
+    Public X As Long
+    Public Y As Long
+End Class
+
+Sub Main()
+    Dim p As Point = New Point With { .X = 3, .Y = 4 }
+    Console.WriteLine(p.X & "," & p.Y)
+
+    Dim q As New Point With { .X = 7, .Y = 8 }
+    Console.WriteLine(q.X & "," & q.Y)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["3,4", "7,8"]);
+}
+
+#[test]
+fn object_initializer_spans_lines_and_allows_a_trailing_comma() {
+    let output = run_source(
+        r#"
+Class Point
+    Public X As Long
+    Public Y As Long
+End Class
+
+Sub Main()
+    Dim p As Point = New Point With {
+        .X = 10,
+        .Y = 20,
+    }
+    Console.WriteLine(p.X & "," & p.Y)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["10,20"]);
+}
+
+#[test]
+fn object_initializer_runs_property_setters() {
+    let output = run_source(
+        r#"
+Class Person
+    Private storedName As String
+
+    Public Property Name As String
+        Get
+            Return storedName
+        End Get
+        Set(ByVal value As String)
+            storedName = UCase(value)
+        End Set
+    End Property
+End Class
+
+Sub Main()
+    Dim who As Person = New Person With { .Name = "ada" }
+    Console.WriteLine(who.Name)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["ADA"]);
+}
+
+#[test]
+fn object_initializer_rejects_an_unknown_member() {
+    let diagnostic = source_diagnostic(
+        r#"
+Class Point
+    Public X As Long
+End Class
+
+Sub Main()
+    Dim p As Point = New Point With { .Missing = 1 }
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        diagnostic.code,
+        crate::runtime::DiagnosticCode::MEMBER_ACCESS
+    );
+}
+
+#[test]
+fn object_initializer_rejects_a_mistyped_value_and_a_repeated_member() {
+    let mistyped = source_diagnostic(
+        r#"
+Class Point
+    Public X As Long
+End Class
+
+Sub Main()
+    Dim p As Point = New Point With { .X = "not a number" }
+End Sub
+"#,
+    );
+    assert_eq!(mistyped.code, crate::runtime::DiagnosticCode::TYPE_MISMATCH);
+
+    let repeated = source_diagnostic(
+        r#"
+Class Point
+    Public X As Long
+End Class
+
+Sub Main()
+    Dim p As Point = New Point With { .X = 1, .X = 2 }
+End Sub
+"#,
+    );
+    assert_eq!(
+        repeated.code,
+        crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION
+    );
+}

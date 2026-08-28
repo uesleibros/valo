@@ -317,3 +317,40 @@ Valo supports `Public` and `Private` visibility for fields, methods, and propert
 Use `Class` for reference objects with identity, lifecycle hooks, events, `WithEvents`, and `Nothing`.
 
 Use `Structure` for native value types. Structures can have fields, methods, properties, and constructors, but they are copied on assignment and do not support class lifecycle, events, inheritance, interfaces, `Set`, `Nothing`, or `Is` identity checks.
+
+## Object Initializers
+
+`New T With { .Member = value, ... }` constructs an object and then assigns the
+listed members, so a constructor runs first and the initializer can build on
+what it set.
+
+```vb
+Dim origin As Point = New Point With { .X = 0, .Y = 0 }
+```
+
+The `As New` form takes an initializer too:
+
+```vb
+Dim corner As New Point With { .X = 1920, .Y = 1080 }
+```
+
+Entries may span lines, and a trailing comma is allowed:
+
+```vb
+Dim item As Product = New Product With {
+    .Name = "keyboard",
+    .Price = 49.9,
+    .Stock = 12,
+}
+```
+
+Each entry is written through the same path as an ordinary member assignment, so
+assigning to a property runs its `Set` accessor rather than bypassing it.
+
+Validation rejects a member the class does not declare, a value that does not fit
+the member's type, and the same member initialized twice.
+
+## Related
+
+- [Example: object initializers](../../examples/object_initializers.valo)
+- [Lambdas](functions.md#lambdas)

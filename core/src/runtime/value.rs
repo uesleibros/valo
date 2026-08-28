@@ -58,7 +58,7 @@ pub enum Value {
 #[derive(Debug, Clone, PartialEq)]
 pub struct LambdaValue {
     pub params: Vec<crate::Parameter>,
-    pub body: crate::frontend::ast::Expr,
+    pub body: crate::frontend::ast::LambdaBody,
     // For now, closures are not fully implemented, we'll just store the code.
 }
 

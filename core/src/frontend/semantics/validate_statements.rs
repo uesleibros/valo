@@ -95,6 +95,7 @@ pub fn validate_statements(
                 as_new,
                 new_args,
                 initializer,
+                member_initializer,
                 span,
                 ..
             }
@@ -105,6 +106,7 @@ pub fn validate_statements(
                 as_new,
                 new_args,
                 initializer,
+                member_initializer,
                 span,
                 ..
             } => {
@@ -119,6 +121,7 @@ pub fn validate_statements(
                     *as_new,
                     &ty,
                     new_args,
+                    member_initializer,
                     *span,
                     ExprValidation::new(symbols, types, signatures, context, option_explicit),
                 )?;
@@ -187,6 +190,7 @@ pub fn validate_statements(
                         decl.as_new,
                         &ty,
                         &decl.new_args,
+                        &decl.member_initializer,
                         decl.span,
                         ExprValidation::new(symbols, types, signatures, context, option_explicit),
                     )?;
@@ -1199,6 +1203,7 @@ pub fn validate_statements(
                         decl.as_new,
                         &ty,
                         &decl.new_args,
+                        &decl.member_initializer,
                         decl.span,
                         ExprValidation::new(symbols, types, signatures, context, option_explicit),
                     )?;
@@ -1351,6 +1356,7 @@ fn validate_as_new(
     as_new: bool,
     ty: &TypeName,
     args: &[Expr],
+    member_initializer: &Option<Vec<crate::MemberInit>>,
     span: crate::runtime::Span,
     validation: ExprValidation<'_, '_>,
 ) -> Result<(), Diagnostic> {
@@ -1372,6 +1378,7 @@ fn validate_as_new(
             class_name,
             args: args.to_vec(),
             initializer: None,
+            member_initializer: member_initializer.clone(),
         },
         span,
     };
@@ -1532,6 +1539,19 @@ fn validate_sub_call(
     let Some(sub) = sub else {
         if let Some(func) = validation.signatures.functions.get(&key(effective_name)) {
             validate_arguments("Function", func, args, span, validation)?;
+        } else if holds_callable_value(effective_name, validation.symbols) {
+            // A `Sub` lambda held in a variable is invoked like any other Sub;
+            // its parameters are only known at run time.
+            for arg in args {
+                validate_expr(
+                    arg,
+                    validation.symbols,
+                    validation.types,
+                    validation.signatures,
+                    validation.context,
+                    validation.option_explicit,
+                )?;
+            }
         } else {
             return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::UNKNOWN_NAME,
@@ -1543,6 +1563,23 @@ fn validate_sub_call(
     };
 
     validate_arguments("Sub", &sub, args, span, validation)
+}
+
+/// Reports whether a name refers to a variable that can hold something callable.
+///
+/// A lambda's type is not tracked statically, so a `Variant` or `Func` variable
+/// is accepted here and the call is resolved at run time.
+fn holds_callable_value(name: &str, symbols: &HashMap<String, VarType>) -> bool {
+    let Some(var_type) = symbols.get(&key(name)) else {
+        return false;
+    };
+    match var_type {
+        VarType::Scalar(_, ty) | VarType::Optional(_, ty) | VarType::Const(_, ty) => {
+            matches!(ty, TypeName::Variant)
+                || matches!(ty, TypeName::User(name) if name.eq_ignore_ascii_case("Func"))
+        }
+        _ => false,
+    }
 }
 
 fn class_field_object_type(
@@ -2061,7 +2098,12 @@ fn expr_uses_with_target(expr: &Expr, _context: &Context<'_>) -> bool {
             expr_uses_with_target(left, _context) || expr_uses_with_target(right, _context)
         }
         ExprKind::Unary { expr, .. } => expr_uses_with_target(expr, _context),
-        ExprKind::Lambda { body, .. } => expr_uses_with_target(body, _context),
+        // A statement-bodied lambda opens its own scope, so an outer `With`
+        // target does not reach into it.
+        ExprKind::Lambda { body, .. } => match body {
+            crate::LambdaBody::Expression(expr) => expr_uses_with_target(expr, _context),
+            crate::LambdaBody::Statements { .. } => false,
+        },
         ExprKind::Await(expr) => expr_uses_with_target(expr, _context),
         ExprKind::AddressOf(inner) => expr_uses_with_target(inner, _context),
         ExprKind::String(_)

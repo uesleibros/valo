@@ -1,0 +1,55 @@
+' Object Initializers
+' Demonstrates VB.NET-style New T With { .Member = value } syntax.
+
+Class Point
+    Public X As Long
+    Public Y As Long
+End Class
+
+Class Product
+    Private storedName As String
+
+    ' A property setter still runs when the initializer assigns to it.
+    Public Property Name As String
+        Get
+            Return storedName
+        End Get
+        Set(ByVal value As String)
+            storedName = UCase(value)
+        End Set
+    End Property
+
+    Public Price As Double
+    Public Stock As Long
+End Class
+
+Sub Main()
+    ' Inline form
+    Dim origin As Point = New Point With { .X = 0, .Y = 0 }
+    Console.WriteLine($"origin: ({origin.X}, {origin.Y})")
+
+    ' As New form
+    Dim corner As New Point With { .X = 1920, .Y = 1080 }
+    Console.WriteLine($"corner: ({corner.X}, {corner.Y})")
+
+    ' Multi-line, with a trailing comma
+    Dim item As Product = New Product With {
+        .Name = "keyboard",
+        .Price = 49.9,
+        .Stock = 12,
+    }
+
+    Console.WriteLine($"{item.Name} costs {item.Price:0.00} ({item.Stock} in stock)")
+
+    ' Initializers compose with the rest of the language
+    Dim shelf(0 To 1) As Product
+    Set shelf(0) = New Product With { .Name = "monitor", .Price = 219.5, .Stock = 4 }
+    Set shelf(1) = New Product With { .Name = "cable", .Price = 7.25, .Stock = 130 }
+
+    Dim index As Long
+    For index = 0 To 1
+        Dim entry As Product
+        Set entry = shelf(index)
+        Console.WriteLine($"{entry.Name,-10}{entry.Price,8:0.00}")
+    Next index
+End Sub

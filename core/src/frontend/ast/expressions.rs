@@ -50,7 +50,10 @@ pub enum ExprKind {
     New {
         class_name: TypeName,
         args: Vec<Expr>,
+        /// A `From { ... }` collection initializer.
         initializer: Option<Vec<Expr>>,
+        /// A `With { .Member = value, ... }` object initializer.
+        member_initializer: Option<Vec<MemberInit>>,
     },
     Call {
         name: String,
@@ -78,7 +81,7 @@ pub enum ExprKind {
     },
     Lambda {
         params: Vec<crate::frontend::ast::declarations::Parameter>,
-        body: Box<Expr>,
+        body: LambdaBody,
     },
     Await(Box<Expr>),
     Binary {
@@ -124,12 +127,23 @@ impl ExprKind {
                 class_name,
                 args,
                 initializer,
+                member_initializer,
             } => ExprKind::New {
                 class_name: class_name.substitute_generics(bindings),
                 args: args
                     .iter()
                     .map(|arg| arg.substitute_generics(bindings))
                     .collect(),
+                member_initializer: member_initializer.as_ref().map(|inits| {
+                    inits
+                        .iter()
+                        .map(|init| MemberInit {
+                            name: init.name.clone(),
+                            value: init.value.substitute_generics(bindings),
+                            span: init.span,
+                        })
+                        .collect()
+                }),
                 initializer: initializer.as_ref().map(|init| {
                     init.iter()
                         .map(|arg| arg.substitute_generics(bindings))
@@ -190,7 +204,7 @@ impl ExprKind {
             },
             ExprKind::Lambda { params, body } => ExprKind::Lambda {
                 params: params.clone(),
-                body: Box::new(body.substitute_generics(bindings)),
+                body: body.substitute_generics(bindings),
             },
             ExprKind::Await(expr) => ExprKind::Await(Box::new(expr.substitute_generics(bindings))),
             ExprKind::Binary { left, op, right } => ExprKind::Binary {
@@ -223,6 +237,45 @@ pub enum ConversionKind {
     Direct,
     /// `TryCast`: like `DirectCast` but yields `Nothing` instead of failing.
     Try,
+}
+
+/// The body of a lambda.
+///
+/// A single-line lambda is an expression and yields its value directly. A
+/// multi-line one is a statement block, and a `Function` lambda yields whatever
+/// its `Return` produces while a `Sub` lambda yields nothing.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LambdaBody {
+    Expression(Box<Expr>),
+    Statements {
+        body: Vec<crate::frontend::ast::statements::Stmt>,
+        is_sub: bool,
+    },
+}
+
+impl LambdaBody {
+    pub fn substitute_generics(&self, bindings: &[(String, TypeName)]) -> Self {
+        match self {
+            LambdaBody::Expression(expr) => {
+                LambdaBody::Expression(Box::new(expr.substitute_generics(bindings)))
+            }
+            LambdaBody::Statements { body, is_sub } => LambdaBody::Statements {
+                body: body
+                    .iter()
+                    .map(|stmt| stmt.substitute_generics(bindings))
+                    .collect(),
+                is_sub: *is_sub,
+            },
+        }
+    }
+}
+
+/// One `.Member = value` entry in a `With { ... }` object initializer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MemberInit {
+    pub name: String,
+    pub value: Expr,
+    pub span: Span,
 }
 
 /// One piece of an interpolated string.

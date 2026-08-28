@@ -478,6 +478,7 @@ pub(super) fn validate_expr(
             class_name,
             args,
             initializer,
+            member_initializer,
         } => {
             if let Some(init) = initializer {
                 for item in init {
@@ -554,6 +555,47 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 ));
             }
+
+            if let Some(inits) = member_initializer {
+                let class_sig = class_sig.clone();
+                for init in inits {
+                    let value_type = validate_expr(
+                        &init.value,
+                        symbols,
+                        types,
+                        signatures,
+                        context,
+                        option_explicit,
+                    )?;
+                    let member_type = class_sig
+                        .fields
+                        .get(&key(&init.name))
+                        .map(|field| field.ty.clone())
+                        .or_else(|| {
+                            class_sig
+                                .properties
+                                .get(&key(&init.name))
+                                .and_then(bare_property_type)
+                        })
+                        .ok_or_else(|| {
+                            Diagnostic::new(
+                                crate::runtime::DiagnosticCode::MEMBER_ACCESS,
+                                format!(
+                                    "Class '{}' has no field or property '{}'",
+                                    class_sig.name, init.name
+                                ),
+                                Some(init.span),
+                            )
+                            .with_primary_label("unknown member")
+                        })?;
+                    ensure_assignable(
+                        &member_type.substitute_generics(&bindings),
+                        &value_type,
+                        init.value.span,
+                    )?;
+                }
+            }
+
             Ok(types.canonical_type_name(&class_name))
         }
         ExprKind::Variable(name) => {

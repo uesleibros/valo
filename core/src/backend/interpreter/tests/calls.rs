@@ -88,3 +88,74 @@ End Sub
 
     assert_eq!(output, vec!["42"]);
 }
+
+#[test]
+fn multi_line_function_lambda_returns_a_value() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim classify = Function(n As Long) As String
+        If n < 0 Then
+            Return "negative"
+        ElseIf n = 0 Then
+            Return "zero"
+        End If
+        Return "positive"
+    End Function
+
+    Console.WriteLine(classify(-5))
+    Console.WriteLine(classify(0))
+    Console.WriteLine(classify(7))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["negative", "zero", "positive"]);
+}
+
+#[test]
+fn multi_line_sub_lambda_runs_as_a_statement() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim shout = Sub(message As String)
+        Dim loud As String = UCase(message)
+        Console.WriteLine(loud & "!")
+    End Sub
+
+    shout("hello")
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["HELLO!"]);
+}
+
+#[test]
+fn single_expression_lambdas_still_work() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim twice = Function(x As Long) x * 2
+    Console.WriteLine(twice(21))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["42"]);
+}
+
+#[test]
+fn a_lambda_must_be_closed_by_the_matching_end_keyword() {
+    let diagnostic = source_diagnostic(
+        r#"
+Sub Main()
+    Dim broken = Function(x As Long) As Long
+        Return x
+    End Sub
+End Sub
+"#,
+    );
+
+    assert_eq!(diagnostic.code, crate::runtime::DiagnosticCode::PARSE);
+}

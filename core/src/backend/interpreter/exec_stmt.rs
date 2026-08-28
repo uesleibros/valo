@@ -108,6 +108,7 @@ impl Interpreter {
                 new_args,
                 initializer,
                 collection_initializer,
+                member_initializer,
                 span,
             } => {
                 self.exec_variable_declaration(
@@ -118,6 +119,7 @@ impl Interpreter {
                     new_args,
                     initializer,
                     collection_initializer,
+                    member_initializer,
                     frame,
                     *span,
                 )?;
@@ -133,6 +135,7 @@ impl Interpreter {
                         &decl.new_args,
                         &decl.initializer,
                         &decl.collection_initializer,
+                        &decl.member_initializer,
                         frame,
                         decl.span,
                     )?;
@@ -147,6 +150,7 @@ impl Interpreter {
                 new_args,
                 initializer,
                 collection_initializer,
+                member_initializer,
                 span,
             } => {
                 self.exec_static_declaration(
@@ -157,6 +161,7 @@ impl Interpreter {
                     new_args,
                     initializer,
                     collection_initializer,
+                    member_initializer,
                     frame,
                     *span,
                 )?;
@@ -172,6 +177,7 @@ impl Interpreter {
                         &decl.new_args,
                         &decl.initializer,
                         &decl.collection_initializer,
+                        &decl.member_initializer,
                         frame,
                         decl.span,
                     )?;
@@ -979,6 +985,7 @@ impl Interpreter {
                     &decl.new_args,
                     &decl.initializer,
                     &decl.collection_initializer,
+                    &decl.member_initializer,
                     frame,
                     decl.span,
                 )?;
@@ -1065,6 +1072,7 @@ impl Interpreter {
         new_args: &[crate::Expr],
         initializer: &Option<crate::Expr>,
         collection_initializer: &Option<Vec<crate::Expr>>,
+        member_initializer: &Option<Vec<crate::MemberInit>>,
         frame: &mut Frame,
         span: crate::runtime::Span,
     ) -> Result<(), Diagnostic> {
@@ -1110,6 +1118,9 @@ impl Interpreter {
                             }
                         }
                     }
+                    if let Some(inits) = member_initializer {
+                        self.apply_object_initializer(&value, inits, frame)?;
+                    }
                     let _ = frame.assign(name, value, span)?;
                 }
                 _ => {
@@ -1141,6 +1152,7 @@ impl Interpreter {
         _new_args: &[crate::Expr],
         initializer: &Option<crate::Expr>,
         _collection_initializer: &Option<Vec<crate::Expr>>,
+        _member_initializer: &Option<Vec<crate::MemberInit>>,
         frame: &mut Frame,
         span: crate::runtime::Span,
     ) -> Result<(), Diagnostic> {

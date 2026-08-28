@@ -426,21 +426,8 @@ impl Parser {
                 kind: self.parse_date_literal(span)?,
                 span: Span::new(self.file_id, span.start, self.previous().span.end),
             },
-            TokenKind::Function => {
-                let mut params = Vec::new();
-                if self.match_simple(&TokenKind::LeftParen) {
-                    params = self.parse_parameters()?;
-                    self.expect_simple(TokenKind::RightParen, "Expected ')' after parameters")?;
-                }
-                let body = self.parse_expression()?;
-                Expr {
-                    kind: ExprKind::Lambda {
-                        params,
-                        body: Box::new(body),
-                    },
-                    span: Span::new(self.file_id, span.start, self.previous().span.end),
-                }
-            }
+            TokenKind::Function => self.parse_lambda(span, false)?,
+            TokenKind::Sub => self.parse_lambda(span, true)?,
             TokenKind::Await => {
                 let expr = self.parse_expression()?;
                 Expr {
@@ -576,12 +563,14 @@ impl Parser {
                     )?;
                     initializer = Some(init_args);
                 }
+                let member_initializer = self.parse_object_initializer()?;
                 let end = self.previous().span;
                 Expr {
                     kind: ExprKind::New {
                         class_name,
                         args,
                         initializer,
+                        member_initializer,
                     },
                     span: Span::new(self.file_id, span.start, end.end),
                 }
@@ -963,6 +952,113 @@ impl Parser {
             });
         }
         self.parse_expression()
+    }
+
+    /// Parses a lambda: `Function(x) x * 2`, or the multi-line form ending in
+    /// `End Function` / `End Sub`.
+    ///
+    /// The two are told apart by what follows the header: a statement separator
+    /// means a statement body, anything else means a single expression. A `Sub`
+    /// lambda has no result, so it only has the multi-line form.
+    fn parse_lambda(&mut self, start: Span, is_sub: bool) -> Result<Expr, Diagnostic> {
+        let keyword = if is_sub { "Sub" } else { "Function" };
+
+        let mut params = Vec::new();
+        if self.match_simple(&TokenKind::LeftParen) {
+            params = self.parse_parameters()?;
+            self.expect_simple(TokenKind::RightParen, "Expected ')' after parameters")?;
+        }
+
+        // A lambda may annotate its result type, which the interpreter infers
+        // from the returned value, so it is accepted and not otherwise used.
+        if !is_sub && self.match_simple(&TokenKind::As) {
+            let _ = self.parse_type_name()?;
+        }
+
+        let body = if is_sub || self.check_simple(&TokenKind::Newline) {
+            self.expect_newline(&format!(
+                "Expected newline after the {keyword} lambda header"
+            ))?;
+            let body = self.parse_block_until(&[BlockEnd::EndFunction, BlockEnd::EndSub])?;
+            self.expect_simple(TokenKind::End, &format!("Expected 'End {keyword}'"))?;
+            let closing = self.advance();
+            let closed_with_sub = matches!(closing.kind, TokenKind::Sub);
+            if closed_with_sub != is_sub {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::PARSE,
+                    format!("Expected 'End {keyword}' to close this lambda"),
+                    Some(closing.span),
+                ));
+            }
+            LambdaBody::Statements { body, is_sub }
+        } else {
+            LambdaBody::Expression(Box::new(self.parse_expression()?))
+        };
+
+        Ok(Expr {
+            kind: ExprKind::Lambda { params, body },
+            span: Span::new(self.file_id, start.start, self.previous().span.end),
+        })
+    }
+
+    /// Parses a `With { .Member = value, ... }` object initializer, if one
+    /// follows.
+    ///
+    /// VB.NET allows the entries to span lines, so newlines are skipped inside
+    /// the braces. A trailing comma before `}` is accepted, which keeps
+    /// multi-line initializers easy to edit.
+    pub(super) fn parse_object_initializer(
+        &mut self,
+    ) -> Result<Option<Vec<MemberInit>>, Diagnostic> {
+        if !self.check_simple(&TokenKind::With) || !self.check_next_simple(&TokenKind::LeftBrace) {
+            return Ok(None);
+        }
+        self.advance();
+        self.advance();
+
+        let mut inits: Vec<MemberInit> = Vec::new();
+        self.skip_newlines();
+        while !self.check_simple(&TokenKind::RightBrace) {
+            let start = self
+                .expect_simple(
+                    TokenKind::Dot,
+                    "Expected '.' before a member name in an object initializer",
+                )?
+                .span;
+            let name = self.expect_identifier("Expected member name after '.'")?;
+            self.expect_simple(
+                TokenKind::Equal,
+                "Expected '=' after the member name in an object initializer",
+            )?;
+            let value = self.parse_expression()?;
+            let span = Span::new(self.file_id, start.start, value.span.end);
+
+            if let Some(previous) = inits
+                .iter()
+                .find(|init| init.name.eq_ignore_ascii_case(&name))
+            {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+                    format!("Member '{}' is initialized more than once", previous.name),
+                    Some(span),
+                ));
+            }
+
+            inits.push(MemberInit { name, value, span });
+
+            self.skip_newlines();
+            if !self.match_simple(&TokenKind::Comma) {
+                break;
+            }
+            self.skip_newlines();
+        }
+        self.skip_newlines();
+        self.expect_simple(
+            TokenKind::RightBrace,
+            "Expected '}' after the object initializer",
+        )?;
+
+        Ok(Some(inits))
     }
 
     /// Turns the scanner's interpolation segments into AST parts.

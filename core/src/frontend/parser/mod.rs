@@ -143,6 +143,16 @@ impl Parser {
         std::mem::discriminant(self.peek_kind()) == std::mem::discriminant(kind)
     }
 
+    /// Reports whether the token after the current one has the given kind.
+    ///
+    /// Used where a keyword only starts a construct in combination with what
+    /// follows it, such as `With` beginning an object initializer only when a
+    /// `{` comes next rather than a `With` block.
+    pub(super) fn check_next_simple(&self, kind: &TokenKind) -> bool {
+        self.peek_next_kind()
+            .is_some_and(|next| std::mem::discriminant(next) == std::mem::discriminant(kind))
+    }
+
     pub(super) fn error_here(&self, message: &str) -> Diagnostic {
         Diagnostic::new(
             crate::runtime::DiagnosticCode::PARSE,

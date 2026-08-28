@@ -1,0 +1,52 @@
+' Lambdas
+' Demonstrates single-expression lambdas and VB.NET-style multi-line
+' Function / Sub lambdas.
+
+Sub Main()
+    ' A single-expression lambda: the body is one expression.
+    Dim twice = Function(x As Long) x * 2
+    Console.WriteLine($"twice(21) = {twice(21)}")
+
+    ' A multi-line Function lambda returns through Return.
+    Dim classify = Function(n As Long) As String
+        If n < 0 Then
+            Return "negative"
+        ElseIf n = 0 Then
+            Return "zero"
+        End If
+        Return "positive"
+    End Function
+
+    Dim samples(0 To 2) As Long
+    samples(0) = -5
+    samples(1) = 0
+    samples(2) = 7
+
+    Dim i As Long
+    For i = 0 To 2
+        Console.WriteLine($"{samples(i),3} is {classify(samples(i))}")
+    Next i
+
+    ' A multi-line Sub lambda has no result; it is invoked as a statement.
+    Dim banner = Sub(title As String)
+        Dim line As String = String(Len(title), "-")
+        Console.WriteLine(line)
+        Console.WriteLine(UCase(title))
+        Console.WriteLine(line)
+    End Sub
+
+    banner("done")
+
+    ' A lambda can be passed to a procedure and applied there.
+    Console.WriteLine($"sum of squares 1..5 = {Accumulate(5, Function(n As Long) n * n)}")
+End Sub
+
+' Applies `transform` to 1..count and adds up the results.
+Function Accumulate(ByVal count As Long, ByVal transform As Variant) As Long
+    Dim total As Long = 0
+    Dim i As Long
+    For i = 1 To count
+        total += transform(i)
+    Next i
+    Return total
+End Function

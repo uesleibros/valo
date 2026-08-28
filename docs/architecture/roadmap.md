@@ -30,8 +30,9 @@ The goal is that code written against the VB.NET language reference runs on Valo
 - [x] `CType`, `DirectCast`, `TryCast`, `GetType`, `NameOf`
 - [x] `Inherits` and `Implements` as standalone lines in a class body
 - [x] Bitwise operators over every integral width
-- [ ] Multi-line lambdas (`Function() ... End Function`)
-- [ ] Object initializers (`New Point With { .X = 1 }`) and anonymous types
+- [x] Multi-line lambdas (`Function() ... End Function`, `Sub() ... End Sub`)
+- [x] Object initializers (`New Point With { .X = 1 }`)
+- [ ] Anonymous types (`New With { Key .X = 1 }`)
 - [ ] Null-conditional access (`obj?.Member`)
 - [ ] `Delegate Sub` / `Delegate Function` declarations
 - [ ] Tuples and tuple returns

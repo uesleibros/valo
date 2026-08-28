@@ -179,6 +179,7 @@ impl Parser {
                 new_args: decl.new_args,
                 initializer: decl.initializer,
                 collection_initializer: decl.collection_initializer,
+                member_initializer: decl.member_initializer,
                 span: Span::new(self.file_id, start.start, end.end),
             })
         } else {
@@ -203,6 +204,7 @@ impl Parser {
                 new_args: decl.new_args,
                 initializer: decl.initializer,
                 collection_initializer: decl.collection_initializer,
+                member_initializer: decl.member_initializer,
                 span: Span::new(self.file_id, start.start, end.end),
             })
         } else {
@@ -341,6 +343,11 @@ impl Parser {
             )?;
             collection_initializer = Some(init_args);
         }
+        let member_initializer = if as_new {
+            self.parse_object_initializer()?
+        } else {
+            None
+        };
         let ty = if let Some(as_ty) = as_ty {
             if let Some(type_char) = &type_char
                 && !type_char.same_type(&as_ty)
@@ -374,6 +381,7 @@ impl Parser {
         let end = collection_initializer
             .as_ref()
             .map(|_| self.previous().span)
+            .or_else(|| member_initializer.as_ref().map(|_| self.previous().span))
             .or_else(|| initializer.as_ref().map(|expr| expr.span))
             .unwrap_or_else(|| self.previous().span);
         Ok(VariableDecl {
@@ -384,6 +392,7 @@ impl Parser {
             new_args,
             initializer,
             collection_initializer,
+            member_initializer,
             span: Span::new(self.file_id, start.start, end.end),
         })
     }
@@ -1430,7 +1439,7 @@ impl Parser {
         let resource = if matches!(self.peek_kind(), TokenKind::Identifier(_, _))
             && matches!(self.peek_next_kind(), Some(TokenKind::As))
         {
-            UsingResource::Declaration(self.parse_variable_declarator("Using")?)
+            UsingResource::Declaration(Box::new(self.parse_variable_declarator("Using")?))
         } else {
             UsingResource::Target(self.parse_expression()?)
         };

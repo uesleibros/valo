@@ -1,6 +1,6 @@
 use crate::runtime::{Span, TypeName};
 
-use super::Expr;
+use super::{Expr, MemberInit};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
@@ -12,6 +12,7 @@ pub enum Stmt {
         new_args: Vec<Expr>,
         initializer: Option<Expr>,
         collection_initializer: Option<Vec<Expr>>,
+        member_initializer: Option<Vec<MemberInit>>,
         span: Span,
     },
     DimMany {
@@ -26,6 +27,7 @@ pub enum Stmt {
         new_args: Vec<Expr>,
         initializer: Option<Expr>,
         collection_initializer: Option<Vec<Expr>>,
+        member_initializer: Option<Vec<MemberInit>>,
         span: Span,
     },
     StaticMany {
@@ -361,12 +363,15 @@ pub struct VariableDecl {
     pub new_args: Vec<Expr>,
     pub initializer: Option<Expr>,
     pub collection_initializer: Option<Vec<Expr>>,
+    pub member_initializer: Option<Vec<MemberInit>>,
     pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum UsingResource {
-    Declaration(VariableDecl),
+    /// Boxed because a `VariableDecl` is several times the size of an `Expr`,
+    /// and every `UsingResource` would otherwise be as large as the bigger one.
+    Declaration(Box<VariableDecl>),
     Target(Expr),
 }
 
@@ -480,6 +485,7 @@ impl Stmt {
                 new_args,
                 initializer,
                 collection_initializer,
+                member_initializer,
                 span,
             } => Stmt::Dim {
                 name: name.clone(),
@@ -498,6 +504,9 @@ impl Stmt {
                         .map(|arg| arg.substitute_generics(bindings))
                         .collect()
                 }),
+                member_initializer: member_initializer
+                    .as_ref()
+                    .map(|inits| substitute_member_inits(inits, bindings)),
                 span: *span,
             },
             Stmt::DimMany { decls, span } => Stmt::DimMany {
@@ -515,6 +524,7 @@ impl Stmt {
                 new_args,
                 initializer,
                 collection_initializer,
+                member_initializer,
                 span,
             } => Stmt::Static {
                 name: name.clone(),
@@ -533,6 +543,9 @@ impl Stmt {
                         .map(|arg| arg.substitute_generics(bindings))
                         .collect()
                 }),
+                member_initializer: member_initializer
+                    .as_ref()
+                    .map(|inits| substitute_member_inits(inits, bindings)),
                 span: *span,
             },
             Stmt::StaticMany { decls, span } => Stmt::StaticMany {
@@ -960,9 +973,29 @@ impl VariableDecl {
                     .map(|arg| arg.substitute_generics(bindings))
                     .collect()
             }),
+            member_initializer: self
+                .member_initializer
+                .as_ref()
+                .map(|inits| substitute_member_inits(inits, bindings)),
             span: self.span,
         }
     }
+}
+
+/// Rewrites the value of each object-initializer entry under the given generic
+/// bindings. The member names are fixed, so only the values need substitution.
+fn substitute_member_inits(
+    inits: &[MemberInit],
+    bindings: &[(String, TypeName)],
+) -> Vec<MemberInit> {
+    inits
+        .iter()
+        .map(|init| MemberInit {
+            name: init.name.clone(),
+            value: init.value.substitute_generics(bindings),
+            span: init.span,
+        })
+        .collect()
 }
 
 impl AssignTarget {
@@ -1092,7 +1125,7 @@ impl UsingResource {
     pub fn substitute_generics(&self, bindings: &[(String, TypeName)]) -> Self {
         match self {
             UsingResource::Declaration(d) => {
-                UsingResource::Declaration(d.substitute_generics(bindings))
+                UsingResource::Declaration(Box::new(d.substitute_generics(bindings)))
             }
             UsingResource::Target(e) => UsingResource::Target(e.substitute_generics(bindings)),
         }

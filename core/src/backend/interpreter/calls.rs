@@ -557,7 +557,29 @@ impl Interpreter {
         let result = (|| {
             let mut frame = Frame::default();
             self.bind_parameter_values(&lambda.params, args, &mut frame, span)?;
-            self.eval_expr(&lambda.body, &mut frame)
+            match &lambda.body {
+                crate::LambdaBody::Expression(expr) => self.eval_expr(expr, &mut frame),
+                crate::LambdaBody::Statements { body, is_sub } => {
+                    // A statement lambda produces whatever its `Return` carries;
+                    // a `Sub` lambda has no result at all.
+                    match self.exec_block(body, &mut frame)? {
+                        ControlFlow::Return(value) if !*is_sub => Ok(value),
+                        ControlFlow::Return(_)
+                        | ControlFlow::Continue
+                        | ControlFlow::ExitSub
+                        | ControlFlow::ExitFunction => Ok(Value::Empty),
+                        ControlFlow::Terminate => {
+                            self.terminated = true;
+                            Ok(Value::Empty)
+                        }
+                        _ => Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::CONTROL_FLOW,
+                            "Control flow statement escaped its lambda",
+                            Some(span),
+                        )),
+                    }
+                }
+            }
         })();
         self.scope_stack.pop();
         self.call_stack.pop();
