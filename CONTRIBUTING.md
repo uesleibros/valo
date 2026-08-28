@@ -61,7 +61,8 @@ The workspace contains:
 - `cli/`: the `valo` command-line interface.
 - `examples/`: executable examples used by the examples integration test.
 - `docs/`: language and architecture documentation.
-- `research/`: experimental and real-world compatibility material.
+- `bench/`: benchmark programs for the interpreter's hot paths.
+- `scripts/`: install scripts and `bench.sh`.
 
 ## Validation
 
@@ -72,6 +73,17 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test --all-targets
 ```
+
+If you touched the interpreter's execution path, also measure it. Benchmarks need
+a release build to mean anything:
+
+```sh
+cargo build --release -p valo_cli
+./scripts/bench.sh
+```
+
+See [docs/architecture/performance.md](docs/architecture/performance.md) for what
+the benchmarks cover and how to read the numbers.
 
 For release-sensitive changes, also run:
 

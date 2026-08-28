@@ -158,5 +158,5 @@ pub(super) struct Signatures {
 }
 
 pub(super) fn key(name: &str) -> String {
-    name.to_lowercase()
+    crate::runtime::fold(name)
 }

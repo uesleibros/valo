@@ -117,3 +117,88 @@ data(0) = CByte(255)
 ```
 
 C-style square-bracket array spelling is not the official Valo syntax.
+
+## Conversions
+
+### CType
+
+`CType(value, Type)` converts between compatible types, following the same rules
+as assignment and the `C*` builtins.
+
+```vb
+Dim count As Integer = CType("42", Integer)
+Dim text As String = CType(7, String)
+```
+
+`CType` is the right choice for value types and for anything that needs an actual
+conversion rather than a reinterpretation.
+
+### DirectCast
+
+`DirectCast(value, Type)` reinterprets a reference without converting it. It
+succeeds when the value already is of the target type, following the inheritance
+chain, and reports a type mismatch otherwise.
+
+```vb
+Dim rex As New Dog()
+Dim animal As Animal = DirectCast(rex, Animal)
+```
+
+Because it never converts, `DirectCast` is both cheaper and stricter than
+`CType`. Reach for it when you know the runtime type and want the compiler and
+runtime to hold you to it.
+
+### TryCast
+
+`TryCast(value, Type)` behaves like `DirectCast` but answers `Nothing` instead of
+failing when the value is not of the target type. It requires a reference type,
+since a value type has no `Nothing` to answer with.
+
+```vb
+Dim maybeDog As Dog = TryCast(animal, Dog)
+
+If maybeDog IsNot Nothing Then
+    Console.WriteLine(maybeDog.Breed)
+End If
+```
+
+### Choosing between them
+
+| | Converts | On mismatch |
+|---|---|---|
+| `CType` | yes | converts, or reports a type mismatch |
+| `DirectCast` | no | reports a type mismatch |
+| `TryCast` | no | answers `Nothing` |
+
+## Reflection
+
+### GetType
+
+`GetType(Type)` reports a type's name, using the casing it was declared with. It
+is resolved at compile time.
+
+```vb
+Console.WriteLine(GetType(Dog))       ' Dog
+Console.WriteLine(GetType(Integer))   ' Integer
+```
+
+For the type of a *value* rather than a type name, use `TypeName(value)`.
+
+### NameOf
+
+`NameOf(x)` reports the source name of its operand as a string, resolved at
+compile time. For a member access it names the final member, matching VB.NET.
+
+```vb
+Dim total As Long
+Console.WriteLine(NameOf(total))             ' total
+Console.WriteLine(NameOf(customer.Address))  ' Address
+```
+
+`NameOf` is useful for diagnostics and validation messages that should survive a
+rename.
+
+## Related
+
+- [Expressions and operators](expressions.md)
+- [Example: conversions and reflection](../../examples/conversions.valo)

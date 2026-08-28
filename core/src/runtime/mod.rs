@@ -11,6 +11,7 @@ pub mod com;
 pub mod compare;
 mod diagnostic;
 pub mod ffi_platform;
+pub mod naming;
 pub mod numeric;
 pub mod ops;
 pub mod stdlib;
@@ -23,6 +24,7 @@ pub use diagnostic::{
     Diagnostic, DiagnosticCode, DiagnosticLabel, FileId, LabelStyle, RuntimeErrorInfo, Severity,
     SourceMap, SourcePos, Span, terminal_supports_color,
 };
+pub use naming::{fold, with_folded};
 pub use type_name::TypeName;
 pub use value::{
     ArrayValue, CollectionItem, CollectionValue, ComObjectValue, EventBinding, LambdaValue,

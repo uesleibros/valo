@@ -43,3 +43,30 @@ The Platform layer is the emerging project/package, namespace, tooling, standard
 *   **Interop:** COM/type-library architecture layered beside native FFI.
 
 Learn more in **[Platform Architecture](platform.md)**.
+
+## Cross-cutting: name folding
+
+Basic is case-insensitive, so `Total`, `total`, and `TOTAL` are one name. Every
+symbol table in the compiler and runtime is therefore keyed by a case-folded
+name, and all three layers must agree on what folding means.
+
+That rule lives in one place, [`core/src/runtime/naming.rs`](../../core/src/runtime/naming.rs).
+The preprocessor, the semantic analyzer, and the interpreter all delegate to it
+rather than each folding names their own way. `with_folded` is the form to reach
+for on hot paths: it folds into a stack buffer instead of allocating, which
+matters because identifier lookup is the single most frequent operation the
+interpreter performs.
+
+## Cross-cutting: validation
+
+Both entry points — `validate` for a single program and `validate_project` for a
+loaded project — run the same body validation over every procedure, function,
+structure, and class. The project path additionally brings imported types,
+callables, and extension methods into scope, and completes a `Partial Class` from
+its halves in other modules.
+
+Keeping the two paths on one implementation is deliberate. They diverged once,
+with project validation stopping before procedure bodies, and the result was that
+`valo check` reported success on programs that failed the moment they ran.
+
+Learn more in **[Performance](performance.md)** and **[Diagnostics](diagnostics.md)**.

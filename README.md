@@ -4,7 +4,7 @@
 
   # The Valo Programming Language
 
-  A modern Basic-inspired language and runtime with first-class VBA compatibility
+  A successor language to VB.NET, with a standalone runtime written in Rust
 
 </div>
 
@@ -14,7 +14,7 @@
   <a href="#language-goals">Goals</a> |
   <a href="#project-status">Status</a> |
   <a href="#getting-started">Getting started</a> |
-  <a href="#vba-compatibility">VBA compatibility</a> |
+  <a href="#performance">Performance</a> |
   <a href="#documentation">Documentation</a> |
   <a href="#contributing">Contributing</a>
 </p>
@@ -41,233 +41,187 @@
 
 ## What is Valo?
 
-**Valo** is a modern Basic-inspired programming language and runtime built in Rust.
+**Valo** is a programming language that takes the syntax of VB.NET and gives it a
+standalone runtime, written in Rust, that runs anywhere.
 
-The original idea behind Valo was simple:
+The design question behind Valo is narrow on purpose:
 
-> What if VBA had its own Node.js moment?
+> What would VB.NET look like if it were not tied to .NET?
 
-JavaScript was once mostly tied to the browser. Node.js made it possible to use JavaScript almost anywhere: servers, CLIs, automation, tooling, desktop workflows, build systems, and more.
+VB.NET is a genuinely good language. It is readable, explicit, and productive,
+with a type system, generics, properties, events, and interfaces that hold up
+well. What it lacks is a life outside its runtime: no small standalone binaries,
+no practical embedding, no direct native interop that avoids marshalling layers,
+and no path to run where .NET does not.
 
-Valo explores a similar direction for VBA-style programming.
+Valo follows the VB.NET language as its reference, then adds what only makes
+sense once you own the runtime:
 
-It is designed as a standalone evolution path for Basic/VBA-style development: familiar enough for VBA, VB6, and Visual Basic developers, but with modern language features, a clean runtime, professional diagnostics, modules, FFI, a REPL, project entrypoint discovery, and a growing standard runtime surface.
+- native interop as a language feature, through `Declare`, `PtrSafe`, `LongPtr`,
+  `AddressOf`, and callbacks
+- a single self-contained binary with no runtime to install
+- an interpreter designed to grow into a bytecode VM, rather than a language
+  fitted onto a VM it did not choose
 
-Valo supports two complementary modes:
-
-| Mode | Purpose |
-|---|---|
-| `.valo` | Native Valo syntax for modern Basic-style development |
-| `.bas` / `.cls` | VBA compatibility mode for migrating existing modules and classes |
-
-Valo is not tied to Office or the VBA editor. It is a standalone runtime designed to modernize Basic-style development while remaining highly compatible with real-world VBA codebases.
+This is the move [Carbon](https://github.com/carbon-language/carbon-lang) makes
+for C++ and [Mojo](https://www.modular.com/mojo) makes for Python: keep the
+syntax people already know, and change what sits underneath it.
 
 ## Why build Valo?
 
 ![Building with Valo](assets/building.png)
 
-VBA remains one of the most productive programming environments ever shipped. It is simple, readable, approachable, and deeply useful for automation and business logic.
+The Basic family has never had a language that is both modern and unencumbered.
 
-But VBA is also trapped inside a legacy ecosystem:
+- **VB6** was standalone but is long dead.
+- **VBA** is alive and widely used, but locked inside Office and COM.
+- **VB.NET** is modern, but inseparable from .NET, and its language design has
+  stopped moving.
 
-- tied to Office and COM
-- difficult to package and distribute
-- missing modern tooling
-- missing a standalone runtime
-- lacking modern diagnostics and project structure
-- hard to evolve without breaking decades of assumptions
+Valo starts from VB.NET because it is the most complete of the three, and
+rebuilds underneath it:
 
-Valo takes a successor-language approach.
+| | VB6 | VBA | VB.NET | Valo |
+|---|---|---|---|---|
+| Standalone binaries | yes | no | no | yes |
+| Modern type system | no | no | yes | yes |
+| Generics | no | no | yes | yes |
+| Direct native interop | limited | `Declare` | via P/Invoke | `Declare`, first-class |
+| Runs without a host runtime | yes | no | no | yes |
+| Actively evolving | no | no | no | yes |
 
-Instead of trying to clone VBA forever, Valo provides:
-
-- a modern native language mode
-- a compatibility bridge for existing `.bas` and `.cls` code
-- a standalone runtime written in Rust
-- a path toward modern tooling, packages, REPL workflows, FFI, and future compiled targets
-
-This is similar in spirit to successor language projects:
-
-- JavaScript → TypeScript
-- Java → Kotlin
-- C++ → Carbon
-- VBA → **Valo**
-
-Valo keeps the productivity and readability of Basic-style languages while building a runtime that can grow beyond the limitations of the original VBA environment.
-
-The long-term goal is simple:
-
-> Take the productivity of VBA out of Office and let it run anywhere.
+Existing VBA code is not abandoned: `.bas` and `.cls` files still load, so a
+codebase can migrate gradually. But compatibility is a migration path, not the
+design target. When VBA and VB.NET disagree, Valo follows VB.NET.
 
 ## Language goals
 
-Valo is designed around the following goals:
-
-- Familiar Basic-style syntax for developers coming from VBA, VB6, or VB.NET
-- First-class VBA compatibility for `.bas` and `.cls` migration
-- Modern native syntax for new `.valo` projects
-- Standalone runtime independent of the VBA editor
-- Professional diagnostics with explicit diagnostic codes and source spans
-- Modular project structure with imports and qualified symbols
-- Strong runtime foundations for arrays, objects, variants, errors, structures, classes, and native types
-- Experimental native interop through VBA-style `Declare`, `PtrSafe`, `LongPtr`, callbacks, `AddressOf`, and related APIs
-- A practical migration path from legacy automation code to a modern runtime
-- A clean implementation architecture suitable for future tooling and VM/compiler backends
-
-Valo is still experimental, but its direction is clear: a modern Basic-family language with compatibility as a bridge, not a cage.
+- **Follow VB.NET.** Its syntax and semantics are the reference. Code that reads
+  like VB.NET should behave like VB.NET.
+- **Own the runtime.** A standalone Rust runtime, with no host environment and no
+  framework to install.
+- **Make native interop first-class.** `Declare` is a language feature, not an
+  escape hatch.
+- **Be fast enough to be boring.** Performance is tracked by benchmarks in the
+  repository.
+- **Diagnose precisely.** Explicit codes, source spans, and actionable help.
+- **Keep the migration door open.** `.bas` and `.cls` load, so existing VBA can
+  come along.
 
 ## Project status
 
-Valo is currently an experimental language/runtime in active development.
+Valo is an experimental language and runtime in active development.
 
-It already includes:
+Implemented today:
 
-- a parser and semantic validator
-- a tree-walking interpreter
-- modules, imports, namespaces, and VB.NET-style `Module ... End Module` blocks
+- lexer, recursive-descent parser, semantic validator, and tree-walking interpreter
 - classes, interfaces, inheritance, structures, properties, events, and lifecycle hooks
 - generics for classes, structures, functions, and methods, including nested generic type names
-- parser support for VB.NET-style generic variance and constraint syntax
-- native `Structure` value types and classic VBA `Type`
+- modules, imports, namespaces, and `Module ... End Module` blocks
+- string interpolation, compound assignment, shift operators, and `Continue`
+- `CType`, `DirectCast`, `TryCast`, `GetType`, and `NameOf`
 - lambdas, extension methods, operator overloading, partial classes, iterators, nullable types, and collection initializers
-- `Option Explicit`, `Option Base`, `Option Compare`, and conditional compilation
+- `Try` / `Catch` / `Finally` alongside VBA-style `On Error`
 - deterministic cleanup and `Using`
-- VBA-compatible error handling
-- a diagnostics engine
-- a REPL and CLI
-- native FFI support through `Declare`, `PtrSafe`, callbacks, and pointer helpers
-- Windows COM/OLE Automation support through late-bound `Object`, `CreateObject`, and default-property dispatch
-- VBA compatibility runtime features, including Microsoft-indexed runtime constants, broad VBA function recognition, string/date/time/math/format/file helpers, financial helpers, and classic file-number I/O
-- cross-platform release packaging
+- native FFI through `Declare`, `PtrSafe`, callbacks, and pointer helpers
+- Windows COM/OLE Automation through late-bound `Object` and `CreateObject`
+- a diagnostics engine, a REPL, and a CLI
+- a VBA compatibility layer for `.bas` and `.cls` migration
 
-Valo is not yet a full production compiler. There is currently no bytecode VM, package manager, formatter, or complete standard library. Some compatibility features are intentionally pragmatic and still evolving.
-
-## Native Valo and VBA compatibility
-
-Valo intentionally separates modern native syntax from compatibility syntax.
-
-### Native Valo
-
-Native `.valo` files use clean, modern Basic-style syntax:
-
-```vb
-Class Box(Of T)
-    Public Value As T
-End Class
-
-Sub Main()
-    Dim message As New Box(Of String)
-
-    message.Value = "Hello, Valo"
-
-    Console.WriteLine(message.Value)
-End Sub
-```
-
-### VBA compatibility
-
-VBA `.bas` and `.cls` files can use compatibility syntax:
-
-```vb
-Attribute VB_Name = "Module1"
-Option Explicit
-
-Sub Main()
-    Debug.Print "Hello from VBA compatibility mode"
-End Sub
-```
-
-The goal is not to force modern Valo code to use legacy metadata. Instead, Valo accepts VBA metadata where needed for migration while offering cleaner syntax for new code.
-
-For more examples:
-
-- [Examples](examples/README.md)
-- [Language docs](docs/language)
+Not there yet: a bytecode VM, a package manager, a language server, a formatter,
+and a complete standard library. See the [roadmap](docs/architecture/roadmap.md).
 
 ## Feature highlights
 
-### Modern control flow
-
-```vb
-Try
-    DangerousOperation()
-Catch ex As Error
-    Console.WriteLine(ex.Message)
-Finally
-    Console.WriteLine("cleanup")
-End Try
-```
-
-### COM Automation
-
-On Windows, Valo supports late-bound COM/OLE Automation through `Object`, `CreateObject`, property access, method calls, and default-property syntax. This allows common VBA automation patterns such as `dict("Key")` for `Scripting.Dictionary`.
-
-COM examples are Windows-only. On non-Windows hosts, `CreateObject` reports a clear runtime diagnostic.
+### String interpolation
 
 ```vb
 Sub Main()
-    Dim dict As Object
-    Set dict = CreateObject("Scripting.Dictionary")
-    
-    ' Using default property Item (dict("Key") is same as dict.Item("Key"))
-    dict("Name") = "Valo"
-    
-    Console.WriteLine("Dictionary name: " & dict("Name"))
+    Dim user As String = "Ada"
+    Dim price As Double = 12.5
+
+    Console.WriteLine($"Hello, {user}!")
+    Console.WriteLine($"Total: {price:0.00}")
+    Console.WriteLine($"[{user,10}] right-aligned, [{user,-10}] left-aligned")
 End Sub
 ```
 
-### VB.NET-style modules
+Format specifiers go through the same engine as `Format`, so the two always agree.
 
-```vb
-Module MathTools
-    Public Function Add(ByVal left As Integer, ByVal right As Integer) As Integer
-        Add = left + right
-    End Function
-End Module
-
-Sub Main()
-    Console.WriteLine(MathTools.Add(2, 3))
-End Sub
-```
-
-`Module ... End Module` blocks act as module-level declaration containers. Callable members and fields can also be accessed through the module block name.
-
-### Namespaces
-
-```vb
-Namespace Game
-Namespace Graphics
-
-Public Class Sprite
-End Class
-
-End Namespace
-End Namespace
-```
-
-Nested namespace wrappers are flattened into a qualified namespace such as `Game.Graphics`.
-
-### VBA-style error handling
+### Compound assignment and shifts
 
 ```vb
 Sub Main()
-    On Error GoTo Handler
+    Dim total As Long = 10
+    total += 5
+    total *= 2
+    total >>= 1
 
-    Err.Raise 1001, "Example", "Something failed"
+    Dim message As String = "Valo"
+    message &= " 1.0"
 
-    Exit Sub
-
-Handler:
-    Debug.Print Err.Description
-    Resume Next
+    Dim flags As Long = (1 << 0) Or (1 << 3)
 End Sub
 ```
+
+`+=`, `-=`, `*=`, `/=`, `\=`, `^=`, `&=`, `<<=`, and `>>=` are all supported, as
+are the `<<` and `>>` operators.
+
+### Conversions and reflection
+
+```vb
+Sub Main()
+    Dim rex As New Dog()
+
+    Dim asAnimal As Animal = DirectCast(rex, Animal)
+    Dim maybeDog As Dog = TryCast(asAnimal, Dog)
+    Dim count As Integer = CType("42", Integer)
+
+    Console.WriteLine(GetType(Dog))
+    Console.WriteLine(NameOf(count))
+End Sub
+```
+
+`CType` converts, `DirectCast` reinterprets along the inheritance chain and fails
+otherwise, and `TryCast` answers `Nothing` instead of failing.
+
+### Control flow
+
+```vb
+Sub Main()
+    Dim i As Integer
+
+    For i = 1 To 10
+        If i Mod 2 = 0 Then Continue For
+        Console.WriteLine(i)
+    Next i
+
+    Try
+        DangerousOperation()
+    Catch ex As Error
+        Console.WriteLine(ex.Message)
+    Finally
+        Console.WriteLine("cleanup")
+    End Try
+End Sub
+```
+
+`Continue For`, `Continue While`, and `Continue Do` each advance the loop they
+name, so `Continue For` inside a nested `Do` advances the outer `For`.
 
 ### Generics, constraints, and inheritance
 
 ```vb
 Class Box(Of T)
     Public Value As T
+End Class
+
+Class Dog
+    Inherits Animal
+
+    Public Overrides Sub Speak()
+        Console.WriteLine(Name & " says woof")
+    End Sub
 End Class
 
 Interface IProducer(Of Out T)
@@ -279,7 +233,10 @@ Class Repository(Of T As {Class, New})
 End Class
 ```
 
-Generic type substitution is active for classes, structures, fields, parameters, properties, return values, inheritance, and nested generic instances. Constraint and variance syntax is accepted by the parser; deeper compile-time constraint enforcement is still being expanded.
+Generic substitution is active for classes, structures, fields, parameters,
+properties, return values, inheritance, constructor arguments, and nested generic
+instances. Constraint and variance syntax is accepted by the parser; deeper
+compile-time constraint enforcement is still being expanded.
 
 ### Native FFI
 
@@ -289,62 +246,87 @@ Declare PtrSafe Function strlen Lib "libc" CDecl (
 ) As Long
 
 Sub Main()
-    Debug.Print strlen("Valo")
+    Console.WriteLine(strlen("Valo"))
 End Sub
 ```
 
-Additional examples are available in the `examples/` directory.
+Native interop is a language feature rather than a library: `Declare`, `PtrSafe`,
+`LongPtr`, `AddressOf`, callbacks, `VarPtr`, `StrPtr`, and `ObjPtr` are all part
+of the language.
 
-### More language features
+### Modules and namespaces
 
-Valo also includes examples and tests for:
+```vb
+Module MathTools
+    Public Function Add(ByVal left As Integer, ByVal right As Integer) As Integer
+        Return left + right
+    End Function
+End Module
 
-- `AndAlso` / `OrElse` short-circuiting
-- nullable `T?` values with `.HasValue` and `.Value`
-- native and VBA-style default properties
-- static local variables
-- multidimensional arrays and `ReDim Preserve`
-- collection initializers and fluent LINQ-style extension APIs
-- async declaration syntax and immediate interpreter `Await` evaluation
-- `#If`, `#Const`, `Option Base`, and `Option Compare`
+Namespace Game
+Namespace Graphics
+
+Public Class Sprite
+End Class
+
+End Namespace
+End Namespace
+```
+
+Nested namespace wrappers flatten into a qualified namespace such as
+`Game.Graphics`.
+
+### More
+
+Valo also has examples and tests for `AndAlso` / `OrElse` short-circuiting,
+nullable `T?` values, default properties, static locals, multidimensional arrays
+and `ReDim Preserve`, collection initializers, LINQ-style extension APIs, async
+declaration syntax, and `#If` / `#Const` / `Option Base` / `Option Compare`.
+
+See the [examples](examples/README.md) and the [language docs](docs/language).
+
+## Performance
+
+Performance is treated as a feature and tracked by a benchmark suite in
+[`bench/`](bench/README.md).
+
+```sh
+cargo build --release -p valo_cli
+./scripts/bench.sh
+```
+
+Recent work removed a quadratic array-write path and the per-statement
+allocations on the interpreter's hot path:
+
+| Benchmark | Before | After |
+|---|---|---|
+| Array fill and read (100k elements) | 139.4 s | 0.16 s |
+| Nested arithmetic loop (2M iterations) | 3.24 s | 0.81 s |
+| String building (40k iterations) | 0.20 s | 0.07 s |
+
+The interpreter is still a tree walker. A bytecode VM is the next significant
+step, and these benchmarks exist to keep that work honest.
 
 ## Supported file types
 
 | Extension | Mode | Purpose |
 |---|---|---|
-| `.valo` | Native Valo | Modern Basic-inspired development |
-| `.bas` | VBA module compatibility | Legacy standard modules |
-| `.cls` | VBA class compatibility | Exported class modules |
+| `.valo` | Native Valo | The language; VB.NET syntax is the reference |
+| `.bas` | VBA compatibility | Legacy standard modules, for migration |
+| `.cls` | VBA compatibility | Exported class modules, for migration |
 
 ## CLI
 
-Valo ships with a command-line interface for running, checking, and experimenting with code.
-
 ```sh
-valo run examples/hello.valo
-valo check examples/generic_box.valo
-valo repl
+valo run examples/hello.valo           # run a program
+valo check examples/generic_box.valo   # validate without running
+valo repl                              # interactive REPL
 valo version
 valo help
 ```
 
-### Run a file
-
-```sh
-valo run examples/hello.valo
-```
-
-### Check a file
-
-```sh
-valo check examples/modules/main.valo
-```
-
-### Start the REPL
-
-```sh
-valo repl
-```
+`valo check` runs the full semantic analysis: declarations, procedure bodies,
+types, and cross-module resolution.
 
 ```txt
 valo> Dim x As Integer
@@ -354,8 +336,6 @@ valo> Console.WriteLine(x)
 ```
 
 ## Getting started
-
-Valo is currently experimental. You can build from source, or use release assets when they are available for your platform.
 
 ### Install via script
 
@@ -371,24 +351,15 @@ Windows (PowerShell):
 iwr -UseBasicParsing https://raw.githubusercontent.com/valolang/valo/main/scripts/install.ps1 | iex
 ```
 
-After installation, restart your terminal to apply PATH changes.
-
-Verify:
+Restart your terminal to apply PATH changes, then verify:
 
 ```sh
 valo version
-valo help
 ```
 
 ### Manual download
 
-Releases:
-
-```txt
-https://github.com/valolang/valo/releases
-```
-
-Available release assets may include:
+Release assets are published at <https://github.com/valolang/valo/releases>:
 
 | Platform | Asset |
 |---|---|
@@ -399,45 +370,15 @@ Available release assets may include:
 | Windows x64 | `valo-windows-x64.zip` |
 | Windows x86 | `valo-windows-x86.zip` |
 
-Windows example:
-
-```powershell
-.\valo.exe version
-.\valo.exe run examples\hello.valo
-```
-
 ### Build from source
 
-Requirements:
-
-- Rust stable
+Requires Rust stable.
 
 ```sh
 git clone https://github.com/valolang/valo
 cd valo
 cargo build --release
-```
-
-Run the CLI:
-
-```sh
 ./target/release/valo version
-```
-
-Windows:
-
-```powershell
-.\target\release\valo.exe version
-```
-
-### Quality checks
-
-```sh
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test
-cargo test -p valo_core --test examples -- --nocapture
-cargo build --release
 ```
 
 ## Your first Valo program
@@ -446,7 +387,8 @@ Create `hello.valo`:
 
 ```vb
 Sub Main()
-    Console.WriteLine("Hello, Valo")
+    Dim name As String = "Valo"
+    Console.WriteLine($"Hello, {name}")
 End Sub
 ```
 
@@ -456,24 +398,14 @@ Run it:
 valo run hello.valo
 ```
 
-Output:
-
 ```txt
 Hello, Valo
 ```
 
 ## Diagnostics
 
-Valo includes professional diagnostics with:
-
-- explicit diagnostic codes
-- source spans
-- suggestions
-- stack traces
-- import-cycle diagnostics
-- semantic/member suggestions
-
-Example:
+Diagnostics carry explicit codes, source spans, suggestions, stack traces, and
+import-cycle reporting.
 
 ```txt
 error[V1100]: Cannot assign String value to Integer variable
@@ -483,110 +415,75 @@ error[V1100]: Cannot assign String value to Integer variable
   |         ^^^^^^^^^ expected Integer
 ```
 
-Diagnostics are designed to be actionable, stable, and suitable for future tooling.
+They are designed to be actionable and stable enough to build tooling on.
 
 ## VBA compatibility
 
-Valo supports a growing set of VBA-compatible features.
+VBA compatibility is a migration bridge. It exists so an existing codebase can
+move to Valo incrementally, not to keep VBA semantics alive where they conflict
+with VB.NET. **When the two disagree, Valo follows VB.NET.**
 
-Currently supported areas include:
+`.bas` and `.cls` files load directly, including exported class modules,
+`Attribute VB_Name`, `Attribute VB_UserMemId`, and classic function-assignment
+semantics. The compatibility runtime covers `On Error` / `Err` / `Resume` / `Erl`,
+`Debug.Print`, `Variant` / `Object` / `Empty` / `Null`, file-number I/O (`Open`,
+`Input #`, `Line Input #`, `Print #`, `Write #`, `Get #`, `Put #`, with Random and
+Binary modes), Windows COM automation through `CreateObject`, and a broad surface
+of Microsoft-indexed VBA constants and functions spanning math, financial, date,
+formatting, string, conversion, type-checking, file, dialog, color, shell, and
+pointer helpers.
 
-- `.bas` and `.cls` parsing
-- exported class modules
-- `Attribute VB_Name`
-- `Attribute VB_UserMemId`
-- classic function assignment semantics
-- `On Error`
-- `Err`
-- `Resume`
-- `Erl`
-- `Debug.Print`
-- `Declare`, `PtrSafe`, `LongPtr`
-- `AddressOf`
-- `VarPtr`, `StrPtr`, `ObjPtr`
-- `Variant`, `Object`, `Empty`, `Null`
-- Windows COM/OLE Automation through `CreateObject`, late-bound calls/properties, and default-property syntax
-- file I/O compatibility runtime
-- Microsoft-indexed VBA runtime constants, including Calendar, CallType, Color, Comparison, Date, Dir/GetAttr/SetAttr, DriveType, File Attribute, File I/O, Form, IMEStatus, Keycode, MsgBox, QueryClose, Shell, SpecialFolder, StrConv, System Color, TriState, and VarType constants
-- broad Microsoft-indexed VBA function surface, including math, financial, date interval, formatting, string, conversion, type-checking, selection, file helper, dialog, color, shell, settings, COM, and pointer functions
-- `Dir`, `EOF`, `FileAttr`, `GetAttr`, `LOF`, `Loc`, `Seek`, `FreeFile`
-- `FileLen`, `FileDateTime`, `CurDir`, `MkDir`, `RmDir`, `ChDir`
-- `Timer`, `Now`, `Date`, `Time`, `DateAdd`, `DateDiff`, `DatePart`, `DateSerial`, `TimeSerial`, `DateValue`, `TimeValue`, `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second`, `Weekday`, `MonthName`, `WeekdayName`
-- string/runtime helpers such as `Len`, `LenB`, `Left$`, `Right$`, `Mid$`, `Trim$`, `Replace`, `InStr`, `InStrRev`, `Chr$`, `Asc`, `Hex$`, `Oct$`, `Val`, `Str`, `StrComp`, `StrConv`, `StrReverse`, `Format`, `FormatNumber`, `FormatCurrency`, `FormatPercent`, `IsArray`, `IsNumeric`, `IsDate`, `VarType`, and `TypeName`
-- math and financial helpers such as `Abs`, `Atn`, `Cos`, `Exp`, `Fix`, `Int`, `Log`, `Round`, `Sgn`, `Sin`, `Sqr`, `Tan`, `DDB`, `FV`, `IPmt`, `IRR`, `MIRR`, `NPer`, `NPV`, `Pmt`, `PPmt`, `PV`, `Rate`, `SLN`, and `SYD`
-- `Input #`, `Line Input #`
-- `Print #`, `Write #`
-- `Get #`, `Put #`
-- Random/Binary file modes
-- automatic sibling loading for imported `.bas` / `.cls` compatibility modules
+Coverage is pragmatic, and some host-specific functions are deliberately partial:
+`MacScript` reports an unsupported-runtime diagnostic, `GetSetting` returns the
+supplied default when no host settings store exists, and COM depends on the host
+platform.
 
-Compatibility is pragmatic and growing. Some host-specific functions are recognized with limited or platform-dependent behavior: for example, `MacScript` reports an unsupported-runtime diagnostic, `GetSetting` returns the supplied default when no host settings store exists, and COM automation depends on the host platform.
-
-Valo already supports a substantial VBA compatibility surface, including `.bas` / `.cls` modules, classic runtime behavior, COM automation foundations on Windows, and native interop primitives.
-
-Experimental native FFI is supported through VBA-style `Declare`, `PtrSafe`, `LongPtr`, `AddressOf`, callbacks, and platform-aware library loading. Broader Office object-model coverage and type-library tooling are future directions.
-
-## Research directory
-
-The `research/` directory contains real-world VBA/VB-style modules, parser edge cases, runtime stress tests, FFI demos, interoperability experiments, and prototypes used during Valo development.
-
-These files are used to:
-
-- validate VBA compatibility
-- reproduce parser/runtime bugs
-- stress the interpreter and FFI layer
-- benchmark performance
-- explore future language features
-- prototype APIs and module-system behavior
-
-Files in this directory are experimental and may change frequently as the language evolves.
+Full detail lives in [docs/language/vba-compat.md](docs/language/vba-compat.md).
 
 ## Documentation
 
-Start here:
+Language:
 
 - [Getting started](docs/getting-started.md)
-- [Language syntax](docs/language/syntax.md)
-- [Expressions](docs/language/expressions.md)
+- [Syntax](docs/language/syntax.md)
+- [Expressions and operators](docs/language/expressions.md)
+- [Strings and interpolation](docs/language/strings.md)
+- [Types and conversions](docs/language/types.md)
 - [Classes and objects](docs/language/classes.md)
 - [Inheritance](docs/language/inheritance.md)
 - [Generics](docs/language/generics.md)
 - [Modules and imports](docs/language/modules.md)
 - [Error handling](docs/language/error-handling.md)
-- [Types](docs/language/types.md)
-- [VBA compatibility](docs/language/vba-compat.md)
 - [FFI](docs/language/ffi.md)
+- [VBA compatibility](docs/language/vba-compat.md)
 - [REPL](docs/repl.md)
 - [Examples](examples/README.md)
 
-Architecture docs:
+Architecture:
 
+- [Overview](docs/architecture/README.md)
 - [Frontend](docs/architecture/frontend.md)
 - [Backend](docs/architecture/backend.md)
 - [Runtime](docs/architecture/runtime.md)
 - [Parser](docs/architecture/parser.md)
 - [Diagnostics](docs/architecture/diagnostics.md)
-- [Module System](docs/architecture/modules.md)
+- [Module system](docs/architecture/modules.md)
 - [Platform](docs/architecture/platform.md)
+- [Performance](docs/architecture/performance.md)
 - [Roadmap](docs/architecture/roadmap.md)
 
 ## Contributing
 
-Valo is in active development.
+Valo is in active development. Useful places to start:
 
-Good areas to contribute:
-
-- language tests
-- VBA compatibility cases
-- documentation
-- examples
-- diagnostics
-- runtime builtins
+- VB.NET syntax and semantics that Valo does not cover yet
+- language tests and examples
+- diagnostics quality
+- interpreter performance, measured against [`bench/`](bench/README.md)
+- runtime builtins and the standard library
 - CLI and REPL improvements
-- import-system design
-- real-world `.bas` / `.cls` compatibility cases
 
-Before submitting changes, run:
+Before submitting changes:
 
 ```sh
 cargo fmt --check

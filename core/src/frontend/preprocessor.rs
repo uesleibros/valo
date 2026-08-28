@@ -340,7 +340,7 @@ fn is_identifier(text: &str) -> bool {
 }
 
 fn key(name: &str) -> String {
-    name.to_ascii_lowercase()
+    crate::runtime::fold(name)
 }
 
 fn diagnostic(line: usize, column: usize, message: &str) -> Diagnostic {

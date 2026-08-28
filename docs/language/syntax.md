@@ -132,6 +132,34 @@ Using resource As New Resource()
 End Using
 ```
 
+### Exiting and continuing a loop
+
+`Exit For`, `Exit While`, and `Exit Do` leave a loop. `Continue For`,
+`Continue While`, and `Continue Do` skip to its next iteration.
+
+```vb
+For i = 1 To 10
+    If i Mod 2 = 0 Then Continue For
+    Console.WriteLine(i)
+Next i
+```
+
+Both name the kind of loop they act on, so they apply to the nearest enclosing
+loop of that kind rather than to the innermost loop. That is what lets an inner
+loop hand control back to an outer one:
+
+```vb
+For i = 1 To 4
+    Do
+        If i Mod 2 = 0 Then Continue For   ' advances the For, not the Do
+        Console.WriteLine(i)
+        Exit Do
+    Loop
+Next i
+```
+
+Using `Continue For` outside a `For` loop is rejected during validation.
+
 ## Procedures
 
 ### Subs

@@ -56,6 +56,72 @@ If customer IsNot Nothing AndAlso customer.Age > 18 Then
 End If
 ```
 
+Used with whole numbers rather than `Boolean` values, `And`, `Or`, and `Xor` are
+bitwise. Every integral width takes part, and the result keeps the wider
+operand's type, so masking a `Long` does not narrow it to `Integer`.
+
+```vb
+Dim flags As Long = &H00FF
+Dim masked As Long = flags And &H000F
+```
+
+## Shift Operators
+
+`<<` and `>>` shift a whole number left or right.
+
+```vb
+Console.WriteLine(1 << 10)     ' 1024
+Console.WriteLine(1024 >> 3)   ' 128
+Console.WriteLine(-16 >> 2)    ' -4
+```
+
+The result keeps the left operand's type, and the shift count is masked to that
+type's width: shifting an `Integer` by 17 shifts by 1. `>>` is arithmetic, so the
+sign bit is preserved, which is why `-16 >> 2` is `-4` rather than a large
+positive number.
+
+## Compound Assignment
+
+Every binary arithmetic, concatenation, and shift operator has a compound
+assignment form.
+
+| Operator | Equivalent to |
+|---|---|
+| `x += y` | `x = x + y` |
+| `x -= y` | `x = x - y` |
+| `x *= y` | `x = x * y` |
+| `x /= y` | `x = x / y` |
+| `x \= y` | `x = x \ y` |
+| `x ^= y` | `x = x ^ y` |
+| `x &= y` | `x = x & y` |
+| `x <<= y` | `x = x << y` |
+| `x >>= y` | `x = x >> y` |
+
+```vb
+Dim total As Long = 10
+total += 5
+total *= 2
+
+Dim message As String = "Valo"
+message &= " 1.0"
+```
+
+Compound assignment works on variables, array elements, and object fields:
+
+```vb
+counts(index) += 1
+customer.Balance -= amount
+```
+
+A compound assignment expands to the equivalent binary expression, so the target
+appears twice in the expansion. That is only observable when an index or receiver
+expression has side effects, which is worth avoiding regardless.
+
+## Conversion and Reflection Operators
+
+See [Types and conversions](types.md) for `CType`, `DirectCast`, `TryCast`,
+`GetType`, and `NameOf`.
+
 ## Operator Precedence
 
 Valo follows standard Basic operator precedence, with the following additions:
@@ -67,12 +133,16 @@ Valo follows standard Basic operator precedence, with the following additions:
 5. `Mod`
 6. `+`, `-` (Addition/Subtraction)
 7. `&` (Concatenation)
-8. `<`, `>`, `<=`, `>=`, `=`, `<>`, `Is`, `IsNot`, `Like`
-9. `Not`
-10. `And`, `AndAlso`
-11. `Or`, `OrElse`
-12. `Xor`
-13. `Eqv`
-14. `Imp`
+8. `<<`, `>>` (Shift)
+9. `<`, `>`, `<=`, `>=`, `=`, `<>`, `Is`, `IsNot`, `Like`
+10. `Not`
+11. `And`, `AndAlso`
+12. `Or`, `OrElse`
+13. `Xor`
+14. `Eqv`
+15. `Imp`
+
+Shifts bind tighter than comparison and looser than concatenation, so
+`1 << 1 + 1` shifts by `2`, not by `1`.
 
 Non-numeric unary operands are rejected with a type mismatch diagnostic.
