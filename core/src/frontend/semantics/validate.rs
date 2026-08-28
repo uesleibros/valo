@@ -14,6 +14,8 @@ use crate::frontend::semantics::types::{
     InterfaceSig, PropertyAccessorSig, TypeRegistry, TypeSig,
 };
 
+#[path = "builtin_types.rs"]
+mod builtin_types;
 #[path = "validate_classes.rs"]
 mod validate_classes;
 #[path = "validate_declarations.rs"]

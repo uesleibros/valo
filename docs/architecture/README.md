@@ -128,3 +128,26 @@ It also owns the rules that were previously restated at each use:
 
 The lexer's keyword table is the deliberate exception: a keyword is *defined*
 there, and a literal reads better among the other keywords than a constant would.
+
+## Cross-cutting: built-in types
+
+`Collection` has no source declaration, so its signature has to be written in
+Rust. It used to be 131 lines of nested struct literals — `HashMap::new()`,
+`Vec::new()`, and field-by-field initialization — sitting inside the routine
+that collects *user* types, which is not where a reader looks for it.
+
+[`semantics::builtin_types`](../../core/src/frontend/semantics/builtin_types.rs)
+holds it now, behind small builders that carry the defaults:
+
+```rust
+sig.subs.insert(key("Add"), sub("Add", vec![
+    required("Item", TypeName::Variant),
+    optional("Key", TypeName::String),
+    optional("Before", TypeName::Variant),
+    optional("After", TypeName::Variant),
+]));
+```
+
+Each type reads as its shape rather than as the boilerplate around it, and
+adding another built-in type is a handful of lines instead of a transcription
+exercise.
