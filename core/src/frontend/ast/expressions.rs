@@ -72,12 +72,17 @@ pub enum ExprKind {
     MemberAccess {
         object: Box<Expr>,
         field: String,
+        /// True when this access is part of a `?.` chain, in which case a
+        /// `Nothing` receiver yields `Nothing` rather than failing.
+        conditional: bool,
     },
     MemberCall {
         object: Box<Expr>,
         method: String,
         type_args: Vec<TypeName>,
         args: Vec<Expr>,
+        /// True when this call is part of a `?.` chain.
+        conditional: bool,
     },
     Lambda {
         params: Vec<crate::frontend::ast::declarations::Parameter>,
@@ -181,18 +186,25 @@ impl ExprKind {
                 true_expr: Box::new(true_expr.substitute_generics(bindings)),
                 false_expr: Box::new(false_expr.substitute_generics(bindings)),
             },
-            ExprKind::MemberAccess { object, field } => ExprKind::MemberAccess {
+            ExprKind::MemberAccess {
+                object,
+                field,
+                conditional,
+            } => ExprKind::MemberAccess {
                 object: Box::new(object.substitute_generics(bindings)),
                 field: field.clone(),
+                conditional: *conditional,
             },
             ExprKind::MemberCall {
                 object,
                 method,
                 type_args,
                 args,
+                conditional,
             } => ExprKind::MemberCall {
                 object: Box::new(object.substitute_generics(bindings)),
                 method: method.clone(),
+                conditional: *conditional,
                 type_args: type_args
                     .iter()
                     .map(|arg| arg.substitute_generics(bindings))

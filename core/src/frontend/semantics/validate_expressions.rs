@@ -287,6 +287,43 @@ pub(super) fn validate_assignment_target(
 ///
 /// VB.NET allows every integral width here, not just `Integer`, plus enums and
 /// the runtime-typed Variant.
+/// Returns the same access with its `?.` guard removed, or `None` when the
+/// expression is not a null-conditional access.
+///
+/// The guard only changes whether the access runs, never what it means, so
+/// validation checks the plain form and marks the result nullable.
+fn without_conditional_access(expr: &Expr) -> Option<Expr> {
+    let kind = match &expr.kind {
+        ExprKind::MemberAccess {
+            object,
+            field,
+            conditional: true,
+        } => ExprKind::MemberAccess {
+            object: object.clone(),
+            field: field.clone(),
+            conditional: false,
+        },
+        ExprKind::MemberCall {
+            object,
+            method,
+            type_args,
+            args,
+            conditional: true,
+        } => ExprKind::MemberCall {
+            object: object.clone(),
+            method: method.clone(),
+            type_args: type_args.clone(),
+            args: args.clone(),
+            conditional: false,
+        },
+        _ => return None,
+    };
+    Some(Expr {
+        kind,
+        span: expr.span,
+    })
+}
+
 fn is_bitwise_operand(ty: &TypeName, types: &TypeRegistry) -> bool {
     ty.is_integral() || ty.same_type(&TypeName::Variant) || is_enum_type(ty, types)
 }
@@ -358,6 +395,23 @@ pub(super) fn validate_expr(
     context: &Context<'_>,
     option_explicit: bool,
 ) -> Result<TypeName, Diagnostic> {
+    // A `?.` access answers Nothing whenever its receiver is Nothing, so it is
+    // checked as an ordinary access and its result is made nullable.
+    if let Some(unconditional) = without_conditional_access(expr) {
+        let inner = validate_expr(
+            &unconditional,
+            symbols,
+            types,
+            signatures,
+            context,
+            option_explicit,
+        )?;
+        return Ok(match inner {
+            TypeName::Nullable(_) => inner,
+            other => TypeName::Nullable(Box::new(other)),
+        });
+    }
+
     match &expr.kind {
         ExprKind::String(_) => Ok(TypeName::String),
         ExprKind::Interpolated(parts) => {
@@ -814,7 +868,7 @@ pub(super) fn validate_expr(
                 ))
             }
         }
-        ExprKind::MemberAccess { object, field } => {
+        ExprKind::MemberAccess { object, field, .. } => {
             if let ExprKind::Variable(name) = &object.kind
                 && name.eq_ignore_ascii_case("Err")
             {
@@ -914,6 +968,7 @@ pub(super) fn validate_expr(
             method,
             type_args: _,
             args,
+            ..
         } => {
             if let ExprKind::Variable(name) = &object.kind
                 && name.eq_ignore_ascii_case("VBA")
@@ -3740,6 +3795,12 @@ pub(super) fn member_read_type(
         }
         if member.eq_ignore_ascii_case("HasValue") {
             return Ok(TypeName::Boolean);
+        }
+        // A nullable class reference still reaches its members. This is what
+        // makes the rest of a `?.` chain resolve: the guarded prefix has already
+        // been typed as nullable, and the chain continues against the class.
+        if is_class_type(inner, types) {
+            return member_read_type(inner, member, types, span, current_class);
         }
         return Err(Diagnostic::new(
             crate::runtime::DiagnosticCode::MEMBER_ACCESS,

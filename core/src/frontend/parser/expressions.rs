@@ -503,6 +503,7 @@ impl Parser {
                             method: field,
                             type_args: Vec::new(),
                             args,
+                            conditional: false,
                         },
                         span: Span::new(self.file_id, start_span.start, end.end),
                     }
@@ -511,6 +512,7 @@ impl Parser {
                         kind: ExprKind::MemberAccess {
                             object: Box::new(object),
                             field,
+                            conditional: false,
                         },
                         span: member_span,
                     }
@@ -829,7 +831,15 @@ impl Parser {
     }
 
     pub(super) fn parse_member_access(&mut self, mut expr: Expr) -> Result<Expr, Diagnostic> {
+        // Once a `?.` appears, the rest of the chain is guarded too: in
+        // `a?.B.C`, a `Nothing` receiver makes the whole expression Nothing
+        // rather than failing on `.C`.
+        let mut conditional = false;
         loop {
+            if self.check_simple(&TokenKind::Question) && self.check_next_simple(&TokenKind::Dot) {
+                self.advance();
+                conditional = true;
+            }
             if self.match_simple(&TokenKind::Dot) {
                 let field_token = self.advance();
                 let Some(field) = contextual_identifier_name(&field_token.kind) else {
@@ -853,6 +863,7 @@ impl Parser {
                             method: field,
                             type_args,
                             args,
+                            conditional,
                         },
                         span: Span::new(self.file_id, span.start, end.end),
                     };
@@ -865,6 +876,7 @@ impl Parser {
                             method: field,
                             type_args: Vec::new(),
                             args,
+                            conditional,
                         },
                         span: Span::new(self.file_id, span.start, end.end),
                     };
@@ -873,6 +885,7 @@ impl Parser {
                         kind: ExprKind::MemberAccess {
                             object: Box::new(expr),
                             field,
+                            conditional,
                         },
                         span,
                     };

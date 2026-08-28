@@ -1,0 +1,49 @@
+' Null-Conditional Access
+' Demonstrates the ?. operator, which yields Nothing instead of failing when
+' the receiver is Nothing.
+
+Class Address
+    Public City As String
+    Public Country As String
+
+    Public Function Label() As String
+        Return City & ", " & Country
+    End Function
+End Class
+
+Class Customer
+    Public Name As String
+    Public Home As Address
+End Class
+
+Sub Main()
+    Dim known As New Customer With { .Name = "Ada" }
+    Set known.Home = New Address With { .City = "London", .Country = "UK" }
+
+    Dim unknown As New Customer With { .Name = "Grace" }
+
+    ' A present receiver behaves like an ordinary access.
+    Console.WriteLine(known.Home?.City)
+
+    ' A missing one yields Nothing rather than an error.
+    Report(known)
+    Report(unknown)
+
+    ' Method calls are guarded too.
+    Console.WriteLine(known.Home?.Label())
+    Console.WriteLine($"unknown has a label: {unknown.Home?.Label() IsNot Nothing}")
+
+    ' The guard covers the rest of the chain, so `.City` below is never reached.
+    Dim missing As Customer = Nothing
+    Console.WriteLine($"missing city is Nothing: {missing?.Home.City Is Nothing}")
+End Sub
+
+Sub Report(ByVal who As Customer)
+    Dim city As Variant = who.Home?.City
+
+    If city Is Nothing Then
+        Console.WriteLine($"{who.Name} has no address on file")
+    Else
+        Console.WriteLine($"{who.Name} lives in {city}")
+    End If
+End Sub

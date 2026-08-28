@@ -65,6 +65,7 @@ COM examples require Windows and the relevant COM server. They are skipped by th
 - [Conversions and Reflection](conversions.valo) (`CType`, `DirectCast`, `TryCast`, `GetType`, `NameOf`)
 - [Object Initializers](object_initializers.valo) (`New T With { .Member = value }`)
 - [Lambdas](lambdas.valo) (single-expression and multi-line `Function` / `Sub`)
+- [Null-Conditional Access](null_conditional.valo) (`obj?.Member`)
 
 ## Generics, Advanced Syntax, and Modern Features
 

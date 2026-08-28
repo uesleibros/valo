@@ -354,3 +354,42 @@ the member's type, and the same member initialized twice.
 
 - [Example: object initializers](../../examples/object_initializers.valo)
 - [Lambdas](functions.md#lambdas)
+
+## Null-Conditional Access
+
+`?.` reads a member only when the receiver is not `Nothing`. When it is, the
+whole expression yields `Nothing` instead of failing.
+
+```vb
+Console.WriteLine(customer.Home?.City)
+```
+
+It guards method calls as well:
+
+```vb
+Dim label As Variant = customer.Home?.Label()
+```
+
+The guard covers the rest of the chain, not just the member immediately after
+it. In `customer?.Home.City`, a `Nothing` customer makes the whole expression
+`Nothing`; `.Home` and `.City` are never evaluated.
+
+Because a guarded access can always answer `Nothing`, its result is nullable.
+That is what lets `Is Nothing` test it:
+
+```vb
+If customer.Home?.City Is Nothing Then
+    Console.WriteLine("no address on file")
+End If
+```
+
+A guarded access is a value, not a storage location, so it cannot be assigned
+to. Check the receiver first and assign through `.`:
+
+```vb
+customer.Home?.City = "London"      ' rejected
+
+If customer.Home IsNot Nothing Then
+    customer.Home.City = "London"
+End If
+```

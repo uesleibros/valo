@@ -353,14 +353,14 @@ impl Interpreter {
                 span,
             } => {
                 let (object_val, event_name) = match &event.kind {
-                    ExprKind::MemberAccess { object, field } => {
+                    ExprKind::MemberAccess { object, field, .. } => {
                         (self.eval_expr(object, frame)?, field.clone())
                     }
                     _ => unreachable!("validated in semantic phase"),
                 };
                 let (target_obj, handler_name) = match &handler.kind {
                     ExprKind::AddressOf(inner) => match &inner.kind {
-                        ExprKind::MemberAccess { object, field } => {
+                        ExprKind::MemberAccess { object, field, .. } => {
                             let obj = self.eval_expr(object, frame)?;
                             let Value::Object(obj_rc) = obj else {
                                 return Err(Diagnostic::new(
@@ -410,14 +410,14 @@ impl Interpreter {
                 span,
             } => {
                 let (object_val, event_name) = match &event.kind {
-                    ExprKind::MemberAccess { object, field } => {
+                    ExprKind::MemberAccess { object, field, .. } => {
                         (self.eval_expr(object, frame)?, field.clone())
                     }
                     _ => unreachable!("validated in semantic phase"),
                 };
                 let (target_obj, handler_name) = match &handler.kind {
                     ExprKind::AddressOf(inner) => match &inner.kind {
-                        ExprKind::MemberAccess { object, field } => {
+                        ExprKind::MemberAccess { object, field, .. } => {
                             let obj = self.eval_expr(object, frame)?;
                             let Value::Object(obj_rc) = obj else {
                                 return Err(Diagnostic::new(
@@ -732,6 +732,7 @@ impl Interpreter {
                         kind: crate::ExprKind::MemberAccess {
                             object: Box::new(object.clone()),
                             field: field.clone(),
+                            conditional: false,
                         },
                         span: *span,
                     },
@@ -746,6 +747,7 @@ impl Interpreter {
                             method: field.clone(),
                             type_args: Vec::new(),
                             args: indices.clone(),
+                            conditional: false,
                         },
                         span: *span,
                     },

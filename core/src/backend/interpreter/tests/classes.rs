@@ -2452,3 +2452,89 @@ End Sub
         crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION
     );
 }
+
+#[test]
+fn null_conditional_access_yields_nothing_for_a_missing_receiver() {
+    let output = run_source(
+        r#"
+Class Address
+    Public City As String
+End Class
+
+Class Customer
+    Public Home As Address
+End Class
+
+Sub Main()
+    Dim known As New Customer()
+    Set known.Home = New Address With { .City = "London" }
+
+    Dim unknown As New Customer()
+
+    Console.WriteLine(known.Home?.City)
+    Console.WriteLine(unknown.Home?.City Is Nothing)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["London", "True"]);
+}
+
+#[test]
+fn null_conditional_guards_method_calls_and_the_whole_chain() {
+    let output = run_source(
+        r#"
+Class Address
+    Public City As String
+
+    Public Function Label() As String
+        Return "City: " & City
+    End Function
+End Class
+
+Class Customer
+    Public Home As Address
+End Class
+
+Sub Main()
+    Dim known As New Customer()
+    Set known.Home = New Address With { .City = "London" }
+
+    Dim unknown As New Customer()
+    Console.WriteLine(known.Home?.Label())
+    Console.WriteLine(unknown.Home?.Label() Is Nothing)
+
+    ' The guard covers everything after it, so `.City` is never reached.
+    Dim missing As Customer = Nothing
+    Console.WriteLine(missing?.Home.City Is Nothing)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["City: London", "True", "True"]);
+}
+
+#[test]
+fn a_null_conditional_access_cannot_be_assigned_to() {
+    let diagnostic = source_diagnostic(
+        r#"
+Class Address
+    Public City As String
+End Class
+
+Class Customer
+    Public Home As Address
+End Class
+
+Sub Main()
+    Dim c As New Customer()
+    c.Home?.City = "London"
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        diagnostic.code,
+        crate::runtime::DiagnosticCode::INVALID_ASSIGNMENT
+    );
+}

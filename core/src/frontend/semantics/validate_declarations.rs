@@ -2502,7 +2502,7 @@ pub(super) fn ensure_const_expr(
                 ))
             }
         }
-        ExprKind::MemberAccess { object, field } => {
+        ExprKind::MemberAccess { object, field, .. } => {
             if let ExprKind::Variable(enum_name) = &object.kind
                 && types
                     .get_enum(enum_name)

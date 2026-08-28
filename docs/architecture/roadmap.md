@@ -33,7 +33,7 @@ The goal is that code written against the VB.NET language reference runs on Valo
 - [x] Multi-line lambdas (`Function() ... End Function`, `Sub() ... End Sub`)
 - [x] Object initializers (`New Point With { .X = 1 }`)
 - [ ] Anonymous types (`New With { Key .X = 1 }`)
-- [ ] Null-conditional access (`obj?.Member`)
+- [x] Null-conditional access (`obj?.Member`)
 - [ ] `Delegate Sub` / `Delegate Function` declarations
 - [ ] Tuples and tuple returns
 - [ ] `Overloads`, and deeper generic constraint enforcement

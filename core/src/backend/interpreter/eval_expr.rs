@@ -332,7 +332,11 @@ impl Interpreter {
                     }
                 }
             }
-            ExprKind::MemberAccess { object, field } => {
+            ExprKind::MemberAccess {
+                object,
+                field,
+                conditional,
+            } => {
                 if let ExprKind::Variable(name) = &object.kind {
                     if name.eq_ignore_ascii_case("Err")
                         && let Some(val) = super::builtins::err::eval_err(self, field, expr.span)?
@@ -384,6 +388,7 @@ impl Interpreter {
                 if let ExprKind::MemberAccess {
                     object: module_object,
                     field: enum_name,
+                    ..
                 } = &object.kind
                     && let ExprKind::Variable(module_name) = &module_object.kind
                     && let Ok(module_key) =
@@ -454,6 +459,10 @@ impl Interpreter {
                     return self.read_shared_member(&resolved, field, frame, expr.span);
                 }
                 let object = self.eval_expr(object, frame)?;
+                // `a?.B` yields Nothing rather than failing when a is Nothing.
+                if *conditional && matches!(object, Value::Nothing) {
+                    return Ok(Value::Nothing);
+                }
                 self.read_member(&object, field, frame, expr.span)
             }
             ExprKind::Call {
@@ -619,6 +628,7 @@ impl Interpreter {
                 method,
                 type_args: _,
                 args,
+                conditional,
             } => {
                 if let ExprKind::Variable(module_name) = &object.kind
                     && self
@@ -634,6 +644,9 @@ impl Interpreter {
                     return self.call_shared_function(class_name, method, args, frame, expr.span);
                 }
                 let object = self.eval_expr(object, frame)?;
+                if *conditional && matches!(object, Value::Nothing) {
+                    return Ok(Value::Nothing);
+                }
                 if let Ok(field_value) = self.read_member(&object, method, frame, expr.span)
                     && matches!(field_value, Value::Array(_))
                 {

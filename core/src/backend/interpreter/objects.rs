@@ -798,7 +798,7 @@ impl Interpreter {
                 indices: args.clone(),
                 span: expr.span,
             },
-            ExprKind::MemberAccess { object, field } => AssignTarget::Member {
+            ExprKind::MemberAccess { object, field, .. } => AssignTarget::Member {
                 object: object.as_ref().clone(),
                 field: field.clone(),
                 span: expr.span,

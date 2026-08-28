@@ -2648,7 +2648,7 @@ impl Interpreter {
                                 let _ = callee_frame.assign(&param.name, value, param.span)?;
                             }
                         }
-                        ExprKind::MemberAccess { object, field } => {
+                        ExprKind::MemberAccess { object, field, .. } => {
                             if let ExprKind::Variable(obj_name) = &object.kind {
                                 let obj_variable = caller_frame.variable(obj_name, object.span)?;
                                 if let VariableCell::Direct(obj_cell) = &obj_variable.cell {

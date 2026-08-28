@@ -852,7 +852,7 @@ impl Parser {
                     let target = self.parse_member_access(expr.clone())?;
                     let target_span = target.span;
                     let target_for_read = target.clone();
-                    let ExprKind::MemberAccess { object, field } = target.kind else {
+                    let ExprKind::MemberAccess { object, field, .. } = target.kind else {
                         return Err(Diagnostic::new(
                             crate::runtime::DiagnosticCode::PARSE,
                             "Expected member assignment target",
@@ -885,7 +885,11 @@ impl Parser {
                     span: Span::new(self.file_id, start.start, span.end),
                 })
             }
-            ExprKind::MemberAccess { object, field } => {
+            ExprKind::MemberAccess {
+                object,
+                field,
+                conditional,
+            } => {
                 if let ExprKind::Variable(name) = &object.kind
                     && name.eq_ignore_ascii_case("Debug")
                     && field.eq_ignore_ascii_case("Print")
@@ -899,6 +903,7 @@ impl Parser {
                 }
 
                 if let Some(op) = self.match_assignment_operator() {
+                    reject_conditional_assignment(*conditional, span)?;
                     let value = self.parse_assigned_value(&expr, op)?;
                     let end = value.span;
                     return Ok(Stmt::Assign {
@@ -927,6 +932,7 @@ impl Parser {
                 method,
                 type_args: _,
                 args,
+                ..
             } => {
                 if let ExprKind::Variable(name) = &object.kind
                     && name.eq_ignore_ascii_case("Debug")
@@ -1034,6 +1040,7 @@ impl Parser {
                 method,
                 type_args: _,
                 args,
+                ..
             } => Ok(Stmt::MemberSubCall {
                 object: *object,
                 method,
@@ -1201,22 +1208,33 @@ impl Parser {
                 indices: args,
                 span,
             }),
-            ExprKind::MemberAccess { object, field } => Ok(AssignTarget::Member {
-                object: *object,
+            ExprKind::MemberAccess {
+                object,
                 field,
-                span,
-            }),
+                conditional,
+            } => {
+                reject_conditional_assignment(conditional, span)?;
+                Ok(AssignTarget::Member {
+                    object: *object,
+                    field,
+                    span,
+                })
+            }
             ExprKind::MemberCall {
                 object,
                 method,
                 type_args: _,
                 args,
-            } => Ok(AssignTarget::MemberArrayElement {
-                object: *object,
-                field: method,
-                indices: args,
-                span,
-            }),
+                conditional,
+            } => {
+                reject_conditional_assignment(conditional, span)?;
+                Ok(AssignTarget::MemberArrayElement {
+                    object: *object,
+                    field: method,
+                    indices: args,
+                    span,
+                })
+            }
             ExprKind::PassingModeOverride { .. } => Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::INVALID_ASSIGNMENT,
                 "Passing mode override is not allowed in assignment targets",
@@ -2173,4 +2191,21 @@ impl Parser {
                 )
             ))
     }
+}
+
+/// Rejects an assignment whose target goes through a `?.` access.
+///
+/// A guarded access is a value, not a storage location: there is nothing to
+/// assign to when the receiver is Nothing.
+fn reject_conditional_assignment(conditional: bool, span: Span) -> Result<(), Diagnostic> {
+    if !conditional {
+        return Ok(());
+    }
+    Err(Diagnostic::new(
+        crate::runtime::DiagnosticCode::INVALID_ASSIGNMENT,
+        "A null-conditional access cannot be the target of an assignment",
+        Some(span),
+    )
+    .with_primary_label("not assignable")
+    .with_help("check the receiver for Nothing and then assign with '.'"))
 }

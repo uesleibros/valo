@@ -516,6 +516,7 @@ pub fn validate_statements(
                                     method: method.clone(),
                                     type_args: Vec::new(),
                                     args: args.clone(),
+                                    conditional: false,
                                 },
                                 span: *span,
                             },
@@ -594,6 +595,7 @@ pub fn validate_statements(
                 if let ExprKind::MemberAccess {
                     object,
                     field: event_name,
+                    ..
                 } = &event.kind
                 {
                     let owner = validate_expr(
