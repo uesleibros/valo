@@ -23,7 +23,9 @@ fn test_official_examples() {
         count += 1;
         match valo_core::run_file(&path) {
             Ok(output) => {
-                if let Err(mismatch) = check_transcript(&golden_dir, &path, &output, bless) {
+                if !has_environment_dependent_output(file_name)
+                    && let Err(mismatch) = check_transcript(&golden_dir, &path, &output, bless)
+                {
                     failures.push(mismatch);
                 }
             }
@@ -106,6 +108,25 @@ fn has_sub_main(path: &Path) -> bool {
             .to_ascii_lowercase()
             .starts_with("sub main")
     })
+}
+
+/// Examples whose output depends on the machine they run on.
+///
+/// These are still run, so a crash in one is still caught; only the comparison
+/// is skipped, because there is no output that would be correct everywhere.
+///
+/// Determinism and environment-independence are not the same property. Every
+/// example here prints the same thing twice in a row on one machine, which is
+/// what made the distinction easy to miss.
+fn has_environment_dependent_output(file_name: Option<&str>) -> bool {
+    matches!(
+        file_name,
+        // Print the working directory, which differs per checkout.
+        Some("com_filesystem.valo" | "vba_file_attributes.valo")
+        // Depends on whether PowerPoint is installed, and reports the failure
+        // in the host's language when it is not.
+            | Some("com_powerpoint.valo")
+    )
 }
 
 /// Setting this records the transcripts instead of comparing against them.

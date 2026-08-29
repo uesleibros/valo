@@ -79,9 +79,10 @@ examples had not:
 3. `Imports` did not bring a type into scope: `As Thing` was rejected, and the
    qualified `As Shapes.Thing` was accepted without being checked at all.
 4. A class could not inherit from one declared in the same imported module.
-5. `Set` on a nested member and assignment through an unqualified field name do
-   not resolve — worked around here by giving `Bounds` the movement it owns and
-   by writing `Me.` where a field is assigned through. Still open.
+5. Assignment through an unqualified field name did not resolve: inside a
+   class, `Field.Member = value` needed `Me.` spelled out, though *reading* it
+   did not. `Set` on a nested member — `Set a.B.C = value` — is still open, and
+   is worked around here by giving `Bounds` the movement it owns.
 
 It also showed where the interpreter was slow. A method call cost five times
 what reading a field cost, because resolution copied the whole class — every

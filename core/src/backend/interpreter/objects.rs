@@ -898,6 +898,28 @@ impl Interpreter {
                     self.write_shared_member(&resolved, member, value, span)?;
                     return Ok(());
                 }
+                // A bare name can also be a field of the enclosing instance.
+                // Reading one resolves that way, so assigning through it has to
+                // as well, or `field.Member = x` would only work written as
+                // `Me.field.Member = x`.
+                //
+                // Only reference-shaped fields take this path: writing through a
+                // record would reach a copy, and losing the write silently is
+                // worse than reporting that the name is not a variable.
+                let owner = frame
+                    .variable_ref(well_known::SELF_KEY)
+                    .map(|variable| variable.borrow().clone());
+                if let Some(owner) = owner
+                    && object_has_field(&owner, name)
+                {
+                    let field = self.read_member(&owner, name, frame, span)?;
+                    if matches!(
+                        field,
+                        Value::Object(_) | Value::ComObject(_) | Value::Collection(_)
+                    ) {
+                        return self.assign_member_to_value(field, member, value, span);
+                    }
+                }
                 let variable = frame.variable(name, target.span)?;
                 self.assign_member_to_variable(variable, member, value, span)
             }

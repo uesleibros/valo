@@ -2610,3 +2610,46 @@ End Sub
 
     assert_eq!(output, vec!["True", "False"]);
 }
+
+#[test]
+fn a_field_can_be_assigned_through_without_naming_me() {
+    let output = run_source(
+        r#"
+Class Point
+    Public X As Double
+End Class
+
+Class Holder
+    Public Spot As Point
+
+    Public Sub Initialize()
+        Set Spot = New Point()
+    End Sub
+
+    Public Sub MoveViaField()
+        Spot.X = 10
+    End Sub
+
+    Public Sub MoveViaMe()
+        Me.Spot.X = 20
+    End Sub
+
+    Public Function Where() As Double
+        Return Spot.X
+    End Function
+End Class
+
+Sub Main()
+    Dim holder As New Holder()
+
+    holder.MoveViaMe()
+    Console.WriteLine(holder.Where())
+
+    holder.MoveViaField()
+    Console.WriteLine(holder.Where())
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["20", "10"]);
+}

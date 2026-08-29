@@ -1,9 +1,0 @@
-Folder: C:\\Users\\UeKei\\Desktop\\valo\\core
-Type: IFolder
-
-Subfolders:
-  src
-  tests
-
-Files:
-  Cargo.toml (408 bytes)
