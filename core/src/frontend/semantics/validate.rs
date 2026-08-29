@@ -9,7 +9,7 @@ use crate::{
 
 use crate::frontend::semantics::context::Context;
 use crate::frontend::semantics::symbols::{
-    CallableSig, Overloads, ParamSig, Signatures, VarType, key,
+    CallableSig, Options, Overloads, ParamSig, Signatures, VarType, key,
 };
 use crate::frontend::semantics::types::{
     ClassEventSig, ClassFieldSig, ClassMethodSig, ClassPropertySig, ClassSig, DelegateSig, EnumSig,
@@ -87,7 +87,7 @@ fn validate_internal(program: &Program, require_main: bool) -> Result<(), Diagno
         &types,
         &signatures,
         &module_symbols,
-        program.option_explicit,
+        program_options(program),
     )
 }
 
@@ -116,6 +116,14 @@ fn validate_project_with_entry_requirement(
         validate_import_aliases(module, project)?;
     }
     Ok(())
+}
+
+/// The directives a program declared, as one value.
+pub(super) fn program_options(program: &Program) -> Options {
+    Options {
+        explicit: program.option_explicit,
+        strict: program.option_strict,
+    }
 }
 
 fn validate_module(
@@ -161,7 +169,7 @@ fn validate_module(
         &types,
         &signatures,
         &module_symbols,
-        program.option_explicit,
+        program_options(program),
     )
 }
 
@@ -374,39 +382,21 @@ fn validate_bodies(
     types: &TypeRegistry,
     signatures: &Signatures,
     module_symbols: &HashMap<String, VarType>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<(), Diagnostic> {
     for procedure in &program.procedures {
-        validate_procedure(
-            procedure,
-            types,
-            signatures,
-            module_symbols,
-            option_explicit,
-        )?;
+        validate_procedure(procedure, types, signatures, module_symbols, options)?;
     }
     for function in &program.functions {
-        validate_function(function, types, signatures, module_symbols, option_explicit)?;
+        validate_function(function, types, signatures, module_symbols, options)?;
     }
     for type_decl in &program.types {
         if type_decl.kind == crate::TypeKind::Structure {
-            validate_structure(
-                type_decl,
-                types,
-                signatures,
-                module_symbols,
-                option_explicit,
-            )?;
+            validate_structure(type_decl, types, signatures, module_symbols, options)?;
         }
     }
     for class_decl in &program.classes {
-        validate_class(
-            class_decl,
-            types,
-            signatures,
-            module_symbols,
-            option_explicit,
-        )?;
+        validate_class(class_decl, types, signatures, module_symbols, options)?;
     }
     Ok(())
 }

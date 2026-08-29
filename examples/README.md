@@ -85,6 +85,7 @@ COM examples require Windows and the relevant COM server. They are skipped by th
 - [Delegates](delegates.valo) (named callable types)
 - [Tuples](tuples.valo) (grouped values, tuple returns, and naming their elements)
 - [Queries](queries.valo) (`From … Where … Order By … Select`)
+- [Option Strict](option_strict.valo) (no silent narrowing, no late binding)
 - [Null-Conditional Access](null_conditional.valo) (`obj?.Member`)
 
 ## Generics, Advanced Syntax, and Modern Features

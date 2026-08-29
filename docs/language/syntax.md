@@ -204,3 +204,30 @@ ReDim Preserve dynamic(0 To 20) ' Preserves existing values
 - `Filter(arr, "match")`: Filter an array based on a string.
 - `LBound(arr, [dim])`: Get the lower bound.
 - `UBound(arr, [dim])`: Get the upper bound.
+
+## Option Strict
+
+`Option Strict On` rejects two things a program usually did not mean:
+
+```vb
+Option Strict On
+
+Dim rate As Double = 3          ' fine: nothing is lost widening
+Dim rounded As Integer = 3.9    ' rejected: use CInt(3.9)
+Dim parsed As Long = "7"        ' rejected: use CLng("7")
+```
+
+- **Conversions that can lose something** -- a narrower number, a string
+  becoming a number or the reverse, or anything out of a `Variant`. Widening is
+  untouched, since nothing is gained by spelling out a conversion that cannot
+  fail. `CInt`, `CLng`, `CStr`, `CType`, and the rest say it explicitly.
+- **Late binding** -- reaching a member of a `Variant` or an `Object`, where
+  nothing at that point can say whether the member exists. `CType` says what
+  the value is and brings the member back.
+
+It is off by default, which is what VBA source expects. `Option Strict Off`
+says so explicitly. `Option Explicit` accepts `On` and `Off` the same way, and
+means on when neither is written.
+
+`Option Strict` is per module: a file that turns it on is not affected by one
+that does not.

@@ -3,6 +3,7 @@ use super::*;
 impl Parser {
     pub fn parse_program(&mut self) -> Result<Program, Diagnostic> {
         let mut option_explicit = false;
+        let mut option_strict = false;
         let mut option_private_module = false;
         let mut option_base = 0;
         let mut saw_option_base = false;
@@ -78,7 +79,12 @@ impl Parser {
                         if option_explicit {
                             return Err(self.error_here("Option Explicit is already declared"));
                         }
-                        option_explicit = true;
+                        option_explicit = self.parse_option_switch(true)?;
+                    } else if self.match_identifier("Strict") {
+                        if option_strict {
+                            return Err(self.error_here("Option Strict is already declared"));
+                        }
+                        option_strict = self.parse_option_switch(true)?;
                     } else if self.match_simple(&TokenKind::Base) {
                         if saw_option_base {
                             return Err(self.error_here("Option Base is already declared"));
@@ -327,6 +333,7 @@ impl Parser {
             attributes,
             imports,
             option_explicit,
+            option_strict,
             option_private_module,
             option_base,
             option_compare,
@@ -343,6 +350,22 @@ impl Parser {
             properties,
         })
     }
+    /// Reads the `On` or `Off` that may follow a switchable `Option`.
+    ///
+    /// VB.NET writes `Option Strict On`; VBA writes `Option Explicit` with
+    /// nothing after it and means on. Both spellings are accepted, and
+    /// `default_on` is what a bare directive means.
+    fn parse_option_switch(&mut self, default_on: bool) -> Result<bool, Diagnostic> {
+        // `On` is a keyword, from `On Error`; `Off` is an ordinary name.
+        if self.match_simple(&TokenKind::On) || self.match_identifier("On") {
+            Ok(true)
+        } else if self.match_identifier("Off") {
+            Ok(false)
+        } else {
+            Ok(default_on)
+        }
+    }
+
     fn parse_namespace_decl(&mut self) -> Result<String, Diagnostic> {
         self.expect_simple(TokenKind::Namespace, "Expected 'Namespace'")?;
         let mut ns_name = self.expect_identifier("Expected namespace name")?;

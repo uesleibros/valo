@@ -334,3 +334,95 @@ End Sub
 
     assert!(diagnostic.message.contains("has no element 'Height'"));
 }
+
+#[test]
+fn option_strict_rejects_conversions_that_can_lose_something() {
+    let run = crate::backend::interpreter::tests::helpers::run_source;
+    let error = crate::backend::interpreter::tests::helpers::source_error;
+
+    // Widening is untouched: nothing is lost putting an Integer in a Double.
+    assert_eq!(
+        run(r#"
+Option Strict On
+
+Sub Main()
+    Dim widened As Double = 3
+    Console.WriteLine(widened)
+End Sub
+"#),
+        vec!["3"]
+    );
+
+    let narrowing = error(
+        r#"
+Option Strict On
+
+Sub Main()
+    Dim narrowed As Integer = 3.9
+End Sub
+"#,
+    );
+    assert!(narrowing.contains("Option Strict does not allow Double to become Integer"));
+
+    let parsing = error(
+        r#"
+Option Strict On
+
+Sub Main()
+    Dim parsed As Long = "7"
+End Sub
+"#,
+    );
+    assert!(parsing.contains("does not allow String to become Long"));
+
+    // Saying so explicitly is always allowed.
+    assert_eq!(
+        run(r#"
+Option Strict On
+
+Sub Main()
+    Dim rounded As Integer = CInt(3.9)
+    Console.WriteLine(rounded)
+End Sub
+"#),
+        vec!["4"]
+    );
+}
+
+#[test]
+fn option_strict_rejects_late_binding() {
+    let error = crate::backend::interpreter::tests::helpers::source_error(
+        r#"
+Option Strict On
+
+Class Thing
+    Public Name_ As String
+End Class
+
+Sub Main()
+    Dim thing As New Thing()
+    Dim loose As Variant
+    Set loose = thing
+    Console.WriteLine(loose.Name_)
+End Sub
+"#,
+    );
+
+    assert!(error.contains("Option Strict does not allow reaching 'Name_' on Variant"));
+}
+
+#[test]
+fn option_strict_is_off_unless_it_is_asked_for() {
+    let output = crate::backend::interpreter::tests::helpers::run_source(
+        r#"
+Option Strict Off
+
+Sub Main()
+    Dim narrowed As Integer = 3.9
+    Console.WriteLine(narrowed)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["4"]);
+}

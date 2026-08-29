@@ -11,7 +11,7 @@ pub(super) struct ExprValidation<'a, 'ctx> {
     pub(super) types: &'a TypeRegistry,
     pub(super) signatures: &'a Signatures,
     pub(super) context: &'a Context<'ctx>,
-    pub(super) option_explicit: bool,
+    pub(super) options: Options,
 }
 
 impl<'a, 'ctx> ExprValidation<'a, 'ctx> {
@@ -20,14 +20,14 @@ impl<'a, 'ctx> ExprValidation<'a, 'ctx> {
         types: &'a TypeRegistry,
         signatures: &'a Signatures,
         context: &'a Context<'ctx>,
-        option_explicit: bool,
+        options: Options,
     ) -> Self {
         Self {
             symbols,
             types,
             signatures,
             context,
-            option_explicit,
+            options,
         }
     }
 }
@@ -39,7 +39,7 @@ pub(super) fn validate_assignment_target(
     types: &TypeRegistry,
     signatures: &Signatures,
     context: &Context<'_>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<TypeName, Diagnostic> {
     match target {
         AssignTarget::Variable { name, span } => {
@@ -77,7 +77,7 @@ pub(super) fn validate_assignment_target(
                     return Err(unknown_variable(name, *span, symbols));
                 }
             } else {
-                if !option_explicit {
+                if !options.explicit {
                     return Ok(TypeName::Variant);
                 }
                 return Err(unknown_variable(name, *span, symbols));
@@ -176,7 +176,7 @@ pub(super) fn validate_assignment_target(
                         || class_name.eq_ignore_ascii_case(well_known::COLLECTION) =>
                 {
                     for index in indices {
-                        validate_expr(index, symbols, types, signatures, context, option_explicit)?;
+                        validate_expr(index, symbols, types, signatures, context, options)?;
                     }
                     return Ok(TypeName::Variant);
                 }
@@ -189,7 +189,7 @@ pub(super) fn validate_assignment_target(
                         .is_some() =>
                 {
                     for index in indices {
-                        validate_expr(index, symbols, types, signatures, context, option_explicit)?;
+                        validate_expr(index, symbols, types, signatures, context, options)?;
                     }
                     return Ok(value_type.clone());
                 }
@@ -197,7 +197,7 @@ pub(super) fn validate_assignment_target(
                 | VarType::Optional(_, TypeName::Variant)
                 | VarType::Const(_, TypeName::Variant) => {
                     for index in indices {
-                        validate_expr(index, symbols, types, signatures, context, option_explicit)?;
+                        validate_expr(index, symbols, types, signatures, context, options)?;
                     }
                     return Ok(TypeName::Variant);
                 }
@@ -219,7 +219,7 @@ pub(super) fn validate_assignment_target(
             for index in indices {
                 ensure_assignable(
                     &TypeName::Integer,
-                    &validate_expr(index, symbols, types, signatures, context, option_explicit)?,
+                    &validate_expr(index, symbols, types, signatures, context, options)?,
                     types,
                     index.span,
                 )?;
@@ -239,8 +239,7 @@ pub(super) fn validate_assignment_target(
             {
                 return Ok(field_sig.ty.clone());
             }
-            let object_type =
-                validate_expr(object, symbols, types, signatures, context, option_explicit)?;
+            let object_type = validate_expr(object, symbols, types, signatures, context, options)?;
             let current_class = member_access_class(object, &object_type)
                 .or_else(|| context.current_class().map(str::to_string));
             member_assignment_type(
@@ -258,10 +257,9 @@ pub(super) fn validate_assignment_target(
             indices,
             span,
         } => {
-            let object_type =
-                validate_expr(object, symbols, types, signatures, context, option_explicit)?;
+            let object_type = validate_expr(object, symbols, types, signatures, context, options)?;
             for index in indices {
-                validate_expr(index, symbols, types, signatures, context, option_explicit)?;
+                validate_expr(index, symbols, types, signatures, context, options)?;
             }
             let current_class = member_access_class(object, &object_type)
                 .or_else(|| context.current_class().map(str::to_string));
@@ -393,19 +391,12 @@ pub(super) fn validate_expr(
     types: &TypeRegistry,
     signatures: &Signatures,
     context: &Context<'_>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<TypeName, Diagnostic> {
     // A `?.` access answers Nothing whenever its receiver is Nothing, so it is
     // checked as an ordinary access and its result is made nullable.
     if let Some(unconditional) = without_conditional_access(expr) {
-        let inner = validate_expr(
-            &unconditional,
-            symbols,
-            types,
-            signatures,
-            context,
-            option_explicit,
-        )?;
+        let inner = validate_expr(&unconditional, symbols, types, signatures, context, options)?;
         return Ok(match inner {
             TypeName::Nullable(_) => inner,
             other => TypeName::Nullable(Box::new(other)),
@@ -420,12 +411,7 @@ pub(super) fn validate_expr(
             clauses,
         } => {
             let element_type = super::validate_statements::enumerable_element_type(
-                source,
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
+                source, symbols, types, signatures, context, options,
             )?;
 
             // The range variable is in scope for the clauses and nowhere else,
@@ -446,7 +432,7 @@ pub(super) fn validate_expr(
                     crate::QueryClause::Distinct => None,
                 };
                 if let Some(inner) = inner {
-                    validate_expr(inner, &scoped, types, signatures, context, option_explicit)?;
+                    validate_expr(inner, &scoped, types, signatures, context, options)?;
                 }
             }
             Ok(TypeName::User(well_known::COLLECTION.to_string()))
@@ -480,7 +466,7 @@ pub(super) fn validate_expr(
                         types,
                         signatures,
                         context,
-                        option_explicit,
+                        options,
                     )?,
                 });
             }
@@ -489,7 +475,7 @@ pub(super) fn validate_expr(
         ExprKind::Interpolated(parts) => {
             for part in parts {
                 if let crate::InterpolationPart::Value { expr, .. } = part {
-                    validate_expr(expr, symbols, types, signatures, context, option_explicit)?;
+                    validate_expr(expr, symbols, types, signatures, context, options)?;
                 }
             }
             Ok(TypeName::String)
@@ -499,14 +485,7 @@ pub(super) fn validate_expr(
             target,
             kind,
         } => {
-            validate_expr(
-                value_expr,
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
+            validate_expr(value_expr, symbols, types, signatures, context, options)?;
             ensure_known_type(target, types, expr.span)?;
             // TryCast answers Nothing when the value is not of the target type,
             // so its result is only meaningful for reference types.
@@ -564,8 +543,7 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 )
             })?;
-            let object_type =
-                validate_expr(object, symbols, types, signatures, context, option_explicit)?;
+            let object_type = validate_expr(object, symbols, types, signatures, context, options)?;
             if is_object_reference_expr(object, &object_type, types) {
                 Ok(TypeName::Boolean)
             } else {
@@ -608,7 +586,7 @@ pub(super) fn validate_expr(
         } => {
             if let Some(init) = initializer {
                 for item in init {
-                    validate_expr(item, symbols, types, signatures, context, option_explicit)?;
+                    validate_expr(item, symbols, types, signatures, context, options)?;
                 }
             }
 
@@ -633,7 +611,7 @@ pub(super) fn validate_expr(
                 }
                 if let Some(candidates) = well_known::find_constructor(&type_sig.subs) {
                     let validation =
-                        ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                        ExprValidation::new(symbols, types, signatures, context, options);
                     let init =
                         resolve_overload("Sub", "New", candidates, args, expr.span, validation)?
                             .substitute_generics(&bindings);
@@ -660,8 +638,7 @@ pub(super) fn validate_expr(
             if let Some(candidates) = well_known::find_constructor(&class_sig.subs) {
                 // `New Box(Of String)("x")` must check the argument against
                 // String, not against the class's unbound `T`.
-                let validation =
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                let validation = ExprValidation::new(symbols, types, signatures, context, options);
                 let init = resolve_overload("Sub", "New", candidates, args, expr.span, validation)?
                     .substitute_generics(&bindings);
                 validate_arguments("Sub", &init, args, expr.span, validation)?;
@@ -676,14 +653,8 @@ pub(super) fn validate_expr(
             if let Some(inits) = member_initializer {
                 let class_sig = class_sig.clone();
                 for init in inits {
-                    let value_type = validate_expr(
-                        &init.value,
-                        symbols,
-                        types,
-                        signatures,
-                        context,
-                        option_explicit,
-                    )?;
+                    let value_type =
+                        validate_expr(&init.value, symbols, types, signatures, context, options)?;
                     let member_type = class_sig
                         .fields
                         .get(&key(&init.name))
@@ -769,15 +740,14 @@ pub(super) fn validate_expr(
                 return Ok(constant.type_name());
             }
             if let Some(candidates) = signatures.functions.get(&key(name)) {
-                let validation =
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                let validation = ExprValidation::new(symbols, types, signatures, context, options);
                 let function =
                     resolve_overload("Function", name, candidates, &[], expr.span, validation)?;
                 validate_arguments("Function", function, &[], expr.span, validation)?;
 
                 return Ok(function.return_type.clone().expect("function return type"));
             }
-            if !option_explicit {
+            if !options.explicit {
                 return Ok(TypeName::Variant);
             }
             if let Some(owner_name) = context.current_class() {
@@ -800,13 +770,8 @@ pub(super) fn validate_expr(
                             .iter()
                             .any(|sig| sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
                     {
-                        let validation = ExprValidation::new(
-                            symbols,
-                            types,
-                            signatures,
-                            context,
-                            option_explicit,
-                        );
+                        let validation =
+                            ExprValidation::new(symbols, types, signatures, context, options);
                         let func_sig = resolve_overload(
                             "Function",
                             name,
@@ -839,13 +804,7 @@ pub(super) fn validate_expr(
                             &callable,
                             &[],
                             expr.span,
-                            ExprValidation::new(
-                                symbols,
-                                types,
-                                signatures,
-                                context,
-                                option_explicit,
-                            ),
+                            ExprValidation::new(symbols, types, signatures, context, options),
                         )?;
                         return Ok(get.return_type.clone().unwrap_or(TypeName::Variant));
                     }
@@ -863,13 +822,8 @@ pub(super) fn validate_expr(
                         return Ok(field_sig.ty.clone());
                     }
                     if let Some(candidates) = type_sig.functions.get(&member_key) {
-                        let validation = ExprValidation::new(
-                            symbols,
-                            types,
-                            signatures,
-                            context,
-                            option_explicit,
-                        );
+                        let validation =
+                            ExprValidation::new(symbols, types, signatures, context, options);
                         let func_sig = resolve_overload(
                             "Function",
                             name,
@@ -901,13 +855,7 @@ pub(super) fn validate_expr(
                             &callable,
                             &[],
                             expr.span,
-                            ExprValidation::new(
-                                symbols,
-                                types,
-                                signatures,
-                                context,
-                                option_explicit,
-                            ),
+                            ExprValidation::new(symbols, types, signatures, context, options),
                         )?;
                         return Ok(get.return_type.clone().unwrap_or(TypeName::Variant));
                     }
@@ -1014,13 +962,12 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 ));
             }
-            let object_type =
-                validate_expr(object, symbols, types, signatures, context, option_explicit)?;
-            if object_type.same_type(&TypeName::Variant) {
-                return Ok(TypeName::Variant);
-            }
-            if let TypeName::User(name) = &object_type
-                && name.eq_ignore_ascii_case(well_known::OBJECT)
+            let object_type = validate_expr(object, symbols, types, signatures, context, options)?;
+            // Late binding is `member_read_type`'s to allow or refuse, so the
+            // dynamic cases go through it rather than short-circuiting here.
+            if !options.strict
+                && (object_type.same_type(&TypeName::Variant)
+                    || matches!(&object_type, TypeName::User(name) if name.eq_ignore_ascii_case(well_known::OBJECT)))
             {
                 return Ok(TypeName::Variant);
             }
@@ -1029,6 +976,7 @@ pub(super) fn validate_expr(
                 &object_type,
                 field,
                 types,
+                options,
                 expr.span,
                 current_class.as_deref(),
             )
@@ -1047,7 +995,7 @@ pub(super) fn validate_expr(
                     method,
                     args,
                     expr.span,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                    ExprValidation::new(symbols, types, signatures, context, options),
                 )? {
                     return Ok(ty);
                 }
@@ -1065,13 +1013,7 @@ pub(super) fn validate_expr(
                 }
                 if method.eq_ignore_ascii_case("Raise") {
                     validate_err_raise_args(
-                        args,
-                        symbols,
-                        types,
-                        signatures,
-                        expr.span,
-                        context,
-                        option_explicit,
+                        args, symbols, types, signatures, expr.span, context, options,
                     )?;
                     return Ok(TypeName::Variant);
                 }
@@ -1087,7 +1029,7 @@ pub(super) fn validate_expr(
             {
                 if let Some(candidates) = class_sig.functions.get(&key(method)) {
                     let validation =
-                        ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                        ExprValidation::new(symbols, types, signatures, context, options);
                     let function = resolve_overload(
                         "Function", method, candidates, args, expr.span, validation,
                     )?;
@@ -1114,7 +1056,7 @@ pub(super) fn validate_expr(
                         &callable,
                         args,
                         expr.span,
-                        ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                        ExprValidation::new(symbols, types, signatures, context, options),
                     )?;
                     return Ok(get.return_type.clone().unwrap_or(TypeName::Variant));
                 }
@@ -1127,8 +1069,7 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 ));
             }
-            let object_type =
-                validate_expr(object, symbols, types, signatures, context, option_explicit)?;
+            let object_type = validate_expr(object, symbols, types, signatures, context, options)?;
             validate_method_call(
                 &object_type,
                 method,
@@ -1140,7 +1081,7 @@ pub(super) fn validate_expr(
                 signatures,
                 member_access_class(object, &object_type).as_deref(),
                 context,
-                option_explicit,
+                options,
             )
         }
         ExprKind::Call {
@@ -1152,7 +1093,7 @@ pub(super) fn validate_expr(
                 name,
                 args,
                 expr.span,
-                ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                ExprValidation::new(symbols, types, signatures, context, options),
             )? {
                 return Ok(ty);
             }
@@ -1193,25 +1134,11 @@ pub(super) fn validate_expr(
                         Some(expr.span),
                     ));
                 }
-                validate_array_expr(
-                    &args[0],
-                    symbols,
-                    types,
-                    signatures,
-                    context,
-                    option_explicit,
-                )?;
+                validate_array_expr(&args[0], symbols, types, signatures, context, options)?;
                 if args.len() == 2 {
                     ensure_assignable(
                         &TypeName::Integer,
-                        &validate_expr(
-                            &args[1],
-                            symbols,
-                            types,
-                            signatures,
-                            context,
-                            option_explicit,
-                        )?,
+                        &validate_expr(&args[1], symbols, types, signatures, context, options)?,
                         types,
                         args[1].span,
                     )?;
@@ -1233,14 +1160,7 @@ pub(super) fn validate_expr(
                         for arg in args {
                             ensure_assignable(
                                 &TypeName::Integer,
-                                &validate_expr(
-                                    arg,
-                                    symbols,
-                                    types,
-                                    signatures,
-                                    context,
-                                    option_explicit,
-                                )?,
+                                &validate_expr(arg, symbols, types, signatures, context, options)?,
                                 types,
                                 arg.span,
                             )?;
@@ -1255,13 +1175,8 @@ pub(super) fn validate_expr(
                         if let Some(delegate) =
                             types.delegates.get(&key(class_name.as_str())).cloned()
                         {
-                            let validation = ExprValidation::new(
-                                symbols,
-                                types,
-                                signatures,
-                                context,
-                                option_explicit,
-                            );
+                            let validation =
+                                ExprValidation::new(symbols, types, signatures, context, options);
                             let kind = match delegate.return_type {
                                 Some(_) => "Function",
                                 None => "Sub",
@@ -1273,14 +1188,7 @@ pub(super) fn validate_expr(
                             || class_name.eq_ignore_ascii_case(well_known::FUNC)
                         {
                             for arg in args {
-                                validate_expr(
-                                    arg,
-                                    symbols,
-                                    types,
-                                    signatures,
-                                    context,
-                                    option_explicit,
-                                )?;
+                                validate_expr(arg, symbols, types, signatures, context, options)?;
                             }
                             return Ok(TypeName::Variant);
                         }
@@ -1299,7 +1207,7 @@ pub(super) fn validate_expr(
                                 signatures,
                                 None,
                                 context,
-                                option_explicit,
+                                options,
                             );
                         }
                         if let Some(default_prop_name) = types
@@ -1317,7 +1225,7 @@ pub(super) fn validate_expr(
                                 signatures,
                                 None,
                                 context,
-                                option_explicit,
+                                options,
                             );
                         }
                         return Err(Diagnostic::new(
@@ -1331,14 +1239,7 @@ pub(super) fn validate_expr(
                     }
                     v if v.is_variant() => {
                         for arg in args {
-                            validate_expr(
-                                arg,
-                                symbols,
-                                types,
-                                signatures,
-                                context,
-                                option_explicit,
-                            )?;
+                            validate_expr(arg, symbols, types, signatures, context, options)?;
                         }
                         return Ok(TypeName::Variant);
                     }
@@ -1364,14 +1265,7 @@ pub(super) fn validate_expr(
                     for arg in args {
                         ensure_assignable(
                             &TypeName::Integer,
-                            &validate_expr(
-                                arg,
-                                symbols,
-                                types,
-                                signatures,
-                                context,
-                                option_explicit,
-                            )?,
+                            &validate_expr(arg, symbols, types, signatures, context, options)?,
                             types,
                             arg.span,
                         )?;
@@ -1380,7 +1274,7 @@ pub(super) fn validate_expr(
                 }
                 if field_sig.ty.same_type(&TypeName::Variant) {
                     for arg in args {
-                        validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+                        validate_expr(arg, symbols, types, signatures, context, options)?;
                     }
                     return Ok(TypeName::Variant);
                 }
@@ -1433,8 +1327,7 @@ pub(super) fn validate_expr(
                 ));
             };
 
-            let validation =
-                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let validation = ExprValidation::new(symbols, types, signatures, context, options);
             let function =
                 resolve_overload("Function", name, &candidates, args, expr.span, validation)?
                     .clone();
@@ -1444,7 +1337,7 @@ pub(super) fn validate_expr(
                 inferred_type_args = infer_callable_type_args(
                     &function,
                     args,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                    ExprValidation::new(symbols, types, signatures, context, options),
                     expr.span,
                 )?;
                 &inferred_type_args
@@ -1457,15 +1350,14 @@ pub(super) fn validate_expr(
                 &function,
                 args,
                 expr.span,
-                ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                ExprValidation::new(symbols, types, signatures, context, options),
             )?;
             Ok(function.return_type.clone().expect("function return type"))
         }
         ExprKind::Index { target, args } => {
-            let _target_type =
-                validate_expr(target, symbols, types, signatures, context, option_explicit)?;
+            let _target_type = validate_expr(target, symbols, types, signatures, context, options)?;
             for arg in args {
-                validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+                validate_expr(arg, symbols, types, signatures, context, options)?;
             }
             Ok(TypeName::Variant)
         }
@@ -1474,30 +1366,10 @@ pub(super) fn validate_expr(
             true_expr,
             false_expr,
         } => {
-            validate_expr(
-                condition,
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
-            let true_type = validate_expr(
-                true_expr,
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
-            let false_type = validate_expr(
-                false_expr,
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
+            validate_expr(condition, symbols, types, signatures, context, options)?;
+            let true_type = validate_expr(true_expr, symbols, types, signatures, context, options)?;
+            let false_type =
+                validate_expr(false_expr, symbols, types, signatures, context, options)?;
             if true_type.same_type(&false_type) {
                 Ok(true_type)
             } else {
@@ -1505,10 +1377,9 @@ pub(super) fn validate_expr(
             }
         }
         ExprKind::Binary { left, op, right } => {
-            let left_type_raw =
-                validate_expr(left, symbols, types, signatures, context, option_explicit)?;
+            let left_type_raw = validate_expr(left, symbols, types, signatures, context, options)?;
             let right_type_raw =
-                validate_expr(right, symbols, types, signatures, context, option_explicit)?;
+                validate_expr(right, symbols, types, signatures, context, options)?;
 
             let is_nullable = matches!(left_type_raw, TypeName::Nullable(_))
                 || matches!(right_type_raw, TypeName::Nullable(_));
@@ -1681,7 +1552,7 @@ pub(super) fn validate_expr(
             }
         }
         ExprKind::Unary { op, expr: inner } => {
-            let ty = validate_expr(inner, symbols, types, signatures, context, option_explicit)?;
+            let ty = validate_expr(inner, symbols, types, signatures, context, options)?;
             let operator_kind = match op {
                 UnaryOp::Positive => Some(crate::OperatorKind::UnaryPlus),
                 UnaryOp::Negate => Some(crate::OperatorKind::UnaryMinus),
@@ -1730,10 +1601,10 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 ));
             }
-            validate_expr(expr, symbols, types, signatures, context, option_explicit)
+            validate_expr(expr, symbols, types, signatures, context, options)
         }
         ExprKind::PassingModeOverride { expr, .. } => {
-            validate_expr(expr, symbols, types, signatures, context, option_explicit)
+            validate_expr(expr, symbols, types, signatures, context, options)
         }
     }
 }
@@ -1777,7 +1648,7 @@ pub(super) fn validate_array_expr(
     types: &TypeRegistry,
     _signatures: &Signatures,
     _context: &Context<'_>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<TypeName, Diagnostic> {
     match &expr.kind {
         ExprKind::Variable(name) => match symbols.get(&key(name)).cloned() {
@@ -1815,7 +1686,7 @@ pub(super) fn validate_array_expr(
                         return Ok(TypeName::Variant);
                     }
                 }
-                if !option_explicit {
+                if !options.explicit {
                     return Ok(TypeName::Variant);
                 }
                 Err(Diagnostic::new(
@@ -1843,7 +1714,7 @@ fn validate_builtin_function(
     let types = validation.types;
     let signatures = validation.signatures;
     let context = validation.context;
-    let option_explicit = validation.option_explicit;
+    let options = validation.options;
 
     let effective_name = strip_vba_namespace(name);
     let Some(builtin) = builtins::lookup(effective_name) else {
@@ -1857,24 +1728,9 @@ fn validate_builtin_function(
         "IsArray" => {
             // Answers whether the argument is an array, so a non-array argument
             // is a legitimate question rather than an error.
-            if validate_array_expr(
-                &args[0],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )
-            .is_err()
+            if validate_array_expr(&args[0], symbols, types, signatures, context, options).is_err()
             {
-                validate_expr(
-                    &args[0],
-                    symbols,
-                    types,
-                    signatures,
-                    context,
-                    option_explicit,
-                )?;
+                validate_expr(&args[0], symbols, types, signatures, context, options)?;
             }
         }
         "IsMissing" => {
@@ -1883,21 +1739,14 @@ fn validate_builtin_function(
         // These take an array as their first argument, which the ordinary
         // expression rules would reject as "an array used as a scalar".
         "Filter" | "LBound" | "UBound" => {
-            validate_array_expr(
-                &args[0],
-                symbols,
-                types,
-                signatures,
-                context,
-                option_explicit,
-            )?;
+            validate_array_expr(&args[0], symbols, types, signatures, context, options)?;
             for arg in &args[1..] {
-                validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+                validate_expr(arg, symbols, types, signatures, context, options)?;
             }
         }
         _ => {
             for arg in args {
-                validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+                validate_expr(arg, symbols, types, signatures, context, options)?;
             }
         }
     }
@@ -1969,7 +1818,7 @@ pub(super) fn resolve_overload<'a>(
                 validation.types,
                 validation.signatures,
                 validation.context,
-                validation.option_explicit,
+                validation.options,
             )
             .ok()
         })
@@ -2210,13 +2059,14 @@ fn validate_argument_value(
             validation.types,
             validation.signatures,
             validation.context,
-            validation.option_explicit,
+            validation.options,
         )?;
         ensure_assignable_expr(
             &TypeName::Variant,
             &arg_type,
             arg,
             validation.types,
+            validation.options,
             arg.span,
         )?;
         return Ok(());
@@ -2229,9 +2079,16 @@ fn validate_argument_value(
                 validation.types,
                 validation.signatures,
                 validation.context,
-                validation.option_explicit,
+                validation.options,
             )?;
-            ensure_assignable_expr(&param.ty, &arg_type, arg, validation.types, arg.span)
+            ensure_assignable_expr(
+                &param.ty,
+                &arg_type,
+                arg,
+                validation.types,
+                validation.options,
+                arg.span,
+            )
         }
         PassingMode::ByRef => {
             let arg_type = validate_expr(
@@ -2240,9 +2097,16 @@ fn validate_argument_value(
                 validation.types,
                 validation.signatures,
                 validation.context,
-                validation.option_explicit,
+                validation.options,
             )?;
-            ensure_assignable_expr(&param.ty, &arg_type, arg, validation.types, arg.span)
+            ensure_assignable_expr(
+                &param.ty,
+                &arg_type,
+                arg,
+                validation.types,
+                validation.options,
+                arg.span,
+            )
         }
     }
 }
@@ -2331,7 +2195,7 @@ fn infer_callable_type_args(
             validation.types,
             validation.signatures,
             validation.context,
-            validation.option_explicit,
+            validation.options,
         )?
         else {
             continue;
@@ -2370,7 +2234,7 @@ fn infer_expr_type_for_generic(
     types: &TypeRegistry,
     signatures: &Signatures,
     context: &Context<'_>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<Option<TypeName>, Diagnostic> {
     match &expr.kind {
         ExprKind::String(_) => Ok(Some(TypeName::String)),
@@ -2395,14 +2259,14 @@ fn infer_expr_type_for_generic(
         ExprKind::Variable(name) => Ok(symbols.get(&key(name)).and_then(VarType::scalar_type)),
         ExprKind::New { class_name, .. } => Ok(Some(types.canonical_type_name(class_name))),
         ExprKind::NamedArg { expr, .. } | ExprKind::PassingModeOverride { expr, .. } => {
-            infer_expr_type_for_generic(expr, symbols, types, signatures, context, option_explicit)
+            infer_expr_type_for_generic(expr, symbols, types, signatures, context, options)
         }
         ExprKind::Nothing | ExprKind::Empty | ExprKind::Null | ExprKind::Missing => {
             Ok(Some(TypeName::Variant))
         }
         ExprKind::AddressOf(_) => Ok(Some(TypeName::FuncPtr)),
         ExprKind::Me | ExprKind::MyBase | ExprKind::MyClass => {
-            validate_expr(expr, symbols, types, signatures, context, option_explicit).map(Some)
+            validate_expr(expr, symbols, types, signatures, context, options).map(Some)
         }
         _ => Ok(None),
     }
@@ -2498,13 +2362,13 @@ pub(super) fn validate_method_call(
     signatures: &Signatures,
     current_class: Option<&str>,
     context: &Context<'_>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<TypeName, Diagnostic> {
     if object_type.same_type(&TypeName::Variant)
         || matches!(object_type, TypeName::User(name) if name.eq_ignore_ascii_case(well_known::OBJECT))
     {
         for arg in args {
-            validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+            validate_expr(arg, symbols, types, signatures, context, options)?;
         }
         return Ok(TypeName::Variant);
     }
@@ -2519,7 +2383,7 @@ pub(super) fn validate_method_call(
             args,
             as_expression,
             span,
-            ExprValidation::new(symbols, types, signatures, context, option_explicit),
+            ExprValidation::new(symbols, types, signatures, context, options),
         )? {
             return Ok(res_ty);
         }
@@ -2537,7 +2401,7 @@ pub(super) fn validate_method_call(
             args,
             as_expression,
             span,
-            ExprValidation::new(symbols, types, signatures, context, option_explicit),
+            ExprValidation::new(symbols, types, signatures, context, options),
         )? {
             return Ok(res_ty);
         }
@@ -2553,14 +2417,13 @@ pub(super) fn validate_method_call(
             signatures,
             current_class,
             context,
-            option_explicit,
+            options,
         );
     };
 
     if as_expression {
         if let Some(method_candidates) = class_sig.functions.get(&key(method)) {
-            let validation =
-                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let validation = ExprValidation::new(symbols, types, signatures, context, options);
             let method_sig = resolve_overload(
                 "Function",
                 method,
@@ -2615,7 +2478,7 @@ pub(super) fn validate_method_call(
                     &dummy_sig,
                     args,
                     span,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                    ExprValidation::new(symbols, types, signatures, context, options),
                 )
                 .is_ok()
                 {
@@ -2644,7 +2507,7 @@ pub(super) fn validate_method_call(
                     signatures,
                     None,
                     context,
-                    option_explicit,
+                    options,
                 );
             }
         }
@@ -2668,7 +2531,7 @@ pub(super) fn validate_method_call(
             args,
             as_expression,
             span,
-            ExprValidation::new(symbols, types, signatures, context, option_explicit),
+            ExprValidation::new(symbols, types, signatures, context, options),
         )? {
             return Ok(res_ty);
         }
@@ -2676,8 +2539,7 @@ pub(super) fn validate_method_call(
         Err(unknown_class_member(class_sig, method, as_expression, span))
     } else {
         if let Some(method_candidates) = class_sig.subs.get(&key(method)) {
-            let validation =
-                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let validation = ExprValidation::new(symbols, types, signatures, context, options);
             let method_sig =
                 resolve_overload("Sub", method, method_candidates, args, span, validation)?;
             ensure_visible(
@@ -2701,7 +2563,7 @@ pub(super) fn validate_method_call(
             args,
             as_expression,
             span,
-            ExprValidation::new(symbols, types, signatures, context, option_explicit),
+            ExprValidation::new(symbols, types, signatures, context, options),
         )? {
             return Ok(res_ty);
         }
@@ -2785,14 +2647,13 @@ fn validate_structure_method_call(
     signatures: &Signatures,
     current_type: Option<&str>,
     context: &Context<'_>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<TypeName, Diagnostic> {
     let (type_name, bindings) = generic_bindings_for_type(object_type, types);
     if let Some(interface_sig) = types.get_interface(&type_name) {
         if as_expression {
             if let Some(method_candidates) = interface_sig.functions.get(&key(method)) {
-                let validation =
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                let validation = ExprValidation::new(symbols, types, signatures, context, options);
                 let method_sig = resolve_overload(
                     "Function",
                     method,
@@ -2835,7 +2696,7 @@ fn validate_structure_method_call(
                     &dummy_sig,
                     args,
                     span,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                    ExprValidation::new(symbols, types, signatures, context, options),
                 )?;
                 return Ok(return_type);
             }
@@ -2848,8 +2709,7 @@ fn validate_structure_method_call(
             }
         } else {
             if let Some(method_candidates) = interface_sig.subs.get(&key(method)) {
-                let validation =
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                let validation = ExprValidation::new(symbols, types, signatures, context, options);
                 let method_sig =
                     resolve_overload("Sub", method, method_candidates, args, span, validation)?;
                 validate_arguments("Sub", method_sig, args, span, validation)?;
@@ -2877,7 +2737,7 @@ fn validate_structure_method_call(
                     &dummy_sig,
                     args,
                     span,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                    ExprValidation::new(symbols, types, signatures, context, options),
                 )?;
                 return Ok(TypeName::Variant);
             }
@@ -2903,8 +2763,7 @@ fn validate_structure_method_call(
         && field_sig.array.is_some()
     {
         for arg in args {
-            let index_type =
-                validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+            let index_type = validate_expr(arg, symbols, types, signatures, context, options)?;
             ensure_assignable(&TypeName::Int64, &index_type, types, arg.span)?;
         }
         return Ok(field_sig.ty.substitute_generics(&bindings));
@@ -2919,8 +2778,7 @@ fn validate_structure_method_call(
     }
     if as_expression {
         if let Some(method_candidates) = type_sig.functions.get(&key(method)) {
-            let validation =
-                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let validation = ExprValidation::new(symbols, types, signatures, context, options);
             let method_sig = resolve_overload(
                 "Function",
                 method,
@@ -2971,7 +2829,7 @@ fn validate_structure_method_call(
                 &dummy_sig,
                 args,
                 span,
-                ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                ExprValidation::new(symbols, types, signatures, context, options),
             )?;
             return Ok(return_type);
         }
@@ -2988,7 +2846,7 @@ fn validate_structure_method_call(
             args,
             as_expression,
             span,
-            ExprValidation::new(symbols, types, signatures, context, option_explicit),
+            ExprValidation::new(symbols, types, signatures, context, options),
         )? {
             return Ok(res_ty);
         }
@@ -3011,8 +2869,7 @@ fn validate_structure_method_call(
             ));
         }
         if let Some(method_candidates) = type_sig.subs.get(&key(method)) {
-            let validation =
-                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let validation = ExprValidation::new(symbols, types, signatures, context, options);
             let method_sig =
                 resolve_overload("Sub", method, method_candidates, args, span, validation)?;
             ensure_visible(
@@ -3031,7 +2888,7 @@ fn validate_structure_method_call(
             args,
             as_expression,
             span,
-            ExprValidation::new(symbols, types, signatures, context, option_explicit),
+            ExprValidation::new(symbols, types, signatures, context, options),
         )? {
             return Ok(res_ty);
         }
@@ -3107,6 +2964,7 @@ pub(super) fn member_read_type(
     object_type: &TypeName,
     member: &str,
     types: &TypeRegistry,
+    options: Options,
     span: crate::runtime::Span,
     current_class: Option<&str>,
 ) -> Result<TypeName, Diagnostic> {
@@ -3121,7 +2979,7 @@ pub(super) fn member_read_type(
         // makes the rest of a `?.` chain resolve: the guarded prefix has already
         // been typed as nullable, and the chain continues against the class.
         if is_class_type(inner, types) {
-            return member_read_type(inner, member, types, span, current_class);
+            return member_read_type(inner, member, types, options, span, current_class);
         }
         return Err(Diagnostic::new(
             crate::runtime::DiagnosticCode::MEMBER_ACCESS,
@@ -3132,6 +2990,25 @@ pub(super) fn member_read_type(
     if object_type.same_type(&TypeName::Variant)
         || matches!(object_type, TypeName::User(name) if name.eq_ignore_ascii_case(well_known::OBJECT))
     {
+        // Reaching a member of a value whose type is only known at run time is
+        // late binding: nothing here can say whether the member exists. That is
+        // how COM and `CallByName` work, and it is exactly what `Option Strict`
+        // is for turning off.
+        if options.strict {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                format!(
+                    "Option Strict does not allow reaching '{}' on {}",
+                    member,
+                    object_type.display_name()
+                ),
+                Some(span),
+            )
+            .with_primary_label("whether this member exists is only known when the program runs")
+            .with_help(
+                "declare the value with the type it holds, or use CType to say what it is",
+            ));
+        }
         return Ok(TypeName::Variant);
     }
     if let TypeName::Tuple(elements) = object_type {
@@ -3812,13 +3689,103 @@ fn generic_bindings_for_type(
     }
 }
 
+/// Rejects, under `Option Strict`, a conversion that can lose something.
+///
+/// Off -- the default, and what VBA source expects -- these all convert
+/// silently: `Dim n As Integer = 3.9` rounds, and `Dim n As Long = "7"` parses.
+/// On, each has to be asked for with `CInt`, `CLng`, and the rest, so that
+/// where a value changes shape is written down.
+///
+/// Widening is untouched either way: nothing is lost putting an `Integer` in a
+/// `Long`, so nothing is gained by making it explicit.
+fn ensure_strict_conversion(
+    target: &TypeName,
+    source: &TypeName,
+    options: Options,
+    span: crate::runtime::Span,
+) -> Result<(), Diagnostic> {
+    if !options.strict {
+        return Ok(());
+    }
+
+    let reason = if source.same_type(&TypeName::Variant) && !target.same_type(&TypeName::Variant) {
+        "a Variant holds anything, so what it holds is only known when the program runs"
+    } else if is_numeric_type(target) && source.same_type(&TypeName::String) {
+        "a String has to be parsed to be a number, and it may not be one"
+    } else if target.same_type(&TypeName::String) && is_numeric_type(source) {
+        "a number has to be formatted to be a String"
+    } else if is_numeric_type(target) && is_numeric_type(source) && narrows(source, target) {
+        "the value does not fit, and would be rounded or overflow"
+    } else {
+        return Ok(());
+    };
+
+    Err(Diagnostic::new(
+        crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+        format!(
+            "Option Strict does not allow {} to become {}",
+            source.display_name(),
+            target.display_name()
+        ),
+        Some(span),
+    )
+    .with_primary_label(reason)
+    .with_help(match conversion_function(target) {
+        Some(name) => format!("convert it explicitly, with {name} or CType"),
+        None => "convert it explicitly, with CType".to_string(),
+    }))
+}
+
+/// The conversion that asks for this type by name.
+fn conversion_function(ty: &TypeName) -> Option<&'static str> {
+    Some(match ty {
+        TypeName::Byte => "CByte",
+        TypeName::Integer => "CInt",
+        TypeName::Long => "CLng",
+        TypeName::Int64 => "CLngLng",
+        TypeName::Single => "CSng",
+        TypeName::Double => "CDbl",
+        TypeName::Currency => "CCur",
+        TypeName::Decimal => "CDec",
+        TypeName::Boolean => "CBool",
+        TypeName::Date => "CDate",
+        TypeName::String => "CStr",
+        _ => return None,
+    })
+}
+
+/// Whether reaching `to` from `from` can lose something.
+fn narrows(from: &TypeName, to: &TypeName) -> bool {
+    fn rank(ty: &TypeName) -> Option<u8> {
+        Some(match ty {
+            TypeName::Byte => 0,
+            TypeName::Integer => 1,
+            TypeName::Long => 2,
+            TypeName::Int64 => 3,
+            TypeName::Decimal => 4,
+            TypeName::Single => 5,
+            TypeName::Double => 6,
+            _ => return None,
+        })
+    }
+    match (rank(from), rank(to)) {
+        (Some(from), Some(to)) => from > to,
+        // Currency, Date, and the unsigned widths sit off the ladder; a
+        // conversion between one of those and anything else is not obviously
+        // lossless, so it is spelled out.
+        _ => !from.same_type(to),
+    }
+}
+
 pub(super) fn ensure_assignable_expr(
     target: &TypeName,
     source: &TypeName,
     source_expr: &Expr,
     types: &TypeRegistry,
+    options: Options,
     span: crate::runtime::Span,
 ) -> Result<(), Diagnostic> {
+    ensure_strict_conversion(target, source, options, span)?;
     if matches!(source_expr.kind, ExprKind::Nothing) {
         if target.same_type(&TypeName::Variant) || matches!(target, TypeName::Nullable(_)) {
             return Ok(());
@@ -4016,26 +3983,22 @@ pub(super) fn validate_case_item(
     types: &TypeRegistry,
     signatures: &Signatures,
     context: &Context<'_>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<(), Diagnostic> {
     match item {
         CaseItem::Value(value) => {
-            let value_type =
-                validate_expr(value, symbols, types, signatures, context, option_explicit)?;
+            let value_type = validate_expr(value, symbols, types, signatures, context, options)?;
             ensure_case_comparable(subject_type, &value_type, value.span)
         }
         CaseItem::Range { start, end } => {
-            let start_type =
-                validate_expr(start, symbols, types, signatures, context, option_explicit)?;
-            let end_type =
-                validate_expr(end, symbols, types, signatures, context, option_explicit)?;
+            let start_type = validate_expr(start, symbols, types, signatures, context, options)?;
+            let end_type = validate_expr(end, symbols, types, signatures, context, options)?;
             ensure_case_comparable(subject_type, &start_type, start.span)?;
             ensure_case_comparable(subject_type, &end_type, end.span)?;
             ensure_case_orderable(subject_type, start.span)
         }
         CaseItem::Compare { op, expr } => {
-            let expr_type =
-                validate_expr(expr, symbols, types, signatures, context, option_explicit)?;
+            let expr_type = validate_expr(expr, symbols, types, signatures, context, options)?;
             ensure_case_comparable(subject_type, &expr_type, expr.span)?;
             if matches!(
                 op,
@@ -4283,7 +4246,7 @@ fn validate_err_raise_args(
     signatures: &Signatures,
     span: crate::runtime::Span,
     context: &Context<'_>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<(), Diagnostic> {
     if args.is_empty() || args.len() > 5 {
         return Err(Diagnostic::new(
@@ -4300,7 +4263,7 @@ fn validate_err_raise_args(
         TypeName::Integer,
     ];
     for (index, arg) in args.iter().enumerate() {
-        let actual = validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
+        let actual = validate_expr(arg, symbols, types, signatures, context, options)?;
         ensure_assignable(&expected[index], &actual, types, arg.span)?;
     }
     Ok(())

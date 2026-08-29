@@ -7,7 +7,7 @@ pub(super) fn validate_class(
     types: &TypeRegistry,
     signatures: &Signatures,
     module_symbols: &HashMap<String, VarType>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<(), Diagnostic> {
     validate_implements_common(
         &class_decl.name,
@@ -53,7 +53,7 @@ pub(super) fn validate_class(
                         },
                         loop_context: LoopContext::default(),
                         in_with: false,
-                        option_explicit,
+                        options,
                     },
                 )?;
             }
@@ -79,7 +79,7 @@ pub(super) fn validate_class(
                         },
                         loop_context: LoopContext::default(),
                         in_with: false,
-                        option_explicit,
+                        options,
                     },
                 )?;
             }
@@ -115,7 +115,7 @@ pub(super) fn validate_class(
                         },
                         loop_context: LoopContext::default(),
                         in_with: false,
-                        option_explicit,
+                        options,
                     },
                 )?;
                 if method.function.is_iterator {
@@ -181,7 +181,7 @@ pub(super) fn validate_class(
                         },
                         loop_context: LoopContext::default(),
                         in_with: false,
-                        option_explicit,
+                        options,
                     },
                 )?;
                 if !saw_yield && !saw_return {
@@ -233,7 +233,7 @@ pub(super) fn validate_class(
                                 },
                                 loop_context: LoopContext::default(),
                                 in_with: false,
-                                option_explicit,
+                                options,
                             },
                         )?;
                         if property.is_iterator {
@@ -279,7 +279,7 @@ pub(super) fn validate_class(
                                 },
                                 loop_context: LoopContext::default(),
                                 in_with: false,
-                                option_explicit,
+                                options,
                             },
                         )?;
                     }
@@ -695,7 +695,7 @@ pub(super) fn validate_structure(
     types: &TypeRegistry,
     signatures: &Signatures,
     module_symbols: &HashMap<String, VarType>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<(), Diagnostic> {
     validate_implements_common(
         &type_decl.name,
@@ -741,7 +741,7 @@ pub(super) fn validate_structure(
                         },
                         loop_context: LoopContext::default(),
                         in_with: false,
-                        option_explicit,
+                        options,
                     },
                 )?;
             }
@@ -765,7 +765,7 @@ pub(super) fn validate_structure(
                         },
                         loop_context: LoopContext::default(),
                         in_with: false,
-                        option_explicit,
+                        options,
                     },
                 )?;
             }
@@ -800,7 +800,7 @@ pub(super) fn validate_structure(
                         },
                         loop_context: LoopContext::default(),
                         in_with: false,
-                        option_explicit,
+                        options,
                     },
                 )?;
                 if method.function.is_iterator {
@@ -871,7 +871,7 @@ pub(super) fn validate_structure(
                                 },
                                 loop_context: LoopContext::default(),
                                 in_with: false,
-                                option_explicit,
+                                options,
                             },
                         )?;
                         if property.is_iterator {
@@ -917,7 +917,7 @@ pub(super) fn validate_structure(
                                 },
                                 loop_context: LoopContext::default(),
                                 in_with: false,
-                                option_explicit,
+                                options,
                             },
                         )?;
                     }

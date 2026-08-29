@@ -1330,13 +1330,14 @@ pub(super) fn collect_types_in_scope(
                         extension_methods: HashMap::new(),
                     },
                     &Context::Sub { is_async: false },
-                    program.option_explicit,
+                    program_options(program),
                 )?;
                 ensure_assignable_expr(
                     &field.ty,
                     &initializer_type,
                     initializer,
                     &registry,
+                    program_options(program),
                     initializer.span,
                 )?;
             }
@@ -1924,13 +1925,14 @@ fn validate_class_field_type(
                     extension_methods: HashMap::new(),
                 },
                 &Context::Sub { is_async: false },
-                false,
+                Options::default(),
             )?;
             ensure_assignable_expr(
                 ty,
                 &initializer_type,
                 initializer,
                 registry,
+                Options::default(),
                 initializer.span,
             )?;
         }
@@ -2454,7 +2456,7 @@ pub(super) fn collect_module_symbols(
                 types,
                 signatures,
                 &Context::Sub { is_async: false },
-                program.option_explicit,
+                program_options(program),
             )?
         } else {
             TypeName::Variant
@@ -2473,9 +2475,16 @@ pub(super) fn collect_module_symbols(
                 types,
                 signatures,
                 &Context::Sub { is_async: false },
-                program.option_explicit,
+                program_options(program),
             )?;
-            ensure_assignable_expr(&ty, &source_type, initializer, types, initializer.span)?;
+            ensure_assignable_expr(
+                &ty,
+                &source_type,
+                initializer,
+                types,
+                program_options(program),
+                initializer.span,
+            )?;
         }
         let name_key = key(&var.name);
         if symbols.contains_key(&name_key) {
@@ -2501,7 +2510,7 @@ pub(super) fn collect_module_symbols(
             types,
             signatures,
             &Context::Sub { is_async: false },
-            program.option_explicit,
+            program_options(program),
         )?;
         let const_type = const_decl.ty.clone().unwrap_or(value_type.clone());
         ensure_known_type(&const_type, types, const_decl.span)?;
@@ -2510,6 +2519,7 @@ pub(super) fn collect_module_symbols(
             &value_type,
             &const_decl.value,
             types,
+            program_options(program),
             const_decl.span,
         )?;
         let name_key = key(&const_decl.name);
@@ -2644,7 +2654,7 @@ pub(super) fn validate_procedure(
     types: &TypeRegistry,
     signatures: &Signatures,
     module_symbols: &HashMap<String, VarType>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<(), Diagnostic> {
     let mut symbols = module_symbols.clone();
     add_module_symbols(module_symbols, &mut symbols);
@@ -2660,7 +2670,7 @@ pub(super) fn validate_procedure(
             },
             loop_context: LoopContext::default(),
             in_with: false,
-            option_explicit,
+            options,
         },
     )
 }
@@ -2670,7 +2680,7 @@ pub(super) fn validate_function(
     types: &TypeRegistry,
     signatures: &Signatures,
     module_symbols: &HashMap<String, VarType>,
-    option_explicit: bool,
+    options: Options,
 ) -> Result<(), Diagnostic> {
     let mut symbols = HashMap::new();
     add_module_symbols(module_symbols, &mut symbols);
@@ -2701,7 +2711,7 @@ pub(super) fn validate_function(
             },
             loop_context: LoopContext::default(),
             in_with: false,
-            option_explicit,
+            options,
         },
     )?;
 

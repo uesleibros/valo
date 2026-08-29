@@ -8,6 +8,8 @@ pub struct Program {
     pub attributes: Vec<AttributeDecl>,
     pub imports: Vec<ImportDecl>,
     pub option_explicit: bool,
+    /// `Option Strict` -- see [`crate::semantics`] for what it rejects.
+    pub option_strict: bool,
     pub option_private_module: bool,
     pub option_base: i64,
     pub option_compare: OptionCompare,
