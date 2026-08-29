@@ -593,7 +593,8 @@ fn msg_box(
         }
 
         println!("{title}: {prompt}");
-        return Ok(Value::Int16(1)); // vbOK
+        // Nothing to click, so report the same answer an OK press would.
+        Ok(Value::Int16(1))
     }
 }
 
