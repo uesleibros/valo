@@ -14,6 +14,7 @@ pub mod ffi_platform;
 pub mod naming;
 pub mod numeric;
 pub mod ops;
+pub mod overloads;
 pub mod stdlib;
 mod type_name;
 mod value;

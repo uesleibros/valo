@@ -1,9 +1,10 @@
 use crate::interpreter::values::{default_value, key};
+use crate::runtime::overloads;
 use crate::runtime::well_known;
 use crate::runtime::{
     ArrayValue, Diagnostic, LambdaValue, Span, TypeName, Value, coerce_assignment,
 };
-use crate::{Expr, ExprKind, Function, PassingMode};
+use crate::{Expr, ExprKind, Function, PassingMode, Procedure};
 use std::rc::Rc;
 
 use super::frame::{Variable, VariableCell};
@@ -522,6 +523,124 @@ impl Interpreter {
         result
     }
 
+    /// Picks which of the procedures sharing a name a call means.
+    ///
+    /// Resolution has to happen before the arguments are bound, and binding is
+    /// what evaluates them: an argument passed `ByRef` is aliased rather than
+    /// copied, and one with a side effect has to happen exactly once. So the
+    /// types here are read off the expressions rather than computed by running
+    /// them, and an argument whose type cannot be read that way counts as
+    /// unknown, which fits every candidate equally.
+    ///
+    /// That is weaker than what the analyzer knows, and the analyzer has
+    /// already established that the call picks out one procedure. When the
+    /// weaker view cannot, this reports it rather than guessing.
+    pub(crate) fn pick_overload<'a, T>(
+        &self,
+        kind: &str,
+        name: &str,
+        candidates: &'a [T],
+        params_of: impl Fn(&T) -> &[crate::Parameter],
+        argument_types: &[Option<TypeName>],
+        span: Span,
+    ) -> Result<&'a T, Diagnostic> {
+        if let [only] = candidates {
+            return Ok(only);
+        }
+
+        let shapes: Vec<Vec<overloads::ParamShape>> = candidates
+            .iter()
+            .map(|candidate| {
+                params_of(candidate)
+                    .iter()
+                    .map(|param| overloads::ParamShape {
+                        ty: param.ty.clone(),
+                        is_optional: param.is_optional,
+                        is_param_array: param.is_param_array,
+                    })
+                    .collect()
+            })
+            .collect();
+
+        match overloads::resolve(&shapes, argument_types) {
+            overloads::Resolution::Single(chosen) => Ok(&candidates[chosen]),
+            overloads::Resolution::NoMatch => Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+                format!("No overload of {kind} '{name}' accepts these arguments"),
+                Some(span),
+            )),
+            overloads::Resolution::Ambiguous(_) => Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::AMBIGUOUS_OVERLOAD,
+                format!("Which overload of {kind} '{name}' is meant cannot be told from here"),
+                Some(span),
+            )
+            .with_help(
+                "convert the argument to the parameter type, or assign it to a typed variable first",
+            )),
+        }
+    }
+
+    /// The types of arguments still written as expressions.
+    pub(crate) fn argument_types_of(&self, args: &[Expr], frame: &Frame) -> Vec<Option<TypeName>> {
+        args.iter()
+            .map(|arg| self.argument_type_without_running_it(arg, frame))
+            .collect()
+    }
+
+    /// The types of arguments that have already been evaluated.
+    ///
+    /// These are exact, which is what makes a call through already-computed
+    /// values -- an extension method, a callback -- resolve better than one
+    /// still holding its arguments as expressions.
+    pub(crate) fn argument_types_of_values(args: &[Value]) -> Vec<Option<TypeName>> {
+        args.iter().map(|value| Some(value.type_name())).collect()
+    }
+
+    /// An argument's type, worked out without evaluating it.
+    ///
+    /// `None` means "could not tell", which overload resolution treats as
+    /// fitting anything. Nothing here may run the program: a call that appears
+    /// as an argument is answered from its declared result type, never by
+    /// making the call.
+    fn argument_type_without_running_it(&self, expr: &Expr, frame: &Frame) -> Option<TypeName> {
+        match &expr.kind {
+            ExprKind::NamedArg { expr, .. } => self.argument_type_without_running_it(expr, frame),
+            ExprKind::String(_) | ExprKind::Interpolated(_) => Some(TypeName::String),
+            ExprKind::Integer(_) => Some(TypeName::Integer),
+            ExprKind::Long(_) => Some(TypeName::Long),
+            ExprKind::LongLong(_) => Some(TypeName::Int64),
+            ExprKind::Single(_) => Some(TypeName::Single),
+            ExprKind::Double(_) => Some(TypeName::Double),
+            ExprKind::Currency(_) => Some(TypeName::Currency),
+            ExprKind::Decimal(_) => Some(TypeName::Decimal),
+            ExprKind::Boolean(_) => Some(TypeName::Boolean),
+            ExprKind::DateLiteral(_) => Some(TypeName::Date),
+            ExprKind::Convert { target, .. } => Some(target.clone()),
+            ExprKind::Variable(name) => frame
+                .variable_ref(&key(name))
+                .map(|variable| variable.borrow().type_name()),
+            ExprKind::Call { name, args, .. } => {
+                // A name with parentheses can be an array or a lambda held in a
+                // variable before it is a call to a declared procedure.
+                if let Some(variable) = frame.variable_ref(&key(name)) {
+                    return match args.is_empty() {
+                        true => Some(variable.borrow().type_name()),
+                        false => None,
+                    };
+                }
+                if let Some(builtin) = crate::runtime::builtins::lookup(name) {
+                    return Some(builtin.returns.type_name());
+                }
+                // An overloaded callee has no one result type to report.
+                match self.functions.get(&key(name))?.as_slice() {
+                    [only] => Some(only.return_type.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub(crate) fn bind_parameter_values(
         &mut self,
         params: &[crate::Parameter],
@@ -622,13 +741,23 @@ impl Interpreter {
         }
         let module_key = self.resolve_function_module(name, caller_frame, span)?;
         let lookup = qualified_key(module_key.as_deref(), name);
-        let mut function = self.functions.get(&lookup).cloned().ok_or_else(|| {
+        let candidates = self.functions.get(&lookup).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::UNKNOWN_NAME,
                 format!("Function '{}' is not defined", name),
                 Some(span),
             )
         })?;
+        let mut function = self
+            .pick_overload(
+                "Function",
+                name,
+                candidates,
+                |function| &function.params,
+                &self.argument_types_of(args, caller_frame),
+                span,
+            )?
+            .clone();
         let inferred_type_args;
         let type_args = if type_args.is_empty() && !function.type_params.is_empty() {
             inferred_type_args = infer_function_type_args(&function, args, caller_frame, span)?;
@@ -866,24 +995,59 @@ impl Interpreter {
 
         if let Some(qualified_names) = self.extension_methods.get(&type_key).cloned() {
             for qualified_name in qualified_names {
-                if let Some(func) = self.functions.get(&qualified_name).cloned()
-                    && func.name.eq_ignore_ascii_case(method)
+                let named = |name: &str| name.eq_ignore_ascii_case(method);
+                if let Some(candidates) = self.functions.get(&qualified_name)
+                    && candidates.iter().any(|func| named(&func.name))
                 {
+                    let candidates: Vec<Function> = candidates
+                        .iter()
+                        .filter(|func| named(&func.name))
+                        .cloned()
+                        .collect();
                     let mut eval_args = Vec::with_capacity(args.len() + 1);
                     eval_args.push(object.clone());
                     for arg in args {
                         eval_args.push(self.eval_expr(arg, caller_frame)?);
                     }
+                    // The receiver is the extension method's first parameter,
+                    // so it takes part in choosing between overloads.
+                    let types = Self::argument_types_of_values(&eval_args);
+                    let func = self
+                        .pick_overload(
+                            "Function",
+                            method,
+                            &candidates,
+                            |func| &func.params,
+                            &types,
+                            span,
+                        )?
+                        .clone();
                     return Ok(Some(self.call_function_value(func, &eval_args, span)?));
                 }
-                if let Some(proc) = self.procedures.get(&qualified_name).cloned()
-                    && proc.name.eq_ignore_ascii_case(method)
+                if let Some(candidates) = self.procedures.get(&qualified_name)
+                    && candidates.iter().any(|proc| named(&proc.name))
                 {
+                    let candidates: Vec<Procedure> = candidates
+                        .iter()
+                        .filter(|proc| named(&proc.name))
+                        .cloned()
+                        .collect();
                     let mut eval_args = Vec::with_capacity(args.len() + 1);
                     eval_args.push(object.clone());
                     for arg in args {
                         eval_args.push(self.eval_expr(arg, caller_frame)?);
                     }
+                    let types = Self::argument_types_of_values(&eval_args);
+                    let proc = self
+                        .pick_overload(
+                            "Sub",
+                            method,
+                            &candidates,
+                            |proc| &proc.params,
+                            &types,
+                            span,
+                        )?
+                        .clone();
                     self.call_sub_value(proc, &eval_args, span)?;
                     return Ok(Some(Value::Empty));
                 }
@@ -957,13 +1121,23 @@ impl Interpreter {
     ) -> Result<(), Diagnostic> {
         let module_key = self.resolve_sub_module(name, caller_frame, span)?;
         let lookup = qualified_key(module_key.as_deref(), name);
-        let procedure = self.procedures.get(&lookup).cloned().ok_or_else(|| {
+        let candidates = self.procedures.get(&lookup).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::UNKNOWN_NAME,
                 format!("Sub '{}' is not defined", name),
                 Some(span),
             )
         })?;
+        let procedure = self
+            .pick_overload(
+                "Sub",
+                name,
+                candidates,
+                |procedure| &procedure.params,
+                &Self::argument_types_of_values(args),
+                span,
+            )?
+            .clone();
 
         self.call_stack.push(format!("Sub '{}'", procedure.name));
         self.scope_stack.push(format!("Sub {}", procedure.name));
@@ -1052,7 +1226,21 @@ impl Interpreter {
         }
         let module_key = self.resolve_sub_module(name, caller_frame, span)?;
         let lookup = qualified_key(module_key.as_deref(), name);
-        let Some(procedure) = self.procedures.get(&lookup).cloned() else {
+        let chosen = match self.procedures.get(&lookup) {
+            Some(candidates) => Some(
+                self.pick_overload(
+                    "Sub",
+                    name,
+                    candidates,
+                    |procedure| &procedure.params,
+                    &self.argument_types_of(args, caller_frame),
+                    span,
+                )?
+                .clone(),
+            ),
+            None => None,
+        };
+        let Some(procedure) = chosen else {
             return match self.call_function(name, &[], args, caller_frame, span) {
                 Ok(_) => Ok(()),
                 Err(err)
@@ -1150,10 +1338,9 @@ impl Interpreter {
             }
             return self.call_native(&declare, args, caller_frame, span);
         }
-        let function = self
+        let candidates = self
             .functions
             .get(&qualified_key(Some(&module_key), name))
-            .cloned()
             .ok_or_else(|| {
                 Diagnostic::new(
                     crate::runtime::DiagnosticCode::UNKNOWN_NAME,
@@ -1161,6 +1348,16 @@ impl Interpreter {
                     Some(span),
                 )
             })?;
+        let function = self
+            .pick_overload(
+                "Function",
+                name,
+                candidates,
+                |function| &function.params,
+                &self.argument_types_of(args, caller_frame),
+                span,
+            )?
+            .clone();
         if caller_frame.module_key() != Some(module_key.as_str())
             && !crate::modules::is_public(function.visibility)
         {
@@ -1287,11 +1484,21 @@ impl Interpreter {
             let _ = self.call_native(&declare, args, caller_frame, span)?;
             return Ok(());
         }
-        let Some(procedure) = self
-            .procedures
-            .get(&qualified_key(Some(&module_key), name))
-            .cloned()
-        else {
+        let chosen = match self.procedures.get(&qualified_key(Some(&module_key), name)) {
+            Some(candidates) => Some(
+                self.pick_overload(
+                    "Sub",
+                    name,
+                    candidates,
+                    |procedure| &procedure.params,
+                    &self.argument_types_of(args, caller_frame),
+                    span,
+                )?
+                .clone(),
+            ),
+            None => None,
+        };
+        let Some(procedure) = chosen else {
             return match self.call_module_function(qualifier, name, args, caller_frame, span) {
                 Ok(_) => Ok(()),
                 Err(err)

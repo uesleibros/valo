@@ -2,6 +2,7 @@ use super::*;
 use crate::ContinueTarget;
 use crate::runtime::Span;
 use crate::runtime::builtins::{self, strip_vba_namespace};
+use crate::runtime::overloads;
 use crate::runtime::well_known;
 
 #[derive(Clone, Copy)]
@@ -698,14 +699,12 @@ pub(super) fn validate_expr(
             if let Some(constant) = crate::runtime::vba::vba_constant(name) {
                 return Ok(constant.type_name());
             }
-            if let Some(function) = signatures.functions.get(&key(name)) {
-                validate_arguments(
-                    "Function",
-                    function,
-                    &[],
-                    expr.span,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
-                )?;
+            if let Some(candidates) = signatures.functions.get(&key(name)) {
+                let validation =
+                    ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                let function =
+                    resolve_overload("Function", name, candidates, &[], expr.span, validation)?;
+                validate_arguments("Function", function, &[], expr.span, validation)?;
 
                 return Ok(function.return_type.clone().expect("function return type"));
             }
@@ -1289,21 +1288,21 @@ pub(super) fn validate_expr(
                 }
             }
 
-            let mut function = signatures.functions.get(&key(name)).cloned();
-            if function.is_none()
+            let mut candidates = signatures.functions.get(&key(name)).cloned();
+            if candidates.is_none()
                 && let Some(owner_name) = context.current_class()
                 && let Some(class_sig) = types.get_class(owner_name)
             {
                 let member_key = key(name);
                 if let Some(func_sig) = class_sig.functions.get(&member_key) {
                     if func_sig.is_shared || symbols.contains_key(well_known::SELF_KEY) {
-                        function = Some(func_sig.clone());
+                        candidates = Some(vec![func_sig.clone()]);
                     }
                 } else if let Some(prop_sig) = class_sig.properties.get(&member_key)
                     && let Some(get) = &prop_sig.get
                     && (prop_sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
                 {
-                    function = Some(CallableSig {
+                    candidates = Some(vec![CallableSig {
                         attributes: Vec::new(),
                         visibility: Visibility::Public,
                         name: prop_sig.name.clone(),
@@ -1314,11 +1313,11 @@ pub(super) fn validate_expr(
                         is_declare: false,
                         params: get.params.clone(),
                         return_type: get.return_type.clone(),
-                    });
+                    }]);
                 }
             }
 
-            let Some(function) = function else {
+            let Some(candidates) = candidates else {
                 if signatures.subs.contains_key(&key(name)) {
                     return Err(Diagnostic::new(
                         crate::runtime::DiagnosticCode::TYPE_MISMATCH,
@@ -1332,6 +1331,12 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 ));
             };
+
+            let validation =
+                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let function =
+                resolve_overload("Function", name, &candidates, args, expr.span, validation)?
+                    .clone();
 
             let inferred_type_args;
             let type_args = if type_args.is_empty() && !function.type_params.is_empty() {
@@ -1806,6 +1811,160 @@ pub(super) fn enum_member_value_type(name: &str, types: &TypeRegistry) -> Option
         }
     }
     None
+}
+
+/// Picks which of the procedures sharing a name a call means.
+///
+/// Typing the arguments is only worth doing when there is a choice to make, so
+/// a name that means exactly one procedure returns it untouched -- and the
+/// argument checking that follows reports a mismatch far more precisely than
+/// "nothing fits" ever could.
+pub(super) fn resolve_overload<'a>(
+    kind: &str,
+    name: &str,
+    candidates: &'a [CallableSig],
+    args: &[Expr],
+    span: Span,
+    validation: ExprValidation<'_, '_>,
+) -> Result<&'a CallableSig, Diagnostic> {
+    if let [only] = candidates {
+        return Ok(only);
+    }
+
+    // A named argument says which parameter it is for, so it selects by name
+    // rather than by position. Candidates that have no such parameter are out.
+    let named: Vec<&str> = args
+        .iter()
+        .filter_map(|arg| match &arg.kind {
+            ExprKind::NamedArg { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    let by_name: Vec<&CallableSig> = candidates
+        .iter()
+        .filter(|candidate| {
+            named.iter().all(|wanted| {
+                candidate
+                    .params
+                    .iter()
+                    .any(|param| param.name.eq_ignore_ascii_case(wanted))
+            })
+        })
+        .collect();
+    if !named.is_empty() {
+        return match by_name.as_slice() {
+            [single] => Ok(single),
+            [] => Err(no_overload_matches(kind, name, candidates, span)),
+            _ => Err(ambiguous_overload(kind, name, &by_name, span)),
+        };
+    }
+
+    let argument_types: Vec<Option<TypeName>> = args
+        .iter()
+        .map(|arg| {
+            validate_expr(
+                arg,
+                validation.symbols,
+                validation.types,
+                validation.signatures,
+                validation.context,
+                validation.option_explicit,
+            )
+            .ok()
+        })
+        .collect();
+
+    let shapes: Vec<Vec<overloads::ParamShape>> = candidates.iter().map(param_shapes).collect();
+    match overloads::resolve(&shapes, &argument_types) {
+        overloads::Resolution::Single(chosen) => Ok(&candidates[chosen]),
+        overloads::Resolution::NoMatch => Err(no_overload_matches(kind, name, candidates, span)),
+        overloads::Resolution::Ambiguous(tied) => {
+            let tied: Vec<&CallableSig> =
+                tied.into_iter().map(|index| &candidates[index]).collect();
+            Err(ambiguous_overload(kind, name, &tied, span))
+        }
+    }
+}
+
+/// What overload resolution needs from a signature's parameters.
+pub(super) fn param_shapes(sig: &CallableSig) -> Vec<overloads::ParamShape> {
+    sig.params
+        .iter()
+        .map(|param| overloads::ParamShape {
+            ty: param.ty.clone(),
+            is_optional: param.is_optional,
+            is_param_array: param.is_param_array,
+        })
+        .collect()
+}
+
+fn no_overload_matches(
+    kind: &str,
+    name: &str,
+    candidates: &[CallableSig],
+    span: Span,
+) -> Diagnostic {
+    Diagnostic::new(
+        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+        format!("No overload of {kind} '{name}' accepts these arguments"),
+        Some(span),
+    )
+    .with_available_items(
+        "the overloads are",
+        candidates
+            .iter()
+            .map(describe_signature)
+            .collect::<Vec<_>>()
+            .iter()
+            .map(String::as_str),
+    )
+}
+
+fn ambiguous_overload(kind: &str, name: &str, tied: &[&CallableSig], span: Span) -> Diagnostic {
+    Diagnostic::new(
+        crate::runtime::DiagnosticCode::AMBIGUOUS_OVERLOAD,
+        format!("Call to {kind} '{name}' is ambiguous"),
+        Some(span),
+    )
+    .with_available_items(
+        "these fit equally well",
+        tied.iter()
+            .map(|sig| describe_signature(sig))
+            .collect::<Vec<_>>()
+            .iter()
+            .map(String::as_str),
+    )
+    .with_help("convert an argument, or name the parameters, to say which is meant")
+}
+
+/// Renders a signature the way it was written, for listing in a diagnostic.
+fn describe_signature(sig: &CallableSig) -> String {
+    let params: Vec<String> = sig
+        .params
+        .iter()
+        .map(|param| {
+            let mut text = String::new();
+            if param.is_param_array {
+                text.push_str("ParamArray ");
+            } else if param.is_optional {
+                text.push_str("Optional ");
+            }
+            text.push_str(&param.name);
+            text.push_str(" As ");
+            text.push_str(&param.ty.display_name());
+            text
+        })
+        .collect();
+
+    match &sig.return_type {
+        Some(return_type) => format!(
+            "{}({}) As {}",
+            sig.name,
+            params.join(", "),
+            return_type.display_name()
+        ),
+        None => format!("{}({})", sig.name, params.join(", ")),
+    }
 }
 
 pub(super) fn validate_arguments(

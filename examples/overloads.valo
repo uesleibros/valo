@@ -1,0 +1,68 @@
+' Overloads: several procedures sharing one name.
+'
+' Which one a call means is decided by the arguments -- how many there are and
+' what type they have. The `Overloads` keyword is optional; it says the sharing
+' is deliberate, and Valo works the rest out from the declarations.
+
+' Same name, different number of arguments.
+Public Function Area(ByVal side As Double) As Double
+    Return side * side
+End Function
+
+Public Function Area(ByVal width As Double, ByVal height As Double) As Double
+    Return width * height
+End Function
+
+' Same name, same count, different types.
+Public Overloads Sub Describe(ByVal text As String)
+    Console.WriteLine("a string: " & text)
+End Sub
+
+Public Overloads Sub Describe(ByVal number As Long)
+    Console.WriteLine("a whole number: " & number)
+End Sub
+
+Public Overloads Sub Describe(ByVal number As Double)
+    Console.WriteLine("a fractional number: " & number)
+End Sub
+
+' An Optional parameter still counts, so this pair does not overlap.
+Public Function Join_(ByVal left As String, ByVal right As String) As String
+    Return left & " " & right
+End Function
+
+Public Function Join_(ByVal parts As Collection) As String
+    Dim result As String
+    Dim part As Variant
+    For Each part In parts
+        If Len(result) > 0 Then
+            result = result & " "
+        End If
+        result = result & part
+    Next part
+    Return result
+End Function
+
+Sub Main()
+    Console.WriteLine(Area(3))
+    Console.WriteLine(Area(3, 4))
+
+    Describe("hello")
+    Describe(42)
+    Describe(2.5)
+
+    ' A variable carries its declared type to the call.
+    Dim count As Long = 7
+    Describe(count)
+
+    Console.WriteLine(Join_("left", "right"))
+
+    Dim words As New Collection()
+    words.Add("one")
+    words.Add("two")
+    words.Add("three")
+    Console.WriteLine(Join_(words))
+
+    ' Naming a parameter picks the overload that has one by that name.
+    Console.WriteLine(Area(width := 2, height := 5))
+End Sub

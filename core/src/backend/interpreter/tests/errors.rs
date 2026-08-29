@@ -154,7 +154,7 @@ End Sub
 }
 
 #[test]
-fn reports_duplicate_sub_name() {
+fn reports_two_subs_that_no_call_could_tell_apart() {
     let error = source_error(
         r#"
 Sub Same()
@@ -168,7 +168,7 @@ End Sub
 "#,
     );
 
-    assert!(error.contains("Name 'SAME' conflicts with existing Sub"));
+    assert!(error.contains("'SAME' is already declared with these parameter types"));
 }
 
 #[test]

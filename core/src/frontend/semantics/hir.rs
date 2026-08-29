@@ -290,15 +290,14 @@ fn push_function(
     let qualified_name = qualified_name(scope.module_name, scope.namespace, name);
     let symbol_key = key(&qualified_name);
     if let Some(existing) = index.by_qualified_name.get(&symbol_key).copied() {
-        let existing_is_property = matches!(
-            existing,
-            SymbolId::Function(existing_id)
-                if index
-                    .functions
-                    .get(existing_id.0)
-                    .is_some_and(|function| function.kind == FunctionSymbolKind::Property)
-        );
-        if !(existing_is_property && kind == FunctionSymbolKind::Property) {
+        // Procedures are allowed to share a name: a `Get` and a `Set` are one
+        // property, and two `Sub`s with different parameters are overloads.
+        // Whether they can actually be told apart is a question about their
+        // parameters, which this index does not carry -- `collect_signatures`
+        // holds those and rejects the pairs no call could choose between. What
+        // is rejected here is a procedure colliding with something that is not
+        // one, such as a class of the same name.
+        if !matches!(existing, SymbolId::Function(_)) {
             return Err(Diagnostic::new(
                 DiagnosticCode::DUPLICATE_DECLARATION,
                 format!("Symbol '{qualified_name}' is already declared in this project"),

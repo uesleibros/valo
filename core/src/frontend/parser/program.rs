@@ -181,6 +181,10 @@ impl Parser {
                     let is_async = self.match_simple(&TokenKind::Async);
                     let is_partial = self.match_simple(&TokenKind::Partial);
                     let is_iterator = self.match_simple(&TokenKind::Iterator);
+                    // `Overloads` says a procedure shares its name deliberately. Valo works
+                    // that out from the declarations themselves, so the word is accepted for
+                    // VB.NET source compatibility and carries no meaning of its own.
+                    self.match_simple(&TokenKind::Overloads);
 
                     match self.peek_kind() {
                         TokenKind::Sub => {
@@ -380,6 +384,10 @@ impl Parser {
             let is_async = self.match_simple(&TokenKind::Async);
             let is_partial = self.match_simple(&TokenKind::Partial);
             let is_iterator = self.match_simple(&TokenKind::Iterator);
+            // `Overloads` says a procedure shares its name deliberately. Valo works
+            // that out from the declarations themselves, so the word is accepted for
+            // VB.NET source compatibility and carries no meaning of its own.
+            self.match_simple(&TokenKind::Overloads);
 
             match self.peek_kind() {
                 TokenKind::Sub => {

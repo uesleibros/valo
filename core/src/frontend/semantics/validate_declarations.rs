@@ -2053,16 +2053,13 @@ pub(super) fn collect_signatures(
         }
 
         let name_key = key(&declare.name);
-        if let Some(existing) = names.insert(name_key.clone(), "Declare") {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
-                format!(
-                    "Name '{}' conflicts with existing {}",
-                    declare.name, existing
-                ),
-                Some(declare.span),
-            ));
-        }
+        declare_procedure(
+            &mut names,
+            &name_key,
+            "Declare",
+            &declare.name,
+            declare.span,
+        )?;
 
         let signature = CallableSig {
             attributes: Vec::new(),
@@ -2078,10 +2075,16 @@ pub(super) fn collect_signatures(
         };
         match declare.kind {
             crate::DeclareKind::Function => {
-                functions.insert(name_key, signature);
+                push_overload(
+                    &mut functions,
+                    name_key,
+                    &declare.name,
+                    declare.span,
+                    signature,
+                )?;
             }
             crate::DeclareKind::Sub => {
-                subs.insert(name_key, signature);
+                push_overload(&mut subs, name_key, &declare.name, declare.span, signature)?;
             }
         }
     }
@@ -2090,19 +2093,19 @@ pub(super) fn collect_signatures(
         validate_parameter_list(&procedure.params, types)?;
 
         let name_key = key(&procedure.name);
-        if let Some(existing) = names.insert(name_key.clone(), "Sub") {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
-                format!(
-                    "Name '{}' conflicts with existing {}",
-                    procedure.name, existing
-                ),
-                Some(procedure.span),
-            ));
-        }
+        declare_procedure(
+            &mut names,
+            &name_key,
+            "Sub",
+            &procedure.name,
+            procedure.span,
+        )?;
 
-        subs.insert(
+        push_overload(
+            &mut subs,
             name_key,
+            &procedure.name,
+            procedure.span,
             CallableSig {
                 attributes: procedure.attributes.clone(),
                 visibility: Visibility::Public,
@@ -2115,7 +2118,7 @@ pub(super) fn collect_signatures(
                 params: params_to_sigs(&procedure.params),
                 return_type: None,
             },
-        );
+        )?;
     }
 
     for function in &program.functions {
@@ -2123,19 +2126,19 @@ pub(super) fn collect_signatures(
         ensure_known_type(&function.return_type, types, function.span)?;
 
         let name_key = key(&function.name);
-        if let Some(existing) = names.insert(name_key.clone(), "Function") {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
-                format!(
-                    "Name '{}' conflicts with existing {}",
-                    function.name, existing
-                ),
-                Some(function.span),
-            ));
-        }
+        declare_procedure(
+            &mut names,
+            &name_key,
+            "Function",
+            &function.name,
+            function.span,
+        )?;
 
-        functions.insert(
+        push_overload(
+            &mut functions,
             name_key,
+            &function.name,
+            function.span,
             CallableSig {
                 attributes: function.attributes.clone(),
                 visibility: Visibility::Public,
@@ -2148,11 +2151,11 @@ pub(super) fn collect_signatures(
                 params: params_to_sigs(&function.params),
                 return_type: Some(function.return_type.clone()),
             },
-        );
+        )?;
     }
 
     let mut extension_methods: HashMap<String, Vec<CallableSig>> = HashMap::new();
-    for sig in subs.values().chain(functions.values()) {
+    for sig in subs.values().chain(functions.values()).flatten() {
         if sig.is_extension_method()
             && let Some(first_param) = sig.params.first()
         {
@@ -2169,6 +2172,78 @@ pub(super) fn collect_signatures(
         functions,
         extension_methods,
     })
+}
+
+/// Records that a name is used by a procedure, rejecting a real collision.
+///
+/// Procedures may share a name -- that is overloading, and the call site picks
+/// between them. Everything else may not: a `Sub` cannot share a name with a
+/// type, a module variable, or a constant, because nothing at the use site
+/// could tell which was meant. A `Sub` and a `Function` cannot share one
+/// either; the two are looked up separately, and a name has to be one or the
+/// other for `f()` in an expression to mean anything definite.
+fn declare_procedure(
+    names: &mut HashMap<String, &'static str>,
+    name_key: &str,
+    kind: &'static str,
+    name: &str,
+    span: crate::runtime::Span,
+) -> Result<(), Diagnostic> {
+    let procedure_kinds = ["Sub", "Function", "Declare"];
+    match names.insert(name_key.to_string(), kind) {
+        Some(existing) if existing == kind => Ok(()),
+        // A `Declare` is a Sub or a Function; which one is recorded separately.
+        Some(existing) if procedure_kinds.contains(&existing) && kind == "Declare" => Ok(()),
+        Some(existing) if existing == "Declare" && procedure_kinds.contains(&kind) => Ok(()),
+        Some(existing) => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+            format!("Name '{name}' conflicts with existing {existing}"),
+            Some(span),
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Adds one procedure to the set sharing its name.
+///
+/// Two procedures with the same name are overloads as long as their parameters
+/// differ. Two with the same parameters are a duplicate declaration: no call
+/// could ever choose between them.
+fn push_overload(
+    into: &mut HashMap<String, Overloads>,
+    name_key: String,
+    name: &str,
+    span: crate::runtime::Span,
+    signature: CallableSig,
+) -> Result<(), Diagnostic> {
+    let overloads = into.entry(name_key).or_default();
+    if overloads
+        .iter()
+        .any(|existing| same_parameter_types(existing, &signature))
+    {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+            format!("'{name}' is already declared with these parameter types"),
+            Some(span),
+        )
+        .with_help("overloads have to differ by parameter type or count"));
+    }
+    overloads.push(signature);
+    Ok(())
+}
+
+/// Whether two procedures take the same parameters, and so cannot be told apart.
+///
+/// Only the types count. Renaming a parameter does not make a new overload, and
+/// neither does making one `Optional`: `F(a As Long)` and `F(Optional a As Long)`
+/// both accept `F(1)`.
+fn same_parameter_types(left: &CallableSig, right: &CallableSig) -> bool {
+    left.params.len() == right.params.len()
+        && left
+            .params
+            .iter()
+            .zip(&right.params)
+            .all(|(a, b)| a.ty.same_type(&b.ty) && a.is_param_array == b.is_param_array)
 }
 
 fn validate_parameter_list(params: &[Parameter], types: &TypeRegistry) -> Result<(), Diagnostic> {

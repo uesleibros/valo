@@ -1535,12 +1535,20 @@ fn validate_sub_call(
         if let Some(sub_sig) = class_sig.subs.get(&member_key)
             && (sub_sig.is_shared || validation.symbols.contains_key(well_known::SELF_KEY))
         {
-            sub = Some(sub_sig.clone());
+            sub = Some(vec![sub_sig.clone()]);
         }
     }
 
     let Some(sub) = sub else {
-        if let Some(func) = validation.signatures.functions.get(&key(effective_name)) {
+        if let Some(candidates) = validation.signatures.functions.get(&key(effective_name)) {
+            let func = resolve_overload(
+                "Function",
+                effective_name,
+                candidates,
+                args,
+                span,
+                validation,
+            )?;
             validate_arguments("Function", func, args, span, validation)?;
         } else if holds_callable_value(effective_name, validation.symbols) {
             // A `Sub` lambda held in a variable is invoked like any other Sub;
@@ -1565,7 +1573,8 @@ fn validate_sub_call(
         return Ok(());
     };
 
-    validate_arguments("Sub", &sub, args, span, validation)
+    let chosen = resolve_overload("Sub", effective_name, &sub, args, span, validation)?;
+    validate_arguments("Sub", chosen, args, span, validation)
 }
 
 /// Reports whether a name refers to a variable that can hold something callable.

@@ -118,6 +118,58 @@ Function MakeAdder(ByVal delta As Long) As Variant
 End Function
 ```
 
+## Overloads
+
+Several procedures may share one name as long as their parameters differ. The
+call decides which is meant, by how many arguments it passes and what type they
+have:
+
+```vb
+Function Area(ByVal side As Double) As Double
+    Return side * side
+End Function
+
+Function Area(ByVal width As Double, ByVal height As Double) As Double
+    Return width * height
+End Function
+
+Console.WriteLine(Area(3))      ' 9
+Console.WriteLine(Area(3, 4))   ' 12
+```
+
+`Overloads` may be written before `Sub` or `Function` to say the sharing is
+deliberate. It is optional -- Valo works overloading out from the declarations
+themselves -- and is accepted so VB.NET source carries over unchanged.
+
+### How one is chosen
+
+Each candidate is measured argument by argument. A candidate wins when it is at
+least as good as every rival everywhere and strictly better somewhere:
+
+| Fit | Example |
+|---|---|
+| the same type | `Long` argument, `Long` parameter |
+| a conversion that loses nothing, nearest first | `Integer` prefers `Long` over `Double` |
+| `Variant` on either side | resolved by whatever the value turns out to be |
+| a conversion that can lose something | `Double` argument, `Long` parameter |
+
+A candidate better for one argument and worse for another does not win on
+balance; the call is reported as ambiguous, and a conversion or a named
+argument says which was meant. Two procedures whose parameters have the same
+types are rejected where they are declared, since no call could tell them
+apart.
+
+### What does not overload
+
+- A `Sub` and a `Function` cannot share a name. A bare `f()` in an expression
+  has to mean one or the other.
+- `AddressOf` on an overloaded name is rejected: taking an address passes no
+  arguments, so nothing says which one is meant. Wrap the one you want in a
+  lambda.
+- Class methods do not overload yet; this is module-level procedures, including
+  `Declare` and extension methods.
+
 ## Related
 
+- [Example: overloads](../../examples/overloads.valo)
 - [Example: lambdas](../../examples/lambdas.valo)

@@ -24,8 +24,12 @@ pub struct Interpreter {
     /// method call and property read. Sharing makes that a refcount bump.
     pub(crate) classes: HashMap<String, Rc<RuntimeClass>>,
     pub(crate) shared_class_fields: HashMap<String, HashMap<String, Value>>,
-    pub(crate) procedures: HashMap<String, Procedure>,
-    pub(crate) functions: HashMap<String, Function>,
+    /// Module-level procedures, grouped by name.
+    ///
+    /// A name usually names one, but overloads make it several and the call
+    /// site picks between them. See [`Interpreter::pick_overload`].
+    pub(crate) procedures: HashMap<String, Vec<Procedure>>,
+    pub(crate) functions: HashMap<String, Vec<Function>>,
     pub(crate) declares: HashMap<String, DeclareDecl>,
     pub(crate) native_libraries: super::ffi::NativeLibraries,
     pub(crate) native_cifs: HashMap<String, Rc<libffi::middle::Cif>>,
@@ -369,10 +373,15 @@ impl Interpreter {
         ))?;
         for procedure in &program.procedures {
             self.procedures
-                .insert(key(&procedure.name), procedure.clone());
+                .entry(key(&procedure.name))
+                .or_default()
+                .push(procedure.clone());
         }
         for function in &program.functions {
-            self.functions.insert(key(&function.name), function.clone());
+            self.functions
+                .entry(key(&function.name))
+                .or_default()
+                .push(function.clone());
         }
         self.register_declares(&program.declares, None);
 
@@ -534,10 +543,15 @@ impl Interpreter {
                 continue; // Main is run directly
             }
             self.procedures
-                .insert(key(&procedure.name), procedure.clone());
+                .entry(key(&procedure.name))
+                .or_default()
+                .push(procedure.clone());
         }
         for function in &program.functions {
-            self.functions.insert(key(&function.name), function.clone());
+            self.functions
+                .entry(key(&function.name))
+                .or_default()
+                .push(function.clone());
         }
         self.register_declares(&program.declares, None);
 
@@ -815,7 +829,10 @@ impl Interpreter {
             ))?;
             for procedure in &module.program.procedures {
                 let qualified = format!("{}::{}", module_key, super::values::key(&procedure.name));
-                self.procedures.insert(qualified.clone(), procedure.clone());
+                self.procedures
+                    .entry(qualified.clone())
+                    .or_default()
+                    .push(procedure.clone());
                 if module_key == entry_key || crate::modules::is_public(procedure.visibility) {
                     self.sub_modules
                         .entry(super::values::key(&procedure.name))
@@ -837,7 +854,10 @@ impl Interpreter {
             }
             for function in &module.program.functions {
                 let qualified = format!("{}::{}", module_key, super::values::key(&function.name));
-                self.functions.insert(qualified.clone(), function.clone());
+                self.functions
+                    .entry(qualified.clone())
+                    .or_default()
+                    .push(function.clone());
                 if module_key == entry_key || crate::modules::is_public(function.visibility) {
                     self.function_modules
                         .entry(super::values::key(&function.name))

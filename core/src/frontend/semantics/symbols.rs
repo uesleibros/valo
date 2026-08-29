@@ -152,10 +152,18 @@ impl CallableSig {
 
 #[derive(Clone)]
 pub(super) struct Signatures {
-    pub(super) subs: HashMap<String, CallableSig>,
-    pub(super) functions: HashMap<String, CallableSig>,
+    pub(super) subs: HashMap<String, Overloads>,
+    pub(super) functions: HashMap<String, Overloads>,
     pub(super) extension_methods: HashMap<String, Vec<CallableSig>>,
 }
+
+/// The procedures sharing one name.
+///
+/// A name almost always names exactly one. Overloading makes it several, and
+/// holding a list either way keeps the two cases from needing separate code:
+/// a call resolves against the list, and a list of one resolves to its only
+/// member without any comparing.
+pub(super) type Overloads = Vec<CallableSig>;
 
 pub(super) fn key(name: &str) -> String {
     crate::runtime::fold(name)

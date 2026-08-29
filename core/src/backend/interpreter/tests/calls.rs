@@ -270,3 +270,169 @@ End Sub
 
     assert_eq!(output, vec!["21"]);
 }
+
+#[test]
+fn overloads_are_chosen_by_argument_count_and_type() {
+    let output = run_source(
+        r#"
+Public Function Area(ByVal side As Double) As Double
+    Return side * side
+End Function
+
+Public Function Area(ByVal width As Double, ByVal height As Double) As Double
+    Return width * height
+End Function
+
+Public Overloads Sub Show(ByVal text As String)
+    Console.WriteLine("text: " & text)
+End Sub
+
+Public Overloads Sub Show(ByVal number As Long)
+    Console.WriteLine("number: " & number)
+End Sub
+
+Sub Main()
+    Console.WriteLine(Area(3))
+    Console.WriteLine(Area(3, 4))
+    Show("hello")
+    Show(42)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["9", "12", "text: hello", "number: 42"]);
+}
+
+#[test]
+fn an_overload_is_chosen_through_a_variable_and_a_call() {
+    let output = run_source(
+        r#"
+Public Function Label(ByVal value As String) As String
+    Return "string"
+End Function
+
+Public Function Label(ByVal value As Long) As String
+    Return "long"
+End Function
+
+Public Function Name_() As String
+    Return "x"
+End Function
+
+Sub Main()
+    Dim count As Long = 3
+    Console.WriteLine(Label(count))
+
+    ' The argument is a call: its type is read from what the callee returns,
+    ' not by making the call twice.
+    Console.WriteLine(Label(Name_()))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["long", "string"]);
+}
+
+#[test]
+fn an_exact_type_wins_over_one_that_would_widen() {
+    let output = run_source(
+        r#"
+Public Function Pick(ByVal value As Double) As String
+    Return "double"
+End Function
+
+Public Function Pick(ByVal value As Long) As String
+    Return "long"
+End Function
+
+Sub Main()
+    Dim whole As Long = 1
+    Dim fractional As Double = 1.5
+    Console.WriteLine(Pick(whole))
+    Console.WriteLine(Pick(fractional))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["long", "double"]);
+}
+
+#[test]
+fn an_overload_can_be_selected_by_naming_the_parameter() {
+    let output = run_source(
+        r#"
+Public Sub Send(ByVal message As String)
+    Console.WriteLine("message " & message)
+End Sub
+
+Public Sub Send(ByVal code As Long, ByVal detail As String)
+    Console.WriteLine("code " & code & " " & detail)
+End Sub
+
+Sub Main()
+    Send message := "hi"
+    Send code := 7, detail := "oops"
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["message hi", "code 7 oops"]);
+}
+
+#[test]
+fn two_procedures_with_the_same_parameters_are_rejected() {
+    let diagnostic = source_diagnostic(
+        r#"
+Public Sub Same(ByVal value As Long)
+End Sub
+
+Public Sub Same(ByVal other As Long)
+End Sub
+
+Sub Main()
+End Sub
+"#,
+    );
+
+    assert!(
+        diagnostic
+            .message
+            .contains("'Same' is already declared with these parameter types")
+    );
+    assert!(
+        diagnostic
+            .helps
+            .iter()
+            .any(|help| help.contains("differ by parameter type or count"))
+    );
+}
+
+#[test]
+fn a_call_matching_no_overload_lists_the_ones_there_are() {
+    let diagnostic = source_diagnostic(
+        r#"
+Public Sub Only(ByVal a As Long, ByVal b As Long)
+End Sub
+
+Public Sub Only(ByVal a As String)
+End Sub
+
+Sub Main()
+    Only 1, 2, 3
+End Sub
+"#,
+    );
+
+    assert!(
+        diagnostic
+            .message
+            .contains("No overload of Sub 'Only' accepts these arguments")
+    );
+    assert!(
+        diagnostic
+            .notes
+            .iter()
+            .any(|note| note.contains("Only(a As Long, b As Long)")
+                && note.contains("Only(a As String)"))
+    );
+}

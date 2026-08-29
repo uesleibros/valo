@@ -187,6 +187,27 @@ pub(crate) struct VarPtrUpdate {
     span: Span,
 }
 
+/// The one procedure under a name, or an error if the name is overloaded.
+///
+/// Taking a procedure's address is not a call: there are no arguments, so
+/// nothing says which overload is meant.
+fn only_overload<'a, T>(
+    candidates: Option<&'a Vec<T>>,
+    name: &str,
+    span: Span,
+) -> Result<Option<&'a T>, Diagnostic> {
+    match candidates.map(Vec::as_slice) {
+        None | Some([]) => Ok(None),
+        Some([only]) => Ok(Some(only)),
+        Some(_) => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::AMBIGUOUS_OVERLOAD,
+            format!("'{name}' is overloaded, so it has no single address to take"),
+            Some(span),
+        )
+        .with_help("give the overloads different names, or wrap the one you want in a lambda")),
+    }
+}
+
 impl Interpreter {
     pub(crate) fn register_declares(&mut self, declares: &[DeclareDecl], module_key: Option<&str>) {
         for declare in declares {
@@ -326,30 +347,31 @@ impl Interpreter {
         let mut return_type = None;
         let mut is_sub = false;
 
-        if self.functions.contains_key(&lookup) {
+        // `AddressOf` names a procedure with no arguments to choose by, so an
+        // overloaded name has no single address to hand out. `only_overload`
+        // says so rather than picking one.
+        if let Some(function) = only_overload(self.functions.get(&lookup), name, span)? {
             callback_key = Some(lookup.clone());
-            if let Some(function) = self.functions.get(&lookup) {
-                params = Some(function.params.clone());
-                return_type = Some(function.return_type.clone());
-            }
-        } else if self.procedures.contains_key(&lookup) {
+            params = Some(function.params.clone());
+            return_type = Some(function.return_type.clone());
+        } else if let Some(procedure) = only_overload(self.procedures.get(&lookup), name, span)? {
             callback_key = Some(lookup.clone());
-            if let Some(procedure) = self.procedures.get(&lookup) {
-                params = Some(procedure.params.clone());
-                return_type = Some(TypeName::Variant);
-                is_sub = true;
-            }
+            params = Some(procedure.params.clone());
+            return_type = Some(TypeName::Variant);
+            is_sub = true;
         } else if let Some(current) = frame.module_key() {
             let qualified = super::calls::qualified_key(Some(current), name);
-            if let Some(function) = self.functions.get(&qualified) {
-                callback_key = Some(qualified);
+            if let Some(function) = only_overload(self.functions.get(&qualified), name, span)? {
                 params = Some(function.params.clone());
                 return_type = Some(function.return_type.clone());
-            } else if let Some(procedure) = self.procedures.get(&qualified) {
                 callback_key = Some(qualified);
+            } else if let Some(procedure) =
+                only_overload(self.procedures.get(&qualified), name, span)?
+            {
                 params = Some(procedure.params.clone());
                 return_type = Some(TypeName::Variant);
                 is_sub = true;
+                callback_key = Some(qualified);
             }
         }
 
@@ -357,21 +379,21 @@ impl Interpreter {
             && let Ok(module_key) = self.resolve_function_module(name, frame, span)
         {
             let qualified = super::calls::qualified_key(module_key.as_deref(), name);
-            if let Some(function) = self.functions.get(&qualified) {
-                callback_key = Some(qualified);
+            if let Some(function) = only_overload(self.functions.get(&qualified), name, span)? {
                 params = Some(function.params.clone());
                 return_type = Some(function.return_type.clone());
+                callback_key = Some(qualified);
             }
         }
         if params.is_none()
             && let Ok(module_key) = self.resolve_sub_module(name, frame, span)
         {
             let qualified = super::calls::qualified_key(module_key.as_deref(), name);
-            if let Some(procedure) = self.procedures.get(&qualified) {
-                callback_key = Some(qualified);
+            if let Some(procedure) = only_overload(self.procedures.get(&qualified), name, span)? {
                 params = Some(procedure.params.clone());
                 return_type = Some(TypeName::Variant);
                 is_sub = true;
+                callback_key = Some(qualified);
             }
         }
 

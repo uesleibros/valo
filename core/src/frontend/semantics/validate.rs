@@ -8,7 +8,9 @@ use crate::{
 };
 
 use crate::frontend::semantics::context::Context;
-use crate::frontend::semantics::symbols::{CallableSig, ParamSig, Signatures, VarType, key};
+use crate::frontend::semantics::symbols::{
+    CallableSig, Overloads, ParamSig, Signatures, VarType, key,
+};
 use crate::frontend::semantics::types::{
     ClassEventSig, ClassFieldSig, ClassMethodSig, ClassPropertySig, ClassSig, EnumSig, FieldSig,
     InterfaceSig, PropertyAccessorSig, TypeRegistry, TypeSig,
@@ -255,18 +257,32 @@ fn merge_imported_callables(
                 .or_default()
                 .extend(methods);
         }
-        for (name, sig) in imported_signatures.functions {
-            let qualified = format!("{}.{}", qualifier, key(&sig.name));
-            signatures.functions.entry(qualified).or_insert(sig.clone());
-            signatures.functions.entry(name).or_insert(sig);
+        // A locally declared name shadows an import outright, overloads and
+        // all: `or_insert` keeps whatever is already there rather than adding
+        // the imported procedures to it.
+        for (name, sigs) in imported_signatures.functions {
+            let qualified = qualified_overload_key(&qualifier, &sigs, &name);
+            signatures
+                .functions
+                .entry(qualified)
+                .or_insert(sigs.clone());
+            signatures.functions.entry(name).or_insert(sigs);
         }
-        for (name, sig) in imported_signatures.subs {
-            let qualified = format!("{}.{}", qualifier, key(&sig.name));
-            signatures.subs.entry(qualified).or_insert(sig.clone());
-            signatures.subs.entry(name).or_insert(sig);
+        for (name, sigs) in imported_signatures.subs {
+            let qualified = qualified_overload_key(&qualifier, &sigs, &name);
+            signatures.subs.entry(qualified).or_insert(sigs.clone());
+            signatures.subs.entry(name).or_insert(sigs);
         }
     }
     Ok(())
+}
+
+/// The key an imported procedure is reachable under when qualified.
+///
+/// Overloads share a name by definition, so any of them names the set.
+fn qualified_overload_key(qualifier: &str, sigs: &Overloads, fallback: &str) -> String {
+    let name = sigs.first().map_or(fallback, |sig| sig.name.as_str());
+    format!("{}.{}", qualifier, key(name))
 }
 
 /// Completes this module's `Partial Class` declarations with the halves

@@ -344,6 +344,8 @@ impl Parser {
         let with_events = self.match_simple(&TokenKind::WithEvents);
         let is_default = self.match_simple(&TokenKind::Default);
         let is_iterator = self.match_simple(&TokenKind::Iterator);
+        // See the note in program.rs: accepted, and deliberately inert.
+        self.match_simple(&TokenKind::Overloads);
         match self.peek_kind() {
             TokenKind::Event => {
                 if is_default {

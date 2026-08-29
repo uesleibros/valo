@@ -574,6 +574,7 @@ diagnostic_codes! {
     ARITHMETIC = "V1104", "An arithmetic operation has no defined result, such as division by zero.";
     MISSING_RETURN = "V1105", "A `Function` can finish without returning a value.";
     NAMED_ARGUMENT = "V1106", "A named argument does not match a parameter, or names the same one twice.";
+    AMBIGUOUS_OVERLOAD = "V1107", "A call fits more than one overload equally well.";
     ARRAY = "V1200", "An array is indexed, sized, or used incorrectly.";
     CONTROL_FLOW = "V1300", "A control-flow statement appears where it cannot apply.";
     MEMBER_ACCESS = "V1400", "A type does not have the member being accessed.";

@@ -1,0 +1,9 @@
+9
+12
+a string: hello
+a whole number: 42
+a fractional number: 2.5
+a whole number: 7
+left right
+one two three
+10

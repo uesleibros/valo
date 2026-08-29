@@ -44,6 +44,7 @@ Raised by the analyzer, and by the interpreter where the same rule is enforced a
 | `V1104` | `ARITHMETIC` | An arithmetic operation has no defined result, such as division by zero. |
 | `V1105` | `MISSING_RETURN` | A `Function` can finish without returning a value. |
 | `V1106` | `NAMED_ARGUMENT` | A named argument does not match a parameter, or names the same one twice. |
+| `V1107` | `AMBIGUOUS_OVERLOAD` | A call fits more than one overload equally well. |
 | `V1200` | `ARRAY` | An array is indexed, sized, or used incorrectly. |
 | `V1300` | `CONTROL_FLOW` | A control-flow statement appears where it cannot apply. |
 | `V1400` | `MEMBER_ACCESS` | A type does not have the member being accessed. |

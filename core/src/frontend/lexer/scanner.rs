@@ -198,6 +198,7 @@ impl<'a> Lexer<'a> {
             "shared" if hint.is_none() => TokenKind::Shared,
             "readonly" if hint.is_none() => TokenKind::ReadOnly,
             "writeonly" if hint.is_none() => TokenKind::WriteOnly,
+            "overloads" if hint.is_none() => TokenKind::Overloads,
             "overridable" if hint.is_none() => TokenKind::Overridable,
             "overrides" if hint.is_none() => TokenKind::Overrides,
             "mustoverride" if hint.is_none() => TokenKind::MustOverride,
