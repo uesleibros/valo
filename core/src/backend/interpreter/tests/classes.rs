@@ -2653,3 +2653,77 @@ End Sub
 
     assert_eq!(output, vec!["20", "10"]);
 }
+
+#[test]
+fn a_property_can_be_assigned_through_without_naming_me() {
+    let output = run_source(
+        r#"
+Class Leaf
+    Public N As Double
+End Class
+
+Class Holder
+    Public Slot As Leaf
+
+    Public Sub Initialize()
+        Set Slot = New Leaf()
+    End Sub
+
+    Public Property Reached As Leaf
+        Get
+            Return Slot
+        End Get
+    End Property
+
+    Public Sub Move(ByVal n As Double)
+        Reached.N = n
+    End Sub
+End Class
+
+Sub Main()
+    Dim holder As New Holder()
+    holder.Move(9)
+    Console.WriteLine(holder.Slot.N)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["9"]);
+}
+
+#[test]
+fn set_resolves_through_a_nested_member() {
+    let output = run_source(
+        r#"
+Class Leaf
+    Public N As Double
+End Class
+
+Class Branch
+    Public Tip As Leaf
+End Class
+
+Class Trunk
+    Public Limb As Branch
+
+    Public Sub Initialize()
+        Set Limb = New Branch()
+        Set Limb.Tip = New Leaf()
+    End Sub
+End Class
+
+Sub Main()
+    Dim tree As New Trunk()
+    tree.Limb.Tip.N = 1
+    Console.WriteLine(tree.Limb.Tip.N)
+
+    Dim graft As New Leaf()
+    graft.N = 2
+    Set tree.Limb.Tip = graft
+    Console.WriteLine(tree.Limb.Tip.N)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["1", "2"]);
+}

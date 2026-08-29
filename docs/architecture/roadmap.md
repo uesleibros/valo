@@ -25,7 +25,6 @@ VM-class performance.
 These are known wrong, not merely missing. All were found by writing a whole
 program — [the Breakout demo](../../game/README.md) — rather than by reading code.
 
-- [ ] `Set` on a nested member does not resolve: `Set a.B.C = value`.
 - [ ] An imported type is only in scope in the module that imports it directly.
       A module that is itself imported cannot name a type from its own imports.
       The entry-module case is fixed; the transitive one is not.

@@ -86,14 +86,14 @@ Public Class Bounds
 
     ' Moves the box to an absolute position.
     Public Sub MoveTo(ByVal x As Double, ByVal y As Double)
-        Me.Position.X = x
-        Me.Position.Y = y
+        Position.X = x
+        Position.Y = y
     End Sub
 
     ' Moves the box by a delta.
     Public Sub Offset(ByVal dx As Double, ByVal dy As Double)
-        Me.Position.X = Me.Position.X + dx
-        Me.Position.Y = Me.Position.Y + dy
+        Position.X = Position.X + dx
+        Position.Y = Position.Y + dy
     End Sub
 
     ' Reports whether two boxes overlap.
@@ -102,8 +102,8 @@ Public Class Bounds
     ' Bottom: it runs once per brick per frame, and each of those properties is
     ' a call.
     Public Function Overlaps(ByVal other As Bounds) As Boolean
-        Dim ax As Double = Me.Position.X
-        Dim ay As Double = Me.Position.Y
+        Dim ax As Double = Position.X
+        Dim ay As Double = Position.Y
         Dim bx As Double = other.Position.X
         Dim by As Double = other.Position.Y
 
@@ -216,25 +216,25 @@ Public Class Ball Inherits Entity
         ' Bounce off the side walls and the ceiling.
         If Area.Left <= 0 Then
             Area.MoveTo(0, Area.Position.Y)
-            Me.Velocity.X = Abs(Me.Velocity.X)
+            Velocity.X = Abs(Velocity.X)
         ElseIf Area.Right >= FieldWidth Then
             Area.MoveTo(FieldWidth - Area.Size.X, Area.Position.Y)
-            Me.Velocity.X = -Abs(Me.Velocity.X)
+            Velocity.X = -Abs(Velocity.X)
         End If
 
         If Area.Top <= 0 Then
             Area.MoveTo(Area.Position.X, 0)
-            Me.Velocity.Y = Abs(Me.Velocity.Y)
+            Velocity.Y = Abs(Velocity.Y)
         End If
     End Sub
 
     ' Reflects off a surface, nudging the horizontal direction by where the ball
     ' struck so the player can aim.
     Public Sub BounceOff(ByVal surface As Bounds)
-        Me.Velocity.Y = -Abs(Me.Velocity.Y)
+        Velocity.Y = -Abs(Velocity.Y)
 
         Dim offset As Double = (Area.CenterX - surface.CenterX) / (surface.Size.X / 2)
-        Me.Velocity.X = Me.Velocity.X + offset * 120
+        Velocity.X = Velocity.X + offset * 120
     End Sub
 
     Public Overrides Function Describe() As String

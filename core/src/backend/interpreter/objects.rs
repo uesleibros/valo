@@ -898,19 +898,19 @@ impl Interpreter {
                     self.write_shared_member(&resolved, member, value, span)?;
                     return Ok(());
                 }
-                // A bare name can also be a field of the enclosing instance.
+                // A bare name can also be a member of the enclosing instance.
                 // Reading one resolves that way, so assigning through it has to
-                // as well, or `field.Member = x` would only work written as
-                // `Me.field.Member = x`.
+                // as well, or `member.X = value` would only work written as
+                // `Me.member.X = value`.
                 //
-                // Only reference-shaped fields take this path: writing through a
-                // record would reach a copy, and losing the write silently is
+                // Only reference-shaped members take this path: writing through
+                // a record would reach a copy, and losing the write silently is
                 // worse than reporting that the name is not a variable.
                 let owner = frame
                     .variable_ref(well_known::SELF_KEY)
                     .map(|variable| variable.borrow().clone());
                 if let Some(owner) = owner
-                    && object_has_field(&owner, name)
+                    && self.instance_reads_member(&owner, name)
                 {
                     let field = self.read_member(&owner, name, frame, span)?;
                     if matches!(
@@ -1093,6 +1093,21 @@ impl Interpreter {
         }
         let mut owner_value = owner;
         self.write_object_member(&mut owner_value, field, value, span)
+    }
+
+    /// Whether a bare name reads as a member of `owner` -- a field or a
+    /// property.
+    fn instance_reads_member(&self, owner: &Value, name: &str) -> bool {
+        if object_has_field(owner, name) {
+            return true;
+        }
+        let Value::Object(object) = owner else {
+            return false;
+        };
+        let class_name = object.borrow().class_name.clone();
+        self.classes
+            .get(&key(&class_name))
+            .is_some_and(|class| class.properties.contains_key(&key(name)))
     }
 
     pub(crate) fn read_bare_class_field_array_element(
