@@ -97,11 +97,20 @@ Public Class Bounds
     End Sub
 
     ' Reports whether two boxes overlap.
+    '
+    ' This reads the positions directly rather than through Left/Right/Top/
+    ' Bottom: it runs once per brick per frame, and each of those properties is
+    ' a call.
     Public Function Overlaps(ByVal other As Bounds) As Boolean
-        If Right <= other.Left Or Left >= other.Right Then
+        Dim ax As Double = Me.Position.X
+        Dim ay As Double = Me.Position.Y
+        Dim bx As Double = other.Position.X
+        Dim by As Double = other.Position.Y
+
+        If ax + Me.Size.X <= bx Or ax >= bx + other.Size.X Then
             Return False
         End If
-        If Bottom <= other.Top Or Top >= other.Bottom Then
+        If ay + Me.Size.Y <= by Or ay >= by + other.Size.Y Then
             Return False
         End If
         Return True

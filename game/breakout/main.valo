@@ -161,6 +161,11 @@ Private Sub Step_(ByVal paddle As Paddle, ByVal ball As Ball, ByVal bricks As Co
         ball.BounceOff(paddle.Box())
     End If
 
+    ' Hoisted: the ball does not move while the wall is scanned, and reaching
+    ' for it inside the loop would be one call per brick.
+    Dim ballBox As Bounds
+    Set ballBox = ball.Box()
+
     Dim remaining As Long = 0
     Dim item As Variant
     For Each item In bricks
@@ -172,8 +177,10 @@ Private Sub Step_(ByVal paddle As Paddle, ByVal ball As Ball, ByVal bricks As Co
         End If
         remaining += 1
 
-        If ball.Box().Overlaps(brick.Box()) Then
-            ball.BounceOff(brick.Box())
+        Dim brickBox As Bounds
+        Set brickBox = brick.Box()
+        If ballBox.Overlaps(brickBox) Then
+            ball.BounceOff(brickBox)
             brick.Break()
             remaining -= 1
         End If

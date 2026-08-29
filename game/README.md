@@ -83,11 +83,22 @@ examples had not:
    not resolve — worked around here by giving `Bounds` the movement it owns and
    by writing `Me.` where a field is assigned through. Still open.
 
+It also showed where the interpreter was slow. A method call cost five times
+what reading a field cost, because resolution copied the whole class — every
+method body it declares — to reach one member.
+
 ### Known rough edges
 
-- Drawing fifty-odd rectangles a frame through a tree-walking interpreter runs
-  at roughly 60ms a frame rather than the 16ms the loop asks for. The game is
-  playable but not smooth; this is the interpreter, not SDL, and is what the
+- A frame costs roughly 25ms of work, against the 16ms the loop asks for, so
+  the game runs at about 25 frames a second. It started at 86ms and came down
+  in two steps: the interpreter stopped copying a class and a method body on
+  every call, and the collision scan stopped reaching for values it could hold.
+  SDL itself accounts for 6ms of that; the rest is the tree-walking
+  interpreter, which is what the
   [bytecode VM](../docs/architecture/roadmap.md) on the roadmap is for.
+
+  Measuring this needs care: a single run on a developer machine varies by
+  tens of percent, enough to show an improvement where there is none. Every
+  figure here is the best of several runs.
 - `Event` and `Lib` are keywords, so neither can name a variable or parameter.
   Escaped identifiers work: `[event]`.
