@@ -707,6 +707,63 @@ mod tests {
         }
     }
 
+    /// The compiler may not print. Everything it has to say is a diagnostic.
+    ///
+    /// A stray `println!` from a debugging session is invisible until it turns
+    /// up in the middle of a program's own output -- and it did: the generic
+    /// constraint checker printed a line for every constraint it looked at.
+    /// The interpreter is exempt, since running a program is how `Debug.Print`
+    /// and `MsgBox` reach a terminal in the first place.
+    #[test]
+    fn the_compiler_says_what_it_has_to_say_in_diagnostics() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        collect_prints(&root.join("frontend"), &mut offenders);
+
+        assert!(
+            offenders.is_empty(),
+            "these print from the compiler; report it as a diagnostic instead,              or delete the line if it was for debugging:
+{}",
+            offenders.join("
+")
+        );
+    }
+
+    fn collect_prints(dir: &std::path::Path, offenders: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.file_name().is_some_and(|name| name == "tests") {
+                    continue;
+                }
+                collect_prints(&path, offenders);
+                continue;
+            }
+            if path.extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+            let Ok(source) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let mut in_tests = false;
+            for (index, line) in source.lines().enumerate() {
+                if line.trim_start().starts_with("mod tests") {
+                    in_tests = true;
+                }
+                if in_tests {
+                    continue;
+                }
+                if line.contains("println!") || line.contains("eprintln!") || line.contains("dbg!")
+                {
+                    offenders.push(format!("  {}:{}", path.display(), index + 1));
+                }
+            }
+        }
+    }
+
     /// Nothing may reach for the code that means "no code was chosen".
     ///
     /// `GENERIC` is the escape hatch, and an escape hatch in easy reach gets

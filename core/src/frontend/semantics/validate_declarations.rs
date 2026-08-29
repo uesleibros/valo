@@ -1290,6 +1290,7 @@ pub(super) fn collect_types_in_scope(
         classes,
         delegates,
         generic_params,
+        generic_constraints: HashMap::new(),
     };
     apply_class_sig_inheritance(&mut registry)?;
 

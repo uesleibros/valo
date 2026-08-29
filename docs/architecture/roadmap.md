@@ -92,8 +92,10 @@ None of this blocks the VM, and the VM blocks none of it.
 - [x] **Query syntax** — `From … Where … Order By … Select`, plus `Distinct`,
       `Take`, and `Skip`. Evaluated directly rather than desugared, since there
       was no query-operator surface for it to desugar onto.
-- [ ] **Deeper generic constraint enforcement** — constraints parse but are not
-      fully checked.
+- [x] **Generic constraints** — a bound is satisfied by inheriting from a type
+      *or implementing it*, a constrained parameter has its bound's members,
+      and `Of T As New` allows `New T()`. Constraints are scoped to the
+      declaration that writes them.
 - [x] **`Option Strict`** — no conversion that can lose something, and no
       member reached on a value whose type is only known at run time.
 - [ ] Jagged-array parity and the rest of the `My.*` surface, as they come up.

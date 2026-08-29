@@ -640,3 +640,150 @@ End Sub
     );
     assert!(diagnostic.message.contains("does not declare event"));
 }
+
+#[test]
+fn a_constrained_type_parameter_has_the_members_of_its_bound() {
+    let output = run_source(
+        r#"
+Interface IShape
+    Function Area() As Double
+End Interface
+
+Class Circle
+    Implements IShape
+    Public R As Double
+    Public Function Area() As Double Implements IShape.Area
+        Return R * R
+    End Function
+End Class
+
+' The constraint is what makes shape.Area() resolve: without it, T is a name
+' with nothing on it.
+Function Measure(Of T As IShape)(ByVal shape As T) As Double
+    Return shape.Area()
+End Function
+
+Sub Main()
+    Dim c As New Circle()
+    c.R = 3
+    Console.WriteLine(Measure(Of Circle)(c))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["9"]);
+}
+
+#[test]
+fn implementing_an_interface_satisfies_a_bound() {
+    let output = run_source(
+        r#"
+Interface INamed
+    Function Name_() As String
+End Interface
+
+Class Tag
+    Implements INamed
+    Public Function Name_() As String Implements INamed.Name_
+        Return "tag"
+    End Function
+End Class
+
+Function Describe(Of T As INamed)(ByVal item As T) As String
+    Return item.Name_()
+End Function
+
+Sub Main()
+    Dim t As New Tag()
+    Console.WriteLine(Describe(Of Tag)(t))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["tag"]);
+}
+
+#[test]
+fn a_new_constraint_lets_the_parameter_be_constructed() {
+    let output = run_source(
+        r#"
+Class Counter
+    Public Total As Long
+End Class
+
+Function Fresh(Of T As New)() As T
+    Return New T()
+End Function
+
+Sub Main()
+    Dim c As Counter
+    Set c = Fresh(Of Counter)()
+    Console.WriteLine(c.Total)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["0"]);
+}
+
+#[test]
+fn a_type_argument_that_breaks_a_constraint_is_rejected() {
+    let not_a_class = source_error(
+        r#"
+Class Box_(Of T As Class)
+    Public Item As T
+End Class
+
+Sub Main()
+    Dim bad As New Box_(Of Long)()
+End Sub
+"#,
+    );
+    assert!(not_a_class.contains("must be a reference type"));
+
+    let missing_interface = source_error(
+        r#"
+Interface IShape
+    Function Area() As Double
+End Interface
+
+Class Plain
+End Class
+
+Function Measure(Of T As IShape)(ByVal shape As T) As Double
+    Return shape.Area()
+End Function
+
+Sub Main()
+    Dim p As New Plain()
+    Console.WriteLine(Measure(Of Plain)(p))
+End Sub
+"#,
+    );
+    assert!(missing_interface.contains("must inherit from or implement 'IShape'"));
+}
+
+#[test]
+fn a_constraint_does_not_leak_into_another_declaration() {
+    let error = source_error(
+        r#"
+Interface IShape
+    Function Area() As Double
+End Interface
+
+Function Measure(Of T As IShape)(ByVal shape As T) As Double
+    Return shape.Area()
+End Function
+
+' The same letter, no constraint: Area is not available here.
+Function Loose(Of T)(ByVal thing As T) As Double
+    Return thing.Area()
+End Function
+
+Sub Main()
+End Sub
+"#,
+    );
+
+    assert!(error.contains("Class or Structure 'T' is not defined") || error.contains("'T'"));
+}

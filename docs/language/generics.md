@@ -82,7 +82,24 @@ End Class
 Function Create(Of T)() As T Where T : Class, New
 ```
 
-Generic method type inference, generic delegates, and overload resolution parity are still roadmap items.
+A constraint is what makes a type parameter usable. `Of T As IShape` says `T`
+has the interface's members, so the body can call them; `Of T As New` says `T`
+can be constructed, so `New T()` is allowed. A bound is satisfied by inheriting
+from the named type or by implementing it. Constraints belong to the
+declaration that writes them: a `T` constrained in one procedure is unrelated
+to a `T` in another.
+
+```vb
+Function Measure(Of T As IShape)(ByVal shape As T) As Double
+    Return shape.Area()
+End Function
+
+Function Fresh(Of T As New)() As T
+    Return New T()
+End Function
+```
+
+Generic method type inference and generic delegates are still roadmap items.
 
 ## Lambda Expressions
 

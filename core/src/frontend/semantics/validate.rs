@@ -384,11 +384,15 @@ fn validate_bodies(
     module_symbols: &HashMap<String, VarType>,
     options: Options,
 ) -> Result<(), Diagnostic> {
+    // A declaration's constraints are in scope for its body and nowhere else,
+    // so each body is checked against a registry that carries its own.
     for procedure in &program.procedures {
-        validate_procedure(procedure, types, signatures, module_symbols, options)?;
+        let types = types.with_constraints(&procedure.generic_constraints);
+        validate_procedure(procedure, &types, signatures, module_symbols, options)?;
     }
     for function in &program.functions {
-        validate_function(function, types, signatures, module_symbols, options)?;
+        let types = types.with_constraints(&function.generic_constraints);
+        validate_function(function, &types, signatures, module_symbols, options)?;
     }
     for type_decl in &program.types {
         if type_decl.kind == crate::TypeKind::Structure {

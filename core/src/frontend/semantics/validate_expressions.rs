@@ -625,6 +625,19 @@ pub(super) fn validate_expr(
                 }
                 return Ok(types.canonical_type_name(&class_name));
             }
+            // `New T()` inside `Of T As New`. Which type T stands for is only
+            // known at the call, and that is where the type argument was
+            // checked for a parameterless constructor.
+            if types.can_construct_generic(&base_name) {
+                if !args.is_empty() {
+                    return Err(Diagnostic::new(
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+                        format!("'{base_name}' is constrained to New, which takes no arguments"),
+                        Some(expr.span),
+                    ));
+                }
+                return Ok(TypeName::User(base_name));
+            }
             let class_sig = types.get_class(&base_name).ok_or_else(|| {
                 Diagnostic::new(
                     crate::runtime::DiagnosticCode::UNKNOWN_NAME,
@@ -2372,6 +2385,25 @@ pub(super) fn validate_method_call(
         }
         return Ok(TypeName::Variant);
     }
+    // A constrained type parameter answers with whatever its bound has, the
+    // same way reading a member of one does.
+    if let TypeName::User(name) = object_type
+        && let Some(bound) = types.bound_of(name).cloned()
+    {
+        return validate_method_call(
+            &bound,
+            method,
+            args,
+            as_expression,
+            span,
+            symbols,
+            types,
+            signatures,
+            current_class,
+            context,
+            options,
+        );
+    }
     let (class_name, bindings) = generic_bindings_for_type(object_type, types);
     if !matches!(
         object_type,
@@ -3014,6 +3046,14 @@ pub(super) fn member_read_type(
     if let TypeName::Tuple(elements) = object_type {
         return tuple_member_type(elements, member, span);
     }
+    // A constrained type parameter has whatever its bound has. That is what
+    // the constraint is for; without this, `Of T As IShape` says something the
+    // body cannot then use.
+    if let TypeName::User(name) = object_type
+        && let Some(bound) = types.bound_of(name).cloned()
+    {
+        return member_read_type(&bound, member, types, options, span, current_class);
+    }
     let (type_name, bindings) = generic_bindings_for_type(object_type, types);
     if !matches!(
         object_type,
@@ -3489,10 +3529,6 @@ fn validate_generic_constraints(
             continue;
         };
         let arg = &type_args[index];
-        println!(
-            "Validating constraint for '{}': require_new={}",
-            constraint.name, constraint.require_new
-        );
         if constraint.require_class && !is_reference_type(arg, types) {
             return Err(generic_constraint_error(
                 owner,
@@ -3512,7 +3548,6 @@ fn validate_generic_constraints(
             ));
         }
         if constraint.require_new && !has_parameterless_constructor(arg, types) {
-            println!("  Constraint FAILED: require_new check failed");
             return Err(generic_constraint_error(
                 owner,
                 &constraint.name,
@@ -3644,7 +3679,10 @@ fn satisfies_type_bound(arg: &TypeName, bound: &TypeName, types: &TypeRegistry) 
         }
         (TypeName::User(arg_name), TypeName::User(bound_name))
         | (TypeName::GenericInstance { name: arg_name, .. }, TypeName::User(bound_name)) => {
+            // A bound is satisfied by inheriting from it or by implementing it.
+            // The diagnostic has always said both; only the first was checked.
             class_inherits_from(arg_name, bound_name, types)
+                || class_implements_interface(arg_name, bound, types)
         }
         _ => false,
     }

@@ -41,6 +41,14 @@ pub(super) struct TypeRegistry {
     pub(super) classes: HashMap<String, ClassSig>,
     pub(super) delegates: HashMap<String, DelegateSig>,
     pub(super) generic_params: HashSet<String>,
+    /// What each generic parameter in scope is constrained to be.
+    ///
+    /// A constraint is what makes a type parameter usable: `Of T As IShape`
+    /// says `T` has the interface's members, and `Of T As New` says it can be
+    /// constructed. Without them the parameter is a name with nothing on it.
+    /// Filled in for the body being checked, so a `T` constrained in one
+    /// procedure does not leak into another's.
+    pub(super) generic_constraints: HashMap<String, GenericParamConstraint>,
 }
 
 /// A named callable shape: what `Delegate Sub`/`Delegate Function` declares.
@@ -51,6 +59,38 @@ pub(super) type DelegateSig = ClassMethodSig;
 
 #[allow(dead_code)]
 impl TypeRegistry {
+    /// The type a generic parameter is constrained to, if it is one.
+    pub(super) fn bound_of(&self, name: &str) -> Option<&TypeName> {
+        self.generic_constraints.get(&key(name))?.bounds.first()
+    }
+
+    /// Whether `New T()` is allowed, which `Of T As New` is what says so.
+    pub(super) fn can_construct_generic(&self, name: &str) -> bool {
+        self.generic_constraints
+            .get(&key(name))
+            .is_some_and(|constraint| constraint.require_new)
+    }
+
+    /// This registry with the given constraints in scope.
+    ///
+    /// Used to check one body: the bounds belong to the declaration being
+    /// checked, and go out of scope with it.
+    pub(super) fn with_constraints(
+        &self,
+        constraints: &[GenericParamConstraint],
+    ) -> std::borrow::Cow<'_, Self> {
+        if constraints.is_empty() {
+            return std::borrow::Cow::Borrowed(self);
+        }
+        let mut scoped = self.clone();
+        scoped.generic_constraints.extend(
+            constraints
+                .iter()
+                .map(|constraint| (key(&constraint.name), constraint.clone())),
+        );
+        std::borrow::Cow::Owned(scoped)
+    }
+
     pub(super) fn contains(&self, name: &str) -> bool {
         self.types.contains_key(&key(name))
             || self.enums.contains_key(&key(name))
