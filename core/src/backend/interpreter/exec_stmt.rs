@@ -1048,7 +1048,7 @@ impl Interpreter {
                         Some(span),
                     ));
                 };
-                if !dispose.params.is_empty() {
+                if !dispose.iter().any(|sig| sig.params.is_empty()) {
                     return Err(Diagnostic::new(
                         crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                         "Dispose method used by Using must be parameterless",

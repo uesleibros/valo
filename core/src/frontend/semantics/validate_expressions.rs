@@ -558,15 +558,13 @@ pub(super) fn validate_expr(
                         Some(expr.span),
                     ));
                 }
-                if let Some(init) = well_known::find_constructor(&type_sig.subs) {
-                    let init = init.substitute_generics(&bindings);
-                    validate_arguments(
-                        "Sub",
-                        &init,
-                        args,
-                        expr.span,
-                        ExprValidation::new(symbols, types, signatures, context, option_explicit),
-                    )?;
+                if let Some(candidates) = well_known::find_constructor(&type_sig.subs) {
+                    let validation =
+                        ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                    let init =
+                        resolve_overload("Sub", "New", candidates, args, expr.span, validation)?
+                            .substitute_generics(&bindings);
+                    validate_arguments("Sub", &init, args, expr.span, validation)?;
                 } else if !args.is_empty() {
                     return Err(Diagnostic::new(
                         crate::runtime::DiagnosticCode::MEMBER_ACCESS,
@@ -586,17 +584,14 @@ pub(super) fn validate_expr(
                     Some(expr.span),
                 )
             })?;
-            if let Some(init) = well_known::find_constructor(&class_sig.subs) {
+            if let Some(candidates) = well_known::find_constructor(&class_sig.subs) {
                 // `New Box(Of String)("x")` must check the argument against
                 // String, not against the class's unbound `T`.
-                let init = init.substitute_generics(&bindings);
-                validate_arguments(
-                    "Sub",
-                    &init,
-                    args,
-                    expr.span,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
-                )?;
+                let validation =
+                    ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                let init = resolve_overload("Sub", "New", candidates, args, expr.span, validation)?
+                    .substitute_generics(&bindings);
+                validate_arguments("Sub", &init, args, expr.span, validation)?;
             } else if !args.is_empty() {
                 return Err(Diagnostic::new(
                     crate::runtime::DiagnosticCode::MEMBER_ACCESS,
@@ -726,22 +721,27 @@ pub(super) fn validate_expr(
                         }
                         return Ok(field_sig.ty.clone());
                     }
-                    if let Some(func_sig) = class_sig.functions.get(&member_key)
-                        && (func_sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
+                    if let Some(candidates) = class_sig.functions.get(&member_key)
+                        && candidates
+                            .iter()
+                            .any(|sig| sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
                     {
-                        validate_arguments(
+                        let validation = ExprValidation::new(
+                            symbols,
+                            types,
+                            signatures,
+                            context,
+                            option_explicit,
+                        );
+                        let func_sig = resolve_overload(
                             "Function",
-                            func_sig,
+                            name,
+                            candidates,
                             &[],
                             expr.span,
-                            ExprValidation::new(
-                                symbols,
-                                types,
-                                signatures,
-                                context,
-                                option_explicit,
-                            ),
+                            validation,
                         )?;
+                        validate_arguments("Function", func_sig, &[], expr.span, validation)?;
                         return Ok(func_sig.return_type.clone().expect("function return type"));
                     }
                     if let Some(prop_sig) = class_sig.properties.get(&member_key)
@@ -788,20 +788,23 @@ pub(super) fn validate_expr(
                         }
                         return Ok(field_sig.ty.clone());
                     }
-                    if let Some(func_sig) = type_sig.functions.get(&member_key) {
-                        validate_arguments(
+                    if let Some(candidates) = type_sig.functions.get(&member_key) {
+                        let validation = ExprValidation::new(
+                            symbols,
+                            types,
+                            signatures,
+                            context,
+                            option_explicit,
+                        );
+                        let func_sig = resolve_overload(
                             "Function",
-                            func_sig,
+                            name,
+                            candidates,
                             &[],
                             expr.span,
-                            ExprValidation::new(
-                                symbols,
-                                types,
-                                signatures,
-                                context,
-                                option_explicit,
-                            ),
+                            validation,
                         )?;
+                        validate_arguments("Function", func_sig, &[], expr.span, validation)?;
                         return Ok(func_sig.return_type.clone().expect("function return type"));
                     }
                     if let Some(prop_sig) = type_sig.properties.get(&member_key)
@@ -1008,14 +1011,13 @@ pub(super) fn validate_expr(
                 && !symbols.contains_key(&key(class_name))
                 && let Some(class_sig) = types.get_class(class_name)
             {
-                if let Some(function) = class_sig.functions.get(&key(method)) {
-                    validate_arguments(
-                        "Function",
-                        function,
-                        args,
-                        expr.span,
-                        ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                if let Some(candidates) = class_sig.functions.get(&key(method)) {
+                    let validation =
+                        ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                    let function = resolve_overload(
+                        "Function", method, candidates, args, expr.span, validation,
                     )?;
+                    validate_arguments("Function", function, args, expr.span, validation)?;
                     return Ok(function.return_type.clone().unwrap_or(TypeName::Variant));
                 }
                 if let Some(property_sig) = class_sig.properties.get(&key(method))
@@ -1294,9 +1296,12 @@ pub(super) fn validate_expr(
                 && let Some(class_sig) = types.get_class(owner_name)
             {
                 let member_key = key(name);
-                if let Some(func_sig) = class_sig.functions.get(&member_key) {
-                    if func_sig.is_shared || symbols.contains_key(well_known::SELF_KEY) {
-                        candidates = Some(vec![func_sig.clone()]);
+                if let Some(methods) = class_sig.functions.get(&member_key) {
+                    if methods
+                        .iter()
+                        .any(|sig| sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
+                    {
+                        candidates = Some(methods.clone());
                     }
                 } else if let Some(prop_sig) = class_sig.properties.get(&member_key)
                     && let Some(get) = &prop_sig.get
@@ -2457,7 +2462,17 @@ pub(super) fn validate_method_call(
     };
 
     if as_expression {
-        if let Some(method_sig) = class_sig.functions.get(&key(method)) {
+        if let Some(method_candidates) = class_sig.functions.get(&key(method)) {
+            let validation =
+                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let method_sig = resolve_overload(
+                "Function",
+                method,
+                method_candidates,
+                args,
+                span,
+                validation,
+            )?;
             ensure_visible(
                 method_sig.visibility,
                 &class_sig.name,
@@ -2465,13 +2480,7 @@ pub(super) fn validate_method_call(
                 current_class,
                 span,
             )?;
-            validate_arguments(
-                "Function",
-                method_sig,
-                args,
-                span,
-                ExprValidation::new(symbols, types, signatures, context, option_explicit),
-            )?;
+            validate_arguments("Function", method_sig, args, span, validation)?;
             return Ok(method_sig
                 .return_type
                 .clone()
@@ -2570,7 +2579,11 @@ pub(super) fn validate_method_call(
 
         Err(unknown_class_member(class_sig, method, as_expression, span))
     } else {
-        if let Some(method_sig) = class_sig.subs.get(&key(method)) {
+        if let Some(method_candidates) = class_sig.subs.get(&key(method)) {
+            let validation =
+                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let method_sig =
+                resolve_overload("Sub", method, method_candidates, args, span, validation)?;
             ensure_visible(
                 method_sig.visibility,
                 &class_sig.name,
@@ -2578,13 +2591,7 @@ pub(super) fn validate_method_call(
                 current_class,
                 span,
             )?;
-            validate_arguments(
-                "Sub",
-                method_sig,
-                args,
-                span,
-                ExprValidation::new(symbols, types, signatures, context, option_explicit),
-            )?;
+            validate_arguments("Sub", method_sig, args, span, validation)?;
             return Ok(TypeName::Variant);
         }
         // Sub-style property call (e.g., obj.Prop = value or obj.Prop(idx) = value)
@@ -2651,8 +2658,20 @@ fn unknown_class_member(
 
 fn class_member_names(class_sig: &ClassSig) -> Vec<String> {
     let mut names = Vec::new();
-    names.extend(class_sig.subs.values().map(|sig| sig.name.clone()));
-    names.extend(class_sig.functions.values().map(|sig| sig.name.clone()));
+    names.extend(
+        class_sig
+            .subs
+            .values()
+            .flatten()
+            .map(|sig| sig.name.clone()),
+    );
+    names.extend(
+        class_sig
+            .functions
+            .values()
+            .flatten()
+            .map(|sig| sig.name.clone()),
+    );
     names.extend(class_sig.properties.values().map(|sig| sig.name.clone()));
     names.extend(class_sig.events.values().map(|sig| sig.name.clone()));
     names
@@ -2675,14 +2694,18 @@ fn validate_structure_method_call(
     let (type_name, bindings) = generic_bindings_for_type(object_type, types);
     if let Some(interface_sig) = types.get_interface(&type_name) {
         if as_expression {
-            if let Some(method_sig) = interface_sig.functions.get(&key(method)) {
-                validate_arguments(
+            if let Some(method_candidates) = interface_sig.functions.get(&key(method)) {
+                let validation =
+                    ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                let method_sig = resolve_overload(
                     "Function",
-                    method_sig,
+                    method,
+                    method_candidates,
                     args,
                     span,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
+                    validation,
                 )?;
+                validate_arguments("Function", method_sig, args, span, validation)?;
                 return Ok(method_sig
                     .return_type
                     .clone()
@@ -2728,14 +2751,12 @@ fn validate_structure_method_call(
                 ));
             }
         } else {
-            if let Some(method_sig) = interface_sig.subs.get(&key(method)) {
-                validate_arguments(
-                    "Sub",
-                    method_sig,
-                    args,
-                    span,
-                    ExprValidation::new(symbols, types, signatures, context, option_explicit),
-                )?;
+            if let Some(method_candidates) = interface_sig.subs.get(&key(method)) {
+                let validation =
+                    ExprValidation::new(symbols, types, signatures, context, option_explicit);
+                let method_sig =
+                    resolve_overload("Sub", method, method_candidates, args, span, validation)?;
+                validate_arguments("Sub", method_sig, args, span, validation)?;
                 return Ok(TypeName::Variant);
             }
             if let Some(property_accessor) = interface_sig
@@ -2801,7 +2822,17 @@ fn validate_structure_method_call(
         ));
     }
     if as_expression {
-        if let Some(method_sig) = type_sig.functions.get(&key(method)) {
+        if let Some(method_candidates) = type_sig.functions.get(&key(method)) {
+            let validation =
+                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let method_sig = resolve_overload(
+                "Function",
+                method,
+                method_candidates,
+                args,
+                span,
+                validation,
+            )?;
             ensure_visible(
                 method_sig.visibility,
                 &type_sig.name,
@@ -2809,13 +2840,7 @@ fn validate_structure_method_call(
                 current_type,
                 span,
             )?;
-            validate_arguments(
-                "Function",
-                method_sig,
-                args,
-                span,
-                ExprValidation::new(symbols, types, signatures, context, option_explicit),
-            )?;
+            validate_arguments("Function", method_sig, args, span, validation)?;
             return Ok(method_sig
                 .return_type
                 .clone()
@@ -2889,7 +2914,11 @@ fn validate_structure_method_call(
                 Some(span),
             ));
         }
-        if let Some(method_sig) = type_sig.subs.get(&key(method)) {
+        if let Some(method_candidates) = type_sig.subs.get(&key(method)) {
+            let validation =
+                ExprValidation::new(symbols, types, signatures, context, option_explicit);
+            let method_sig =
+                resolve_overload("Sub", method, method_candidates, args, span, validation)?;
             ensure_visible(
                 method_sig.visibility,
                 &type_sig.name,
@@ -2897,13 +2926,7 @@ fn validate_structure_method_call(
                 current_type,
                 span,
             )?;
-            validate_arguments(
-                "Sub",
-                method_sig,
-                args,
-                span,
-                ExprValidation::new(symbols, types, signatures, context, option_explicit),
-            )?;
+            validate_arguments("Sub", method_sig, args, span, validation)?;
             return Ok(TypeName::Variant);
         }
         if let Some(res_ty) = resolve_extension_method(
@@ -2963,8 +2986,14 @@ fn unknown_structure_member(
 
 fn structure_member_names(type_sig: &TypeSig) -> Vec<String> {
     let mut names = Vec::new();
-    names.extend(type_sig.subs.values().map(|sig| sig.name.clone()));
-    names.extend(type_sig.functions.values().map(|sig| sig.name.clone()));
+    names.extend(type_sig.subs.values().flatten().map(|sig| sig.name.clone()));
+    names.extend(
+        type_sig
+            .functions
+            .values()
+            .flatten()
+            .map(|sig| sig.name.clone()),
+    );
     names.extend(type_sig.properties.values().map(|sig| sig.name.clone()));
     names
 }
@@ -3573,12 +3602,14 @@ fn class_has_public_default_new(class: &ClassSig) -> bool {
         return false;
     }
 
-    // Check for explicit constructor (Sub New or Class_Initialize)
-    let ctor = well_known::find_constructor(&class.subs);
-
-    match ctor {
-        Some(init) => init.visibility == Visibility::Public && init.params.is_empty(),
-        None => true, // No explicit constructor means public default
+    // An explicit constructor (Sub New or Class_Initialize) replaces the
+    // default one. `New Thing()` still works if any overload of it is public
+    // and takes nothing.
+    match well_known::find_constructor(&class.subs) {
+        Some(overloads) => overloads
+            .iter()
+            .any(|init| init.visibility == Visibility::Public && init.params.is_empty()),
+        None => true,
     }
 }
 

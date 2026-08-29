@@ -26,7 +26,7 @@ fn collection() -> ClassSig {
 
     sig.subs.insert(
         key("Add"),
-        sub(
+        vec![sub(
             "Add",
             vec![
                 required("Item", TypeName::Variant),
@@ -34,11 +34,11 @@ fn collection() -> ClassSig {
                 optional("Before", TypeName::Variant),
                 optional("After", TypeName::Variant),
             ],
-        ),
+        )],
     );
     sig.subs.insert(
         key("Remove"),
-        sub("Remove", vec![required("Index", TypeName::Variant)]),
+        vec![sub("Remove", vec![required("Index", TypeName::Variant)])],
     );
 
     sig.properties.insert(
@@ -165,7 +165,9 @@ mod tests {
     #[test]
     fn add_accepts_a_value_alone_and_a_value_with_a_key_and_a_position() {
         let collection = collection();
-        let add = &collection.subs[&key("Add")];
+        let add = collection.subs[&key("Add")]
+            .first()
+            .expect("Add is declared");
 
         assert_eq!(add.params.len(), 4);
         assert!(!add.params[0].is_optional, "the value is required");

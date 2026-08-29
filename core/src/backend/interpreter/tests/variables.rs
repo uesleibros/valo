@@ -396,7 +396,10 @@ End Sub
 
 #[test]
 fn structure_constructor_and_private_member_diagnostics_work() {
-    let duplicate = source_error(
+    // `Sub New` and `Initialize` are two spellings of one constructor, so
+    // these are overloads of it -- and a Structure constructor that takes
+    // nothing is what is actually wrong here.
+    let parameterless = source_error(
         r#"
 Structure Point
     Public Sub New(ByVal x As Integer)
@@ -410,7 +413,23 @@ Sub Main()
 End Sub
 "#,
     );
-    assert!(duplicate.contains("duplicate constructor"));
+    assert!(parameterless.contains("constructor must declare at least one parameter"));
+
+    let two_spellings = source_error(
+        r#"
+Class Thing
+    Public Sub New()
+    End Sub
+
+    Private Sub Class_Initialize()
+    End Sub
+End Class
+
+Sub Main()
+End Sub
+"#,
+    );
+    assert!(two_spellings.contains("duplicate constructor"));
 
     let constructor_function = source_error(
         r#"

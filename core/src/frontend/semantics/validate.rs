@@ -13,7 +13,7 @@ use crate::frontend::semantics::symbols::{
 };
 use crate::frontend::semantics::types::{
     ClassEventSig, ClassFieldSig, ClassMethodSig, ClassPropertySig, ClassSig, EnumSig, FieldSig,
-    InterfaceSig, PropertyAccessorSig, TypeRegistry, TypeSig,
+    InterfaceSig, MethodOverloads, PropertyAccessorSig, TypeRegistry, TypeSig,
 };
 
 #[path = "builtin_types.rs"]

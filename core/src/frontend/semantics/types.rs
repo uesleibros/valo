@@ -26,8 +26,8 @@ pub(super) struct TypeSig {
     pub(super) implements: Vec<TypeName>,
     pub(super) is_structure: bool,
     pub(super) fields: HashMap<String, FieldSig>,
-    pub(super) subs: HashMap<String, ClassMethodSig>,
-    pub(super) functions: HashMap<String, ClassMethodSig>,
+    pub(super) subs: HashMap<String, MethodOverloads>,
+    pub(super) functions: HashMap<String, MethodOverloads>,
     pub(super) properties: HashMap<String, ClassPropertySig>,
     pub(super) operators: HashMap<crate::OperatorKind, ClassMethodSig>,
     pub(super) default_property: Option<String>,
@@ -190,8 +190,8 @@ pub(super) struct ClassSig {
     pub(super) implements: Vec<TypeName>,
     pub(super) fields: HashMap<String, ClassFieldSig>,
     pub(super) events: HashMap<String, ClassEventSig>,
-    pub(super) subs: HashMap<String, ClassMethodSig>,
-    pub(super) functions: HashMap<String, ClassMethodSig>,
+    pub(super) subs: HashMap<String, MethodOverloads>,
+    pub(super) functions: HashMap<String, MethodOverloads>,
     pub(super) iterator: Option<ClassMethodSig>,
     pub(super) properties: HashMap<String, ClassPropertySig>,
     pub(super) operators: HashMap<crate::OperatorKind, ClassMethodSig>,
@@ -206,8 +206,8 @@ pub(super) struct InterfaceSig {
     pub(super) name: String,
     pub(super) type_params: Vec<String>,
     pub(super) generic_constraints: Vec<GenericParamConstraint>,
-    pub(super) subs: HashMap<String, ClassMethodSig>,
-    pub(super) functions: HashMap<String, ClassMethodSig>,
+    pub(super) subs: HashMap<String, MethodOverloads>,
+    pub(super) functions: HashMap<String, MethodOverloads>,
     pub(super) events: HashMap<String, ClassEventSig>,
     pub(super) properties: HashMap<String, ClassPropertySig>,
 }
@@ -222,6 +222,13 @@ pub(super) struct ClassFieldSig {
 }
 
 pub(super) type ClassMethodSig = crate::semantics::symbols::CallableSig;
+
+/// The methods of one type sharing a name, in declaration order.
+///
+/// The module-level [`Overloads`](crate::semantics::symbols::Overloads) holds
+/// the same thing for procedures. Both are lists whether or not the name is
+/// actually overloaded, so one code path serves both.
+pub(super) type MethodOverloads = Vec<ClassMethodSig>;
 pub(super) type ClassEventSig = crate::semantics::symbols::CallableSig;
 
 #[derive(Debug, Clone)]

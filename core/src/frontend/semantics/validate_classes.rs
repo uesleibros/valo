@@ -333,7 +333,7 @@ fn validate_implements_common(
                 Some(span),
             )
         })?;
-        for method in interface.subs.values() {
+        for method in interface.subs.values().flatten() {
             let target = find_explicit_sub_impl(
                 members,
                 decl_name,
@@ -365,7 +365,7 @@ fn validate_implements_common(
                 ));
             }
         }
-        for method in interface.functions.values() {
+        for method in interface.functions.values().flatten() {
             let target = find_explicit_function_impl(
                 members,
                 decl_name,

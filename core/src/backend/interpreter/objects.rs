@@ -120,6 +120,7 @@ impl Interpreter {
                 .subs
                 .values_mut()
                 .chain(instance.shared_subs.values_mut())
+                .flatten()
             {
                 substitute_procedure_types(procedure, &bindings);
             }
@@ -127,6 +128,7 @@ impl Interpreter {
                 .functions
                 .values_mut()
                 .chain(instance.shared_functions.values_mut())
+                .flatten()
             {
                 substitute_function_types(function, &bindings);
             }
@@ -188,10 +190,10 @@ impl Interpreter {
                     .as_ref()
                     .map(|init| init.substitute_generics(&bindings));
             }
-            for procedure in instance.subs.values_mut() {
+            for procedure in instance.subs.values_mut().flatten() {
                 substitute_procedure_types(procedure, &bindings);
             }
-            for function in instance.functions.values_mut() {
+            for function in instance.functions.values_mut().flatten() {
                 substitute_function_types(function, &bindings);
             }
             for property in instance.properties.values_mut() {
@@ -427,9 +429,17 @@ impl Interpreter {
                 ));
             }
             let record = default_value(&TypeName::User(type_def.name.clone()), self, span)?;
-            if let Some(init) =
-                crate::runtime::well_known::find_constructor(&type_def.subs).cloned()
-            {
+            if let Some(candidates) = crate::runtime::well_known::find_constructor(&type_def.subs) {
+                let init = self
+                    .pick_overload(
+                        "Sub",
+                        "New",
+                        candidates,
+                        |init: &crate::Procedure| &init.params,
+                        &self.argument_types_of(args, caller_frame),
+                        span,
+                    )?
+                    .clone();
                 let mut frame = Frame::default();
                 frame.inherit_modules_from(caller_frame)?;
                 if let Some((module_key, _)) = key(&type_def.name).split_once('.') {
@@ -526,8 +536,13 @@ impl Interpreter {
             event_bindings: Vec::new(),
             terminated: false,
         })));
-        if let Some(init) = crate::runtime::well_known::find_constructor(&class.subs) {
-            self.call_method_sub(object.clone(), &init.name, args, caller_frame, span)?;
+        // Every overload of the constructor answers to the same name, and
+        // `call_method_sub` is what picks between them from the arguments.
+        if let Some(init) = crate::runtime::well_known::find_constructor(&class.subs)
+            .and_then(|overloads| overloads.first())
+        {
+            let name = init.name.clone();
+            self.call_method_sub(object.clone(), &name, args, caller_frame, span)?;
         } else if !args.is_empty() {
             return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
@@ -1395,10 +1410,11 @@ pub(crate) struct RuntimeClass {
     pub(crate) shared_fields: Vec<RuntimeField>,
     pub(crate) constants: Vec<crate::ConstDecl>,
     pub(crate) events: HashMap<String, RuntimeEvent>,
-    pub(crate) subs: HashMap<String, Procedure>,
-    pub(crate) shared_subs: HashMap<String, Procedure>,
-    pub(crate) functions: HashMap<String, Function>,
-    pub(crate) shared_functions: HashMap<String, Function>,
+    /// Methods grouped by name; overloading makes a group hold more than one.
+    pub(crate) subs: HashMap<String, Vec<Procedure>>,
+    pub(crate) shared_subs: HashMap<String, Vec<Procedure>>,
+    pub(crate) functions: HashMap<String, Vec<Function>>,
+    pub(crate) shared_functions: HashMap<String, Vec<Function>>,
     pub(crate) iterator: Option<Function>,
     pub(crate) properties: HashMap<String, RuntimeProperty>,
     pub(crate) operators: HashMap<crate::OperatorKind, Function>,
@@ -1475,11 +1491,14 @@ impl From<&crate::ClassDecl> for RuntimeClass {
                     );
                 }
                 ClassMember::Sub(method) => {
-                    if method.is_shared {
-                        shared_subs.insert(key(&method.procedure.name), method.procedure.clone());
+                    let into = if method.is_shared {
+                        &mut shared_subs
                     } else {
-                        subs.insert(key(&method.procedure.name), method.procedure.clone());
-                    }
+                        &mut subs
+                    };
+                    into.entry(key(&method.procedure.name))
+                        .or_insert_with(Vec::new)
+                        .push(method.procedure.clone());
                 }
                 ClassMember::Function(method) => {
                     if method.is_enumerator {
@@ -1488,12 +1507,14 @@ impl From<&crate::ClassDecl> for RuntimeClass {
                     if method.function.is_iterator && method.function.params.is_empty() {
                         iterator = Some(method.function.clone());
                     }
-                    if method.is_shared {
-                        shared_functions
-                            .insert(key(&method.function.name), method.function.clone());
+                    let into = if method.is_shared {
+                        &mut shared_functions
                     } else {
-                        functions.insert(key(&method.function.name), method.function.clone());
-                    }
+                        &mut functions
+                    };
+                    into.entry(key(&method.function.name))
+                        .or_insert_with(Vec::new)
+                        .push(method.function.clone());
                 }
                 ClassMember::Iterator(method) => {
                     iterator = Some(method.function.clone());

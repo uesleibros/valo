@@ -137,6 +137,19 @@ Console.WriteLine(Area(3))      ' 9
 Console.WriteLine(Area(3, 4))   ' 12
 ```
 
+The same holds for a class's methods, a structure's methods, and the
+constructor:
+
+```vb
+Class Painter
+    Public Sub Initialize()
+    End Sub
+
+    Public Sub Initialize(ByVal name As String)
+    End Sub
+End Class
+```
+
 `Overloads` may be written before `Sub` or `Function` to say the sharing is
 deliberate. It is optional -- Valo works overloading out from the declarations
 themselves -- and is accepted so VB.NET source carries over unchanged.
@@ -166,8 +179,8 @@ apart.
 - `AddressOf` on an overloaded name is rejected: taking an address passes no
   arguments, so nothing says which one is meant. Wrap the one you want in a
   lambda.
-- Class methods do not overload yet; this is module-level procedures, including
-  `Declare` and extension methods.
+- A class's `Property` accessors do not overload; only `Sub` and `Function`
+  members do.
 
 ## Related
 

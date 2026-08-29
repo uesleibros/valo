@@ -1,5 +1,6 @@
 use crate::runtime::{Diagnostic, Span, TypeName, Value, coerce_assignment};
 use crate::{ClassMember, TypeDecl, TypeKind};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::properties::{RuntimeProperty, RuntimePropertyAccessor};
@@ -130,6 +131,17 @@ pub(crate) fn write_member(
     Ok(old)
 }
 
+/// Collects `(name, member)` pairs into the members sharing each name.
+///
+/// Plain `collect` would keep only the last of an overloaded set.
+fn group_by_name<T>(
+    mut grouped: HashMap<String, Vec<T>>,
+    (name, member): (String, T),
+) -> HashMap<String, Vec<T>> {
+    grouped.entry(name).or_default().push(member);
+    grouped
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeType {
     pub(crate) name: String,
@@ -138,8 +150,9 @@ pub(crate) struct RuntimeType {
     pub(crate) is_native_record: bool,
     pub(crate) implements: Vec<TypeName>,
     pub(crate) fields: Vec<RuntimeField>,
-    pub(crate) subs: std::collections::HashMap<String, crate::Procedure>,
-    pub(crate) functions: std::collections::HashMap<String, crate::Function>,
+    /// Methods grouped by name; overloading makes a group hold more than one.
+    pub(crate) subs: std::collections::HashMap<String, Vec<crate::Procedure>>,
+    pub(crate) functions: std::collections::HashMap<String, Vec<crate::Function>>,
     pub(crate) properties: std::collections::HashMap<String, RuntimeProperty>,
     pub(crate) operators: std::collections::HashMap<crate::OperatorKind, crate::Function>,
     pub(crate) default_property: Option<String>,
@@ -221,7 +234,7 @@ impl From<&TypeDecl> for RuntimeType {
                     | ClassMember::Operator(_)
                     | ClassMember::Class(_) => None,
                 })
-                .collect(),
+                .fold(HashMap::new(), group_by_name),
             functions: value
                 .members
                 .iter()
@@ -242,7 +255,7 @@ impl From<&TypeDecl> for RuntimeType {
                     | ClassMember::Operator(_)
                     | ClassMember::Class(_) => None,
                 })
-                .collect(),
+                .fold(HashMap::new(), group_by_name),
             properties: value
                 .members
                 .iter()

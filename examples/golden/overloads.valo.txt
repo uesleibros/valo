@@ -7,3 +7,5 @@ a whole number: 7
 left right
 one two three
 10
+unnamed draws a point at 1
+Studio draws a line 1 to 9

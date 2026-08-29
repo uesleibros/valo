@@ -1321,16 +1321,12 @@ impl Interpreter {
                 if let Some(class) = self.classes.get(&key(&class_name)).cloned()
                     && let Some(terminate) =
                         crate::runtime::well_known::find_destructor(&class.subs)
+                            .and_then(|overloads| overloads.first())
                 {
                     let mut frame = Frame::default();
                     frame.set_module_key(key(class_name.split('.').next().unwrap_or(&class_name)));
-                    self.call_method_sub_values(
-                        Value::Object(rc),
-                        &terminate.name,
-                        &[],
-                        &mut frame,
-                        span,
-                    )?;
+                    let name = terminate.name.clone();
+                    self.call_method_sub_values(Value::Object(rc), &name, &[], &mut frame, span)?;
                 }
             }
             Value::Array(array) => {

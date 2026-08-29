@@ -2727,3 +2727,130 @@ End Sub
 
     assert_eq!(output, vec!["1", "2"]);
 }
+
+#[test]
+fn class_methods_overload_by_argument_count_and_type() {
+    let output = run_source(
+        r#"
+Class Painter
+    Public Overloads Function Draw(ByVal x As Double) As String
+        Return "point " & x
+    End Function
+
+    Public Overloads Function Draw(ByVal x As Double, ByVal y As Double) As String
+        Return "line " & x & "," & y
+    End Function
+
+    Public Overloads Function Draw(ByVal label As String) As String
+        Return "label " & label
+    End Function
+
+    Public Sub Trace(ByVal n As Long)
+        Console.WriteLine("n " & n)
+    End Sub
+
+    Public Sub Trace(ByVal text As String)
+        Console.WriteLine("s " & text)
+    End Sub
+End Class
+
+Sub Main()
+    Dim p As New Painter()
+    Console.WriteLine(p.Draw(1))
+    Console.WriteLine(p.Draw(1, 2))
+    Console.WriteLine(p.Draw("here"))
+    p.Trace(4)
+    p.Trace("four")
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        output,
+        vec!["point 1", "line 1,2", "label here", "n 4", "s four"]
+    );
+}
+
+#[test]
+fn a_constructor_can_be_overloaded() {
+    let output = run_source(
+        r#"
+Class Painter
+    Public Name_ As String
+
+    Public Sub Initialize()
+        Name_ = "unnamed"
+    End Sub
+
+    Public Sub Initialize(ByVal name As String)
+        Name_ = name
+    End Sub
+
+    Public Shared Function Make() As Painter
+        Return New Painter()
+    End Function
+
+    Public Shared Function Make(ByVal name As String) As Painter
+        Return New Painter(name)
+    End Function
+End Class
+
+Sub Main()
+    Console.WriteLine(Painter.Make().Name_)
+    Console.WriteLine(Painter.Make("studio").Name_)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["unnamed", "studio"]);
+}
+
+#[test]
+fn structure_methods_overload_too() {
+    let output = run_source(
+        r#"
+Structure Box_
+    Public W As Double
+
+    Public Function Size() As Double
+        Return W
+    End Function
+
+    Public Function Size(ByVal scale As Double) As Double
+        Return W * scale
+    End Function
+End Structure
+
+Sub Main()
+    Dim b As Box_
+    b.W = 10
+    Console.WriteLine(b.Size())
+    Console.WriteLine(b.Size(3))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["10", "30"]);
+}
+
+#[test]
+fn two_methods_with_the_same_parameters_are_rejected() {
+    let diagnostic = source_diagnostic(
+        r#"
+Class Painter
+    Public Sub Draw(ByVal x As Double)
+    End Sub
+
+    Public Sub Draw(ByVal y As Double)
+    End Sub
+End Class
+
+Sub Main()
+End Sub
+"#,
+    );
+
+    assert!(diagnostic.message.contains(
+        "Method 'Draw' in Class 'Painter' is already declared with these parameter types"
+    ));
+}

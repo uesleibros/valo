@@ -75,13 +75,13 @@ VM proves there is still a bottleneck.
 
 None of this blocks the VM, and the VM blocks none of it.
 
-- [x] **`Overloads` for module procedures** — several `Sub`s or `Function`s
-      sharing a name, resolved by argument count and type. The rule and its
-      ranking live in `runtime/overloads.rs`, which the analyzer and the
-      interpreter both call so they cannot drift apart.
-- [ ] **`Overloads` for class methods** — the same, for members. The analyzer's
-      class signatures and the interpreter's `RuntimeClass` still assume one
-      name is one method, which is about 45 sites.
+- [x] **`Overloads`** — several `Sub`s or `Function`s sharing a name, resolved
+      by argument count and type. Module procedures, class and structure
+      methods, `Shared` methods, and the constructor. The rule and its ranking
+      live in `runtime/overloads.rs`, which the analyzer and the interpreter
+      both call so they cannot drift apart.
+- [ ] **Overloaded `Property` accessors**, the one member kind still limited to
+      one signature per name.
 - [ ] **`Delegate Sub` / `Delegate Function`** — named callable types. Lambdas
       already carry parameters and a body, so this is mostly a type story.
 - [ ] **Tuples and tuple returns** — `(a, b)` literals, `As (X As Long, …)`

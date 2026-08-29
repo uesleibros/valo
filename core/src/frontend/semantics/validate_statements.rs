@@ -1451,7 +1451,9 @@ fn validate_using_disposable(
         ));
     };
 
-    if !dispose.params.is_empty() {
+    // `Using` calls Dispose with nothing, so it needs an overload that takes
+    // nothing. Any others the class declares are simply not the one it calls.
+    if !dispose.iter().any(|sig| sig.params.is_empty()) {
         return Err(Diagnostic::new(
             crate::runtime::DiagnosticCode::TYPE_MISMATCH,
             "Dispose method used by Using must be parameterless",
@@ -1532,10 +1534,12 @@ fn validate_sub_call(
         && let Some(class_sig) = validation.types.get_class(owner_name)
     {
         let member_key = key(effective_name);
-        if let Some(sub_sig) = class_sig.subs.get(&member_key)
-            && (sub_sig.is_shared || validation.symbols.contains_key(well_known::SELF_KEY))
+        if let Some(methods) = class_sig.subs.get(&member_key)
+            && methods
+                .iter()
+                .any(|sig| sig.is_shared || validation.symbols.contains_key(well_known::SELF_KEY))
         {
-            sub = Some(vec![sub_sig.clone()]);
+            sub = Some(methods.clone());
         }
     }
 

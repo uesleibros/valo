@@ -133,7 +133,7 @@ pub(super) fn collect_types_in_scope(
         let mut properties: HashMap<String, ClassPropertySig> = HashMap::new();
         let mut operators = HashMap::new();
         let mut default_member: Option<String> = None;
-        let mut constructor_span = None;
+        let mut constructor_spelling: Option<String> = None;
         for field in &type_decl.fields {
             let field_key = key(&field.name);
             if fields.contains_key(&field_key) {
@@ -330,7 +330,12 @@ pub(super) fn collect_types_in_scope(
                         ));
                     }
                     if is_constructor_name(&method_key) {
-                        if constructor_span.is_some() {
+                        // Overloading the constructor is fine; naming it two
+                        // different ways in one Structure is not.
+                        if constructor_spelling
+                            .as_deref()
+                            .is_some_and(|spelling| spelling != method_key)
+                        {
                             return Err(Diagnostic::new(
                                 crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
                                 format!(
@@ -347,10 +352,9 @@ pub(super) fn collect_types_in_scope(
                                 Some(method.procedure.span),
                             ));
                         }
-                        constructor_span = Some(method.procedure.span);
+                        constructor_spelling = Some(method_key.clone());
                     }
                     if fields.contains_key(&method_key)
-                        || subs.contains_key(&method_key)
                         || functions.contains_key(&method_key)
                         || properties.contains_key(&method_key)
                     {
@@ -363,7 +367,10 @@ pub(super) fn collect_types_in_scope(
                             Some(method.procedure.span),
                         ));
                     }
-                    subs.insert(
+                    declare_method(
+                        &mut subs,
+                        "Structure",
+                        &type_decl.name,
                         method_key,
                         ClassMethodSig {
                             attributes: Vec::new(),
@@ -377,7 +384,8 @@ pub(super) fn collect_types_in_scope(
                             params: params_to_sigs(&method.procedure.params),
                             return_type: None,
                         },
-                    );
+                        method.procedure.span,
+                    )?;
                 }
                 ClassMember::Function(method) => {
                     let method_key = key(&method.function.name);
@@ -390,7 +398,6 @@ pub(super) fn collect_types_in_scope(
                     }
                     if fields.contains_key(&method_key)
                         || subs.contains_key(&method_key)
-                        || functions.contains_key(&method_key)
                         || properties.contains_key(&method_key)
                     {
                         return Err(Diagnostic::new(
@@ -402,7 +409,10 @@ pub(super) fn collect_types_in_scope(
                             Some(method.function.span),
                         ));
                     }
-                    functions.insert(
+                    declare_method(
+                        &mut functions,
+                        "Structure",
+                        &type_decl.name,
                         method_key,
                         ClassMethodSig {
                             attributes: Vec::new(),
@@ -416,7 +426,8 @@ pub(super) fn collect_types_in_scope(
                             params: params_to_sigs(&method.function.params),
                             return_type: Some(method.function.return_type.clone()),
                         },
-                    );
+                        method.function.span,
+                    )?;
                 }
                 ClassMember::Property(property) => {
                     let property_key = key(&property.name);
@@ -589,8 +600,7 @@ pub(super) fn collect_types_in_scope(
             match member {
                 crate::InterfaceMember::Sub(method) => {
                     let member_key = key(&method.name);
-                    if subs.contains_key(&member_key)
-                        || functions.contains_key(&member_key)
+                    if functions.contains_key(&member_key)
                         || events.contains_key(&member_key)
                         || properties.contains_key(&member_key)
                     {
@@ -603,7 +613,10 @@ pub(super) fn collect_types_in_scope(
                             Some(method.span),
                         ));
                     }
-                    subs.insert(
+                    declare_method(
+                        &mut subs,
+                        "Interface",
+                        &interface_decl.name,
                         member_key,
                         ClassMethodSig {
                             attributes: Vec::new(),
@@ -617,12 +630,12 @@ pub(super) fn collect_types_in_scope(
                             params: params_to_sigs(&method.params),
                             return_type: None,
                         },
-                    );
+                        method.span,
+                    )?;
                 }
                 crate::InterfaceMember::Function(method) => {
                     let member_key = key(&method.name);
                     if subs.contains_key(&member_key)
-                        || functions.contains_key(&member_key)
                         || events.contains_key(&member_key)
                         || properties.contains_key(&member_key)
                     {
@@ -635,7 +648,10 @@ pub(super) fn collect_types_in_scope(
                             Some(method.span),
                         ));
                     }
-                    functions.insert(
+                    declare_method(
+                        &mut functions,
+                        "Interface",
+                        &interface_decl.name,
                         member_key,
                         ClassMethodSig {
                             attributes: Vec::new(),
@@ -649,7 +665,8 @@ pub(super) fn collect_types_in_scope(
                             params: params_to_sigs(&method.params),
                             return_type: method.return_type.clone(),
                         },
-                    );
+                        method.span,
+                    )?;
                 }
                 crate::InterfaceMember::Event(event) => {
                     let member_key = key(&event.name);
@@ -775,7 +792,7 @@ pub(super) fn collect_types_in_scope(
         let mut default_member: Option<String> = None;
         let mut iterator: Option<ClassMethodSig> = None;
         let mut enumerator_member: Option<String> = None;
-        let mut constructor_span = None;
+        let mut constructor_spelling: Option<String> = None;
         let mut terminator_span = None;
         let mut default_iterator_span: Option<Span> = None;
         for member in &class_decl.members {
@@ -852,7 +869,12 @@ pub(super) fn collect_types_in_scope(
                 ClassMember::Sub(method) => {
                     let method_key = key(&method.procedure.name);
                     if is_constructor_name(&method_key) {
-                        if constructor_span.is_some() {
+                        // Overloading the constructor is fine; naming it two
+                        // different ways in one Class is not.
+                        if constructor_spelling
+                            .as_deref()
+                            .is_some_and(|spelling| spelling != method_key)
+                        {
                             return Err(Diagnostic::new(
                                 crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
                                 format!(
@@ -862,7 +884,7 @@ pub(super) fn collect_types_in_scope(
                                 Some(method.procedure.span),
                             ));
                         }
-                        constructor_span = Some(method.procedure.span);
+                        constructor_spelling = Some(method_key.clone());
                     }
                     if is_terminator_name(&method_key) {
                         if !method.procedure.params.is_empty() {
@@ -884,8 +906,7 @@ pub(super) fn collect_types_in_scope(
                         }
                         terminator_span = Some(method.procedure.span);
                     }
-                    if subs.contains_key(&method_key)
-                        || events.contains_key(&method_key)
+                    if events.contains_key(&method_key)
                         || functions.contains_key(&method_key)
                         || properties.contains_key(&method_key)
                     {
@@ -898,7 +919,10 @@ pub(super) fn collect_types_in_scope(
                             Some(method.procedure.span),
                         ));
                     }
-                    subs.insert(
+                    declare_method(
+                        &mut subs,
+                        "Class",
+                        &class_decl.name,
                         method_key,
                         ClassMethodSig {
                             attributes: Vec::new(),
@@ -912,7 +936,8 @@ pub(super) fn collect_types_in_scope(
                             params: params_to_sigs(&method.procedure.params),
                             return_type: None,
                         },
-                    );
+                        method.procedure.span,
+                    )?;
                 }
                 ClassMember::Function(method) => {
                     let method_key = key(&method.function.name);
@@ -960,7 +985,6 @@ pub(super) fn collect_types_in_scope(
                     }
                     if subs.contains_key(&method_key)
                         || events.contains_key(&method_key)
-                        || functions.contains_key(&method_key)
                         || properties.contains_key(&method_key)
                     {
                         return Err(Diagnostic::new(
@@ -972,7 +996,10 @@ pub(super) fn collect_types_in_scope(
                             Some(method.function.span),
                         ));
                     }
-                    functions.insert(
+                    declare_method(
+                        &mut functions,
+                        "Class",
+                        &class_decl.name,
                         method_key,
                         ClassMethodSig {
                             attributes: Vec::new(),
@@ -986,7 +1013,8 @@ pub(super) fn collect_types_in_scope(
                             params: params_to_sigs(&method.function.params),
                             return_type: Some(method.function.return_type.clone()),
                         },
-                    );
+                        method.function.span,
+                    )?;
                 }
                 ClassMember::Iterator(method) => {
                     let method_key = key(&method.function.name);
@@ -1798,6 +1826,7 @@ fn substitute_class_sig_types(class_sig: &mut ClassSig, bindings: &[(String, Typ
         .subs
         .values_mut()
         .chain(class_sig.functions.values_mut())
+        .flatten()
     {
         for param in &mut method.params {
             param.ty = param.ty.substitute_generics(bindings);
@@ -1946,23 +1975,33 @@ fn validate_withevents_handlers(
                 for event in source_class.events.values() {
                     let handler_name = format!("{}_{}", field.name, event.name);
                     let handler_key = key(&handler_name);
-                    if let Some(handler) = class_sig.functions.get(&handler_key) {
+                    if let Some(handler) = class_sig
+                        .functions
+                        .get(&handler_key)
+                        .and_then(|overloads| overloads.first())
+                    {
                         return Err(Diagnostic::new(
                             crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                             format!("Event handler '{}' must be a Sub method", handler.name),
                             Some(field.span),
                         ));
                     }
-                    let Some(handler) = class_sig.subs.get(&handler_key) else {
+                    // A handler is picked by name, so an overloaded one has to
+                    // have a member that matches the event; any other overload
+                    // of that name is simply not the handler.
+                    let Some(handlers) = class_sig.subs.get(&handler_key) else {
                         continue;
                     };
-                    if handler.params.len() != event.params.len()
-                        || !handler
-                            .params
-                            .iter()
-                            .zip(event.params.iter())
-                            .all(|(left, right)| left.ty.same_type(&right.ty))
-                    {
+                    let matches_event = |handler: &&ClassMethodSig| {
+                        handler.params.len() == event.params.len()
+                            && handler
+                                .params
+                                .iter()
+                                .zip(event.params.iter())
+                                .all(|(left, right)| left.ty.same_type(&right.ty))
+                    };
+                    if !handlers.iter().any(|handler| matches_event(&handler)) {
+                        let handler = handlers.first().expect("a recorded name has a method");
                         return Err(Diagnostic::new(
                             crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                             format!(
@@ -2172,6 +2211,40 @@ pub(super) fn collect_signatures(
         functions,
         extension_methods,
     })
+}
+
+/// Adds one method to the set of members sharing its name.
+///
+/// Methods may share a name -- that is overloading, and the call site picks
+/// between them. What they may not share is their parameter types, because
+/// then no call could choose. A method sharing a name with a field, an event,
+/// or a property is rejected where those are collected, since nothing at the
+/// use site could tell those apart from a method either.
+fn declare_method(
+    into: &mut HashMap<String, MethodOverloads>,
+    owner_kind: &str,
+    owner: &str,
+    name_key: String,
+    signature: ClassMethodSig,
+    span: crate::runtime::Span,
+) -> Result<(), Diagnostic> {
+    let name = signature.name.clone();
+    let overloads = into.entry(name_key).or_default();
+    if overloads
+        .iter()
+        .any(|existing| same_parameter_types(existing, &signature))
+    {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+            format!(
+                "Method '{name}' in {owner_kind} '{owner}' is already declared with these parameter types"
+            ),
+            Some(span),
+        )
+        .with_help("overloads have to differ by parameter type or count"));
+    }
+    overloads.push(signature);
+    Ok(())
 }
 
 /// Records that a name is used by a procedure, rejecting a real collision.

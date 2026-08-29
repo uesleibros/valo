@@ -290,13 +290,23 @@ impl Interpreter {
                 Some(span),
             ));
         }
-        let procedure = structure.subs.get(&key(method)).cloned().ok_or_else(|| {
+        let candidates = structure.subs.get(&key(method)).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Structure '{}' has no method '{}'", structure.name, method),
                 Some(span),
             )
         })?;
+        let procedure = self
+            .pick_overload(
+                "Sub",
+                method,
+                candidates,
+                |procedure: &Procedure| &procedure.params,
+                &self.argument_types_of(args, caller_frame),
+                span,
+            )?
+            .clone();
         let mut frame = Frame::default();
         frame.inherit_modules_from(caller_frame)?;
         if let Some((module_key, _)) = key(&structure.name).split_once('.') {
@@ -361,7 +371,17 @@ impl Interpreter {
                     Some(span),
                 )
             })?;
-        if let Some(function) = structure.functions.get(&key(method)).cloned() {
+        if let Some(candidates) = structure.functions.get(&key(method)) {
+            let function = self
+                .pick_overload(
+                    "Function",
+                    method,
+                    candidates,
+                    |function: &Function| &function.params,
+                    &self.argument_types_of(args, caller_frame),
+                    span,
+                )?
+                .clone();
             let mut frame = Frame::default();
             frame.inherit_modules_from(caller_frame)?;
             if let Some((module_key, _)) = key(&structure.name).split_once('.') {
@@ -1133,7 +1153,7 @@ impl Interpreter {
                 "Sub",
                 name,
                 candidates,
-                |procedure| &procedure.params,
+                |procedure: &Procedure| &procedure.params,
                 &Self::argument_types_of_values(args),
                 span,
             )?
@@ -1232,7 +1252,7 @@ impl Interpreter {
                     "Sub",
                     name,
                     candidates,
-                    |procedure| &procedure.params,
+                    |procedure: &Procedure| &procedure.params,
                     &self.argument_types_of(args, caller_frame),
                     span,
                 )?
@@ -1490,7 +1510,7 @@ impl Interpreter {
                     "Sub",
                     name,
                     candidates,
-                    |procedure| &procedure.params,
+                    |procedure: &Procedure| &procedure.params,
                     &self.argument_types_of(args, caller_frame),
                     span,
                 )?
@@ -1846,13 +1866,23 @@ impl Interpreter {
                 Some(span),
             )
         })?;
-        let procedure = class.subs.get(&key(method)).ok_or_else(|| {
+        let candidates = class.subs.get(&key(method)).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Class '{}' has no method '{}'", class.name, method),
                 Some(span),
             )
         })?;
+        let procedure = self
+            .pick_overload(
+                "Sub",
+                method,
+                candidates,
+                |procedure: &Procedure| &procedure.params,
+                &self.argument_types_of(args, caller_frame),
+                span,
+            )?
+            .clone();
         let mut frame = Frame::default();
         frame.inherit_modules_from(caller_frame)?;
         if let Some((module_key, _)) = key(&class.name).split_once('.') {
@@ -1975,13 +2005,23 @@ impl Interpreter {
                     Some(span),
                 )
             })?;
-        let procedure = class.subs.get(&key(method)).ok_or_else(|| {
+        let candidates = class.subs.get(&key(method)).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Class '{}' has no method '{}'", class.name, method),
                 Some(span),
             )
         })?;
+        let procedure = self
+            .pick_overload(
+                "Sub",
+                method,
+                candidates,
+                |procedure: &Procedure| &procedure.params,
+                &Self::argument_types_of_values(args),
+                span,
+            )?
+            .clone();
         let mut frame = Frame::default();
         frame.inherit_modules_from(caller_frame)?;
         if let Some((module_key, _)) = key(&class.name).split_once('.') {
@@ -2153,7 +2193,17 @@ impl Interpreter {
                             Some(span),
                         )
                     })?;
-                if let Some(function) = class.functions.get(&key(method)) {
+                if let Some(candidates) = class.functions.get(&key(method)) {
+                    let function = self
+                        .pick_overload(
+                            "Function",
+                            method,
+                            candidates,
+                            |function: &Function| &function.params,
+                            &self.argument_types_of(args, caller_frame),
+                            span,
+                        )?
+                        .clone();
                     let mut frame = Frame::default();
                     frame.inherit_modules_from(caller_frame)?;
                     if let Some((module_key, _)) = key(&class.name).split_once('.') {
@@ -2313,17 +2363,23 @@ impl Interpreter {
                     Some(span),
                 )
             })?;
-        let function = class
-            .shared_functions
-            .get(&key(method))
-            .cloned()
-            .ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::MEMBER_ACCESS,
-                    format!("Class '{}' has no Shared function '{}'", class.name, method),
-                    Some(span),
-                )
-            })?;
+        let candidates = class.shared_functions.get(&key(method)).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::MEMBER_ACCESS,
+                format!("Class '{}' has no Shared function '{}'", class.name, method),
+                Some(span),
+            )
+        })?;
+        let function = self
+            .pick_overload(
+                "Function",
+                method,
+                candidates,
+                |function: &Function| &function.params,
+                &self.argument_types_of(args, caller_frame),
+                span,
+            )?
+            .clone();
         let mut frame = Frame::default();
         frame.inherit_modules_from(caller_frame)?;
         if let Some((module_key, _)) = key(&class.name).split_once('.') {
@@ -2384,17 +2440,23 @@ impl Interpreter {
                     Some(span),
                 )
             })?;
-        let procedure = class
-            .shared_subs
-            .get(&key(method))
-            .cloned()
-            .ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::MEMBER_ACCESS,
-                    format!("Class '{}' has no Shared method '{}'", class.name, method),
-                    Some(span),
-                )
-            })?;
+        let candidates = class.shared_subs.get(&key(method)).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::MEMBER_ACCESS,
+                format!("Class '{}' has no Shared method '{}'", class.name, method),
+                Some(span),
+            )
+        })?;
+        let procedure = self
+            .pick_overload(
+                "Sub",
+                method,
+                candidates,
+                |procedure: &Procedure| &procedure.params,
+                &self.argument_types_of(args, caller_frame),
+                span,
+            )?
+            .clone();
         let mut frame = Frame::default();
         frame.inherit_modules_from(caller_frame)?;
         if let Some((module_key, _)) = key(&class.name).split_once('.') {

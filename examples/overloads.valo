@@ -43,6 +43,27 @@ Public Function Join_(ByVal parts As Collection) As String
     Return result
 End Function
 
+' Methods overload too, including the constructor.
+Class Painter
+    Public Name_ As String
+
+    Public Sub Initialize()
+        Name_ = "unnamed"
+    End Sub
+
+    Public Sub Initialize(ByVal name As String)
+        Name_ = name
+    End Sub
+
+    Public Overloads Function Draw(ByVal x As Double) As String
+        Return Name_ & " draws a point at " & x
+    End Function
+
+    Public Overloads Function Draw(ByVal from_ As Double, ByVal to_ As Double) As String
+        Return Name_ & " draws a line " & from_ & " to " & to_
+    End Function
+End Class
+
 Sub Main()
     Console.WriteLine(Area(3))
     Console.WriteLine(Area(3, 4))
@@ -65,4 +86,10 @@ Sub Main()
 
     ' Naming a parameter picks the overload that has one by that name.
     Console.WriteLine(Area(width := 2, height := 5))
+
+    Dim anon As New Painter()
+    Console.WriteLine(anon.Draw(1))
+
+    Dim studio As New Painter("Studio")
+    Console.WriteLine(studio.Draw(1, 9))
 End Sub
