@@ -130,6 +130,122 @@ mod handler_tests {
         ("strings", strings::HANDLERS),
     ];
 
+    /// The lazy table and the value tables must not claim the same builtin.
+    ///
+    /// A name in both would be answered by the lazy one, since it is tried
+    /// first, leaving the value implementation silently unreachable.
+    #[test]
+    fn no_builtin_is_both_lazy_and_value_dispatched() {
+        for (lazy_name, _) in EXPR_HANDLERS {
+            for (module, handlers) in TABLES {
+                assert!(
+                    find_handler(handlers, lazy_name).is_none(),
+                    "'{lazy_name}' is dispatched before evaluation and also implemented by {module}"
+                );
+            }
+        }
+    }
+
+    /// Every builtin the registry declares must have an implementation.
+    ///
+    /// This is the half of the registry's promise that only became checkable
+    /// once dispatch was table-driven: before, an implementation could only be
+    /// found by executing the chain of name comparisons.
+    #[test]
+    fn every_declared_builtin_has_an_implementation() {
+        let missing: Vec<&str> = crate::runtime::builtins::BUILTINS
+            .iter()
+            .filter(|builtin| {
+                find_expr_handler(builtin.name).is_none()
+                    && TABLES
+                        .iter()
+                        .all(|(_, handlers)| find_handler(handlers, builtin.name).is_none())
+                    && !UNCONVERTED
+                        .iter()
+                        .any(|name| name.eq_ignore_ascii_case(builtin.name))
+            })
+            .map(|builtin| builtin.name)
+            .collect();
+
+        assert!(
+            missing.is_empty(),
+            "the registry declares builtins with no implementation and no exemption: {missing:?}"
+        );
+    }
+
+    /// An exemption must name a builtin that really has no table entry.
+    ///
+    /// Without this, converting a module would leave stale exemptions behind,
+    /// and the list would stop reflecting what is actually left to do.
+    #[test]
+    fn no_exemption_is_stale() {
+        for name in UNCONVERTED {
+            let implemented = find_expr_handler(name).is_some()
+                || TABLES
+                    .iter()
+                    .any(|(_, handlers)| find_handler(handlers, name).is_some());
+            assert!(
+                !implemented,
+                "'{name}' is implemented by a handler table and should be removed from UNCONVERTED"
+            );
+        }
+    }
+
+    /// Builtins still reached through the remaining name-comparison chains.
+    ///
+    /// Each entry is a module not yet converted to a handler table. The list
+    /// only shrinks: adding a name to it hides a builtin from the check above,
+    /// so a new builtin belongs in a table instead.
+    const UNCONVERTED: &[&str] = &[
+        // Routed to a dispatcher by group rather than by name.
+        "FreeFile",
+        "EOF",
+        "FileAttr",
+        "LOF",
+        "Loc",
+        "Seek",
+        "Dir",
+        "GetAttr",
+        "FileLen",
+        "FileDateTime",
+        "CurDir",
+        "Kill",
+        "MkDir",
+        "RmDir",
+        "ChDir",
+        "Timer",
+        "Now",
+        "Date",
+        "Time",
+        "DateSerial",
+        "TimeSerial",
+        "DateValue",
+        "TimeValue",
+        "DateAdd",
+        "DateDiff",
+        "DatePart",
+        "Year",
+        "Month",
+        "Day",
+        "Hour",
+        "Minute",
+        "Second",
+        "Weekday",
+        "MonthName",
+        "WeekdayName",
+        // Implemented by the arrays module, which still uses a name chain.
+        "Array",
+        "LBound",
+        "UBound",
+        "Split",
+        "Join",
+        // Implemented by the miscellaneous value dispatcher.
+        "RGB",
+        "QBColor",
+        "Spc",
+        "Tab",
+    ];
+
     /// A handler table may only name builtins the registry declares.
     ///
     /// Implementing something the registry has never heard of means the
@@ -212,6 +328,569 @@ mod handler_tests {
     }
 }
 
+/// A builtin that needs its arguments before they are evaluated.
+///
+/// Lazy forms such as `IIf` must not evaluate the branch they do not take, and
+/// the pointer builtins need the storage an argument names rather than its
+/// value. Everything else is reached through a module's value table instead.
+pub(super) type ExprFn = fn(
+    &mut Interpreter,
+    &str,
+    &[Expr],
+    &mut Frame,
+    crate::runtime::Span,
+) -> Result<Value, Diagnostic>;
+
+/// Builtins dispatched before their arguments are evaluated.
+pub(super) const EXPR_HANDLERS: &[(&str, ExprFn)] = &[
+    ("IIf", i_if),
+    ("Choose", choose),
+    ("Switch", switch),
+    ("CallByName", call_by_name),
+    ("VarPtr", var_ptr),
+    ("StrPtr", str_ptr),
+    ("ObjPtr", obj_ptr),
+    ("DoEvents", do_events),
+    ("MsgBox", msg_box),
+    ("InputBox", input_box),
+    ("Command", command),
+    ("Error", error),
+    ("Input", input),
+    ("Shell", shell),
+    ("CreateObject", create_object),
+    ("GetObject", get_object),
+    ("Environ", environ),
+    ("GetSetting", get_setting),
+    ("GetAllSettings", get_all_settings),
+    ("IMEStatus", i_m_e_status),
+    ("MacID", mac_i_d),
+    ("MacScript", mac_script),
+    ("IsMissing", is_missing),
+];
+
+fn find_expr_handler(name: &str) -> Option<ExprFn> {
+    EXPR_HANDLERS
+        .iter()
+        .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+        .map(|(_, handler)| *handler)
+}
+
+fn i_if(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let condition = interpreter.eval_expr(&args[0], frame)?.is_truthy();
+    let value_expr = if condition { &args[1] } else { &args[2] };
+    interpreter.eval_expr(value_expr, frame)
+}
+
+fn choose(
+    interpreter: &mut Interpreter,
+    effective_name: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.len() < 2 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "Choose expects an index and at least one choice",
+            Some(span),
+        ));
+    }
+    let index = integer_arg(
+        effective_name,
+        &interpreter.eval_expr(&args[0], frame)?,
+        span,
+    )?;
+    if index < 1 || index as usize >= args.len() {
+        return Ok(Value::Null);
+    }
+    interpreter.eval_expr(&args[index as usize], frame)
+}
+
+fn switch(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || !args.len().is_multiple_of(2) {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "Switch expects expression/value pairs",
+            Some(span),
+        ));
+    }
+    for pair in args.chunks(2) {
+        if interpreter.eval_expr(&pair[0], frame)?.is_truthy() {
+            return interpreter.eval_expr(&pair[1], frame);
+        }
+    }
+    Ok(Value::Null)
+}
+
+fn call_by_name(
+    interpreter: &mut Interpreter,
+    effective_name: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    dispatch_callbyname(interpreter, effective_name, args, frame, span)?.ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            "CallByName could not resolve the member",
+            Some(span),
+        )
+    })
+}
+
+fn var_ptr(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    Ok(Value::Ptr(interpreter.varptr_expr(&args[0], frame)?))
+}
+
+fn str_ptr(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let arg = &args[0];
+    let value = interpreter.eval_expr(arg, frame)?;
+    let text = match value {
+        Value::String(text) => text,
+        Value::Empty => String::new(),
+        Value::Null | Value::Nothing | Value::Missing => return Ok(Value::Ptr(0)),
+        other => other.to_output_string(),
+    };
+    let mut wide: Vec<u16> = text.encode_utf16().collect();
+    wide.push(0);
+    interpreter.temporary_wide_strings.push(wide);
+    let ptr = interpreter
+        .temporary_wide_strings
+        .last()
+        .map(|text| text.as_ptr() as usize)
+        .unwrap_or(0);
+    Ok(Value::Ptr(ptr))
+}
+
+fn obj_ptr(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let value = interpreter.eval_expr(&args[0], frame)?;
+    match value {
+        Value::Object(obj) => {
+            let ptr = std::rc::Rc::as_ptr(&obj) as usize;
+            Ok(Value::Ptr(ptr))
+        }
+        Value::Collection(coll) => {
+            let ptr = std::rc::Rc::as_ptr(&coll) as usize;
+            Ok(Value::Ptr(ptr))
+        }
+        Value::ComObject(com) => {
+            let ptr = std::rc::Rc::as_ptr(&com) as usize;
+            Ok(Value::Ptr(ptr))
+        }
+        Value::Nothing => Ok(Value::Ptr(0)),
+        _ => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            "ObjPtr requires an object",
+            Some(span),
+        )),
+    }
+}
+
+fn do_events(
+    _: &mut Interpreter,
+    _: &str,
+    _: &[Expr],
+    _: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
+        };
+        unsafe {
+            let mut msg = MSG::default();
+            while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+    }
+    Ok(Value::Int16(0))
+}
+
+fn msg_box(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 5 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "MsgBox expects 1 to 5 arguments",
+            Some(span),
+        ));
+    }
+    let prompt = interpreter.eval_expr(&args[0], frame)?.to_output_string();
+    let title = if args.len() >= 3 && !matches!(args[2].kind, ExprKind::Missing) {
+        interpreter.eval_expr(&args[2], frame)?.to_output_string()
+    } else {
+        DEFAULT_DIALOG_TITLE.to_string()
+    };
+
+    #[cfg(windows)]
+    {
+        use crate::runtime::{TypeName, coerce_assignment};
+        let buttons_val = if args.len() >= 2 && !matches!(args[1].kind, ExprKind::Missing) {
+            interpreter.eval_expr(&args[1], frame)?
+        } else {
+            Value::Int32(0) // vbOKOnly
+        };
+        let buttons = coerce_assignment(&TypeName::Long, buttons_val, span)?
+            .to_output_string()
+            .parse::<i32>()
+            .unwrap_or(0);
+
+        use windows::Win32::UI::WindowsAndMessaging::{MESSAGEBOX_STYLE, MessageBoxW};
+        use windows::core::HSTRING;
+        let result = unsafe {
+            MessageBoxW(
+                None,
+                &HSTRING::from(prompt),
+                &HSTRING::from(title),
+                MESSAGEBOX_STYLE(buttons as u32),
+            )
+        };
+        Ok(Value::Int16(result.0 as i16))
+    }
+    #[cfg(not(windows))]
+    {
+        // Evaluate buttons anyway to maintain side-effects parity
+        if args.len() >= 2 && !matches!(args[1].kind, ExprKind::Missing) {
+            let _ = interpreter.eval_expr(&args[1], frame)?;
+        }
+
+        println!("{title}: {prompt}");
+        return Ok(Value::Int16(1)); // vbOK
+    }
+}
+
+fn input_box(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 7 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "InputBox expects 1 to 7 arguments",
+            Some(span),
+        ));
+    }
+    let prompt = interpreter.eval_expr(&args[0], frame)?.to_output_string();
+    let title = if args.len() >= 2 && !matches!(args[1].kind, ExprKind::Missing) {
+        interpreter.eval_expr(&args[1], frame)?.to_output_string()
+    } else {
+        DEFAULT_DIALOG_TITLE.to_string()
+    };
+    let default = if args.len() >= 3 && !matches!(args[2].kind, ExprKind::Missing) {
+        interpreter.eval_expr(&args[2], frame)?.to_output_string()
+    } else {
+        String::new()
+    };
+
+    // For now, let's use console ReadLine as a fallback for InputBox
+    println!("{title}: {prompt}");
+    if !default.is_empty() {
+        println!("Default: {default}");
+    }
+    print!("> ");
+    use std::io::{self, Write};
+    let _ = io::stdout().flush();
+    let mut input = String::new();
+    let _ = io::stdin().read_line(&mut input);
+    let result = input.trim_end_matches(['\r', '\n']).to_string();
+    if result.is_empty() && !default.is_empty() {
+        return Ok(Value::String(default));
+    }
+    Ok(Value::String(result))
+}
+
+fn command(
+    _: &mut Interpreter,
+    _: &str,
+    _: &[Expr],
+    _: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let command = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
+    Ok(Value::String(command))
+}
+
+fn error(
+    interpreter: &mut Interpreter,
+    effective_name: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.len() > 1 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "Error expects 0 to 1 arguments",
+            Some(span),
+        ));
+    }
+    let number = if let Some(arg) = args.first() {
+        integer_arg(effective_name, &interpreter.eval_expr(arg, frame)?, span)?
+    } else {
+        0
+    };
+    Ok(Value::String(error_description(number)))
+}
+
+fn input(
+    interpreter: &mut Interpreter,
+    effective_name: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let count = integer_arg(
+        effective_name,
+        &interpreter.eval_expr(&args[0], frame)?,
+        span,
+    )?;
+    let number = file_number_arg(
+        effective_name,
+        &interpreter.eval_expr(&args[1], frame)?,
+        span,
+    )?;
+    Ok(Value::String(
+        interpreter.input_file_chars(number, count, span)?,
+    ))
+}
+
+fn shell(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "Shell expects 1 to 2 arguments",
+            Some(span),
+        ));
+    }
+    let command = interpreter.eval_expr(&args[0], frame)?.to_output_string();
+    let child = if cfg!(windows) {
+        std::process::Command::new("cmd")
+            .args(["/C", &command])
+            .spawn()
+    } else {
+        std::process::Command::new("sh")
+            .args(["-c", &command])
+            .spawn()
+    }
+    .map_err(|error| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            format!("Shell failed to start '{}': {}", command, error),
+            Some(span),
+        )
+    })?;
+    Ok(Value::Int64(i64::from(child.id())))
+}
+
+fn create_object(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "CreateObject expects 1 to 2 arguments",
+            Some(span),
+        ));
+    }
+    let prog_id = interpreter.eval_expr(&args[0], frame)?.to_output_string();
+    if args.len() == 2 {
+        let server = interpreter.eval_expr(&args[1], frame)?.to_output_string();
+        if !server.is_empty() {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                "Compatibility diagnostic: CreateObject remote server activation is not supported by the standalone Valo runtime; omit the server name for local COM activation",
+                Some(args[1].span),
+            )
+            .with_help(
+                "omit the server name for local COM activation, or run this automation in a host/runtime that supports remote COM",
+            ));
+        }
+    }
+    crate::runtime::com::create_object(&prog_id, span)
+}
+
+fn get_object(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "GetObject expects 1 to 2 arguments",
+            Some(span),
+        ));
+    }
+    let pathname = if !matches!(args[0].kind, ExprKind::Missing) {
+        Some(interpreter.eval_expr(&args[0], frame)?.to_output_string())
+    } else {
+        None
+    };
+    let prog_id = if args.len() == 2 && !matches!(args[1].kind, ExprKind::Missing) {
+        Some(interpreter.eval_expr(&args[1], frame)?.to_output_string())
+    } else {
+        None
+    };
+    crate::runtime::com::get_object(pathname.as_deref(), prog_id.as_deref(), span)
+}
+
+fn environ(
+    interpreter: &mut Interpreter,
+    effective_name: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let value = interpreter.eval_expr(&args[0], frame)?;
+    Ok(Value::String(environ_value(effective_name, &value, span)?))
+}
+
+fn get_setting(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.len() < 3 || args.len() > 4 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "GetSetting expects 3 to 4 arguments",
+            Some(span),
+        ));
+    }
+    for arg in args.iter().take(3) {
+        let _ = interpreter.eval_expr(arg, frame)?;
+    }
+    let default = if let Some(default) = args.get(3) {
+        interpreter.eval_expr(default, frame)?.to_output_string()
+    } else {
+        String::new()
+    };
+    Ok(Value::String(default))
+}
+
+fn get_all_settings(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    for arg in args {
+        let _ = interpreter.eval_expr(arg, frame)?;
+    }
+    Ok(empty_string_matrix())
+}
+
+fn i_m_e_status(
+    _: &mut Interpreter,
+    _: &str,
+    _: &[Expr],
+    _: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    Ok(Value::Int64(0))
+}
+
+fn mac_i_d(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let text = interpreter.eval_expr(&args[0], frame)?.to_output_string();
+    let mut bytes = [b' '; 4];
+    for (slot, byte) in bytes.iter_mut().zip(text.bytes()) {
+        *slot = byte;
+    }
+    let value = bytes
+        .iter()
+        .fold(0_i64, |acc, byte| (acc << 8) | i64::from(*byte));
+    Ok(Value::Int64(value))
+}
+
+fn mac_script(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let _ = interpreter.eval_expr(&args[0], frame)?;
+    Err(Diagnostic::new(
+        crate::runtime::DiagnosticCode::GENERIC,
+        "Compatibility diagnostic: MacScript requires an Office VBA Mac host and is not supported by the standalone Valo runtime; replace MacScript with a platform API, shell command, or host-specific adapter",
+        Some(span),
+    )
+    .with_help("replace MacScript with a platform API, shell command, or host-specific adapter"))
+}
+
+fn is_missing(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Expr],
+    frame: &mut Frame,
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    // Reports whether an optional parameter was left out at the call site.
+    let value = interpreter.eval_expr(&args[0], frame)?;
+    Ok(Value::Boolean(matches!(value, Value::Missing)))
+}
 pub(crate) fn dispatch_function(
     interpreter: &mut Interpreter,
     name: &str,
@@ -229,274 +908,13 @@ pub(crate) fn dispatch_function(
         builtin.check_arity(args.len(), span)?;
     }
 
+    // Builtins that need their arguments unevaluated, or that need the storage
+    // an argument names rather than its value.
+    if let Some(handler) = find_expr_handler(effective_name) {
+        return handler(interpreter, effective_name, args, frame, span).map(Some);
+    }
+
     // Special forms that require lazy evaluation or direct Expr access
-    if effective_name.eq_ignore_ascii_case("IIf") {
-        let condition = interpreter.eval_expr(&args[0], frame)?.is_truthy();
-        let value_expr = if condition { &args[1] } else { &args[2] };
-        return Ok(Some(interpreter.eval_expr(value_expr, frame)?));
-    }
-
-    if effective_name.eq_ignore_ascii_case("Choose") {
-        if args.len() < 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Choose expects an index and at least one choice",
-                Some(span),
-            ));
-        }
-        let index = integer_arg(
-            effective_name,
-            &interpreter.eval_expr(&args[0], frame)?,
-            span,
-        )?;
-        if index < 1 || index as usize >= args.len() {
-            return Ok(Some(Value::Null));
-        }
-        return Ok(Some(interpreter.eval_expr(&args[index as usize], frame)?));
-    }
-
-    if effective_name.eq_ignore_ascii_case("Switch") {
-        if args.is_empty() || !args.len().is_multiple_of(2) {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Switch expects expression/value pairs",
-                Some(span),
-            ));
-        }
-        for pair in args.chunks(2) {
-            if interpreter.eval_expr(&pair[0], frame)?.is_truthy() {
-                return Ok(Some(interpreter.eval_expr(&pair[1], frame)?));
-            }
-        }
-        return Ok(Some(Value::Null));
-    }
-
-    if effective_name.eq_ignore_ascii_case("CallByName") {
-        return dispatch_callbyname(interpreter, effective_name, args, frame, span);
-    }
-
-    if effective_name.eq_ignore_ascii_case("VarPtr") {
-        return Ok(Some(Value::Ptr(interpreter.varptr_expr(&args[0], frame)?)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("StrPtr") {
-        let arg = &args[0];
-        let value = interpreter.eval_expr(arg, frame)?;
-        let text = match value {
-            Value::String(text) => text,
-            Value::Empty => String::new(),
-            Value::Null | Value::Nothing | Value::Missing => return Ok(Some(Value::Ptr(0))),
-            other => other.to_output_string(),
-        };
-        let mut wide: Vec<u16> = text.encode_utf16().collect();
-        wide.push(0);
-        interpreter.temporary_wide_strings.push(wide);
-        let ptr = interpreter
-            .temporary_wide_strings
-            .last()
-            .map(|text| text.as_ptr() as usize)
-            .unwrap_or(0);
-        return Ok(Some(Value::Ptr(ptr)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("ObjPtr") {
-        let value = interpreter.eval_expr(&args[0], frame)?;
-        match value {
-            Value::Object(obj) => {
-                let ptr = std::rc::Rc::as_ptr(&obj) as usize;
-                return Ok(Some(Value::Ptr(ptr)));
-            }
-            Value::Collection(coll) => {
-                let ptr = std::rc::Rc::as_ptr(&coll) as usize;
-                return Ok(Some(Value::Ptr(ptr)));
-            }
-            Value::ComObject(com) => {
-                let ptr = std::rc::Rc::as_ptr(&com) as usize;
-                return Ok(Some(Value::Ptr(ptr)));
-            }
-            Value::Nothing => {
-                return Ok(Some(Value::Ptr(0)));
-            }
-            _ => {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
-                    "ObjPtr requires an object",
-                    Some(span),
-                ));
-            }
-        }
-    }
-
-    if effective_name.eq_ignore_ascii_case("DoEvents") {
-        #[cfg(windows)]
-        {
-            use windows::Win32::UI::WindowsAndMessaging::{
-                DispatchMessageW, MSG, PM_REMOVE, PeekMessageW, TranslateMessage,
-            };
-            unsafe {
-                let mut msg = MSG::default();
-                while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
-                    let _ = TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
-                }
-            }
-        }
-        return Ok(Some(Value::Int16(0)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("MsgBox") {
-        if args.is_empty() || args.len() > 5 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "MsgBox expects 1 to 5 arguments",
-                Some(span),
-            ));
-        }
-        let prompt = interpreter.eval_expr(&args[0], frame)?.to_output_string();
-        let title = if args.len() >= 3 && !matches!(args[2].kind, ExprKind::Missing) {
-            interpreter.eval_expr(&args[2], frame)?.to_output_string()
-        } else {
-            DEFAULT_DIALOG_TITLE.to_string()
-        };
-
-        #[cfg(windows)]
-        {
-            use crate::runtime::{TypeName, coerce_assignment};
-            let buttons_val = if args.len() >= 2 && !matches!(args[1].kind, ExprKind::Missing) {
-                interpreter.eval_expr(&args[1], frame)?
-            } else {
-                Value::Int32(0) // vbOKOnly
-            };
-            let buttons = coerce_assignment(&TypeName::Long, buttons_val, span)?
-                .to_output_string()
-                .parse::<i32>()
-                .unwrap_or(0);
-
-            use windows::Win32::UI::WindowsAndMessaging::{MESSAGEBOX_STYLE, MessageBoxW};
-            use windows::core::HSTRING;
-            let result = unsafe {
-                MessageBoxW(
-                    None,
-                    &HSTRING::from(prompt),
-                    &HSTRING::from(title),
-                    MESSAGEBOX_STYLE(buttons as u32),
-                )
-            };
-            return Ok(Some(Value::Int16(result.0 as i16)));
-        }
-        #[cfg(not(windows))]
-        {
-            // Evaluate buttons anyway to maintain side-effects parity
-            if args.len() >= 2 && !matches!(args[1].kind, ExprKind::Missing) {
-                let _ = interpreter.eval_expr(&args[1], frame)?;
-            }
-
-            println!("{title}: {prompt}");
-            return Ok(Some(Value::Int16(1))); // vbOK
-        }
-    }
-
-    if effective_name.eq_ignore_ascii_case("InputBox") {
-        if args.is_empty() || args.len() > 7 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "InputBox expects 1 to 7 arguments",
-                Some(span),
-            ));
-        }
-        let prompt = interpreter.eval_expr(&args[0], frame)?.to_output_string();
-        let title = if args.len() >= 2 && !matches!(args[1].kind, ExprKind::Missing) {
-            interpreter.eval_expr(&args[1], frame)?.to_output_string()
-        } else {
-            DEFAULT_DIALOG_TITLE.to_string()
-        };
-        let default = if args.len() >= 3 && !matches!(args[2].kind, ExprKind::Missing) {
-            interpreter.eval_expr(&args[2], frame)?.to_output_string()
-        } else {
-            String::new()
-        };
-
-        // For now, let's use console ReadLine as a fallback for InputBox
-        println!("{title}: {prompt}");
-        if !default.is_empty() {
-            println!("Default: {default}");
-        }
-        print!("> ");
-        use std::io::{self, Write};
-        let _ = io::stdout().flush();
-        let mut input = String::new();
-        let _ = io::stdin().read_line(&mut input);
-        let result = input.trim_end_matches(['\r', '\n']).to_string();
-        if result.is_empty() && !default.is_empty() {
-            return Ok(Some(Value::String(default)));
-        }
-        return Ok(Some(Value::String(result)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("Command") {
-        let command = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
-        return Ok(Some(Value::String(command)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("Error") {
-        if args.len() > 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Error expects 0 to 1 arguments",
-                Some(span),
-            ));
-        }
-        let number = if let Some(arg) = args.first() {
-            integer_arg(effective_name, &interpreter.eval_expr(arg, frame)?, span)?
-        } else {
-            0
-        };
-        return Ok(Some(Value::String(error_description(number))));
-    }
-
-    if effective_name.eq_ignore_ascii_case("Input") {
-        let count = integer_arg(
-            effective_name,
-            &interpreter.eval_expr(&args[0], frame)?,
-            span,
-        )?;
-        let number = file_number_arg(
-            effective_name,
-            &interpreter.eval_expr(&args[1], frame)?,
-            span,
-        )?;
-        return Ok(Some(Value::String(
-            interpreter.input_file_chars(number, count, span)?,
-        )));
-    }
-
-    if effective_name.eq_ignore_ascii_case("Shell") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Shell expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        let command = interpreter.eval_expr(&args[0], frame)?.to_output_string();
-        let child = if cfg!(windows) {
-            std::process::Command::new("cmd")
-                .args(["/C", &command])
-                .spawn()
-        } else {
-            std::process::Command::new("sh")
-                .args(["-c", &command])
-                .spawn()
-        }
-        .map_err(|error| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
-                format!("Shell failed to start '{}': {}", command, error),
-                Some(span),
-            )
-        })?;
-        return Ok(Some(Value::Int64(i64::from(child.id()))));
-    }
 
     if effective_name.eq_ignore_ascii_case("Debug.Assert") {
         expect_arg_count(effective_name, args, 1, span)?;
@@ -516,123 +934,12 @@ pub(crate) fn dispatch_function(
         return Ok(Some(Value::String(result.unwrap_or_default())));
     }
 
-    if effective_name.eq_ignore_ascii_case("CreateObject") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "CreateObject expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        let prog_id = interpreter.eval_expr(&args[0], frame)?.to_output_string();
-        if args.len() == 2 {
-            let server = interpreter.eval_expr(&args[1], frame)?.to_output_string();
-            if !server.is_empty() {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
-                    "Compatibility diagnostic: CreateObject remote server activation is not supported by the standalone Valo runtime; omit the server name for local COM activation",
-                    Some(args[1].span),
-                )
-                .with_help(
-                    "omit the server name for local COM activation, or run this automation in a host/runtime that supports remote COM",
-                ));
-            }
-        }
-        return Ok(Some(crate::runtime::com::create_object(&prog_id, span)?));
-    }
-
-    if effective_name.eq_ignore_ascii_case("GetObject") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "GetObject expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        let pathname = if !matches!(args[0].kind, ExprKind::Missing) {
-            Some(interpreter.eval_expr(&args[0], frame)?.to_output_string())
-        } else {
-            None
-        };
-        let prog_id = if args.len() == 2 && !matches!(args[1].kind, ExprKind::Missing) {
-            Some(interpreter.eval_expr(&args[1], frame)?.to_output_string())
-        } else {
-            None
-        };
-        return Ok(Some(crate::runtime::com::get_object(
-            pathname.as_deref(),
-            prog_id.as_deref(),
-            span,
-        )?));
-    }
-
     if is_in_group(effective_name, BuiltinGroup::File) {
         let mut values = Vec::with_capacity(args.len());
         for arg in args {
             values.push(interpreter.eval_expr(arg, frame)?);
         }
         return dispatch_file_function(interpreter, effective_name, &values, span);
-    }
-
-    if effective_name.eq_ignore_ascii_case("Environ") {
-        let value = interpreter.eval_expr(&args[0], frame)?;
-        return Ok(Some(Value::String(environ_value(
-            effective_name,
-            &value,
-            span,
-        )?)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("GetSetting") {
-        if args.len() < 3 || args.len() > 4 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "GetSetting expects 3 to 4 arguments",
-                Some(span),
-            ));
-        }
-        for arg in args.iter().take(3) {
-            let _ = interpreter.eval_expr(arg, frame)?;
-        }
-        let default = if let Some(default) = args.get(3) {
-            interpreter.eval_expr(default, frame)?.to_output_string()
-        } else {
-            String::new()
-        };
-        return Ok(Some(Value::String(default)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("GetAllSettings") {
-        for arg in args {
-            let _ = interpreter.eval_expr(arg, frame)?;
-        }
-        return Ok(Some(empty_string_matrix()));
-    }
-
-    if effective_name.eq_ignore_ascii_case("IMEStatus") {
-        return Ok(Some(Value::Int64(0)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("MacID") {
-        let text = interpreter.eval_expr(&args[0], frame)?.to_output_string();
-        let mut bytes = [b' '; 4];
-        for (slot, byte) in bytes.iter_mut().zip(text.bytes()) {
-            *slot = byte;
-        }
-        let value = bytes
-            .iter()
-            .fold(0_i64, |acc, byte| (acc << 8) | i64::from(*byte));
-        return Ok(Some(Value::Int64(value)));
-    }
-
-    if effective_name.eq_ignore_ascii_case("MacScript") {
-        let _ = interpreter.eval_expr(&args[0], frame)?;
-        return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
-            "Compatibility diagnostic: MacScript requires an Office VBA Mac host and is not supported by the standalone Valo runtime; replace MacScript with a platform API, shell command, or host-specific adapter",
-            Some(span),
-        )
-        .with_help("replace MacScript with a platform API, shell command, or host-specific adapter"));
     }
 
     if is_in_group(effective_name, BuiltinGroup::DateTime) {
@@ -664,17 +971,6 @@ pub(crate) fn dispatch_function(
     let mut values = Vec::with_capacity(args.len());
     for arg in args {
         values.push(interpreter.eval_expr(arg, frame)?);
-    }
-
-    if effective_name.eq_ignore_ascii_case("IsMissing") {
-        if values.len() != 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "IsMissing expects exactly 1 argument",
-                Some(span),
-            ));
-        }
-        return Ok(Some(Value::Boolean(matches!(values[0], Value::Missing))));
     }
 
     if let Some(val) = types::eval_types(interpreter, effective_name, &values, span)? {
