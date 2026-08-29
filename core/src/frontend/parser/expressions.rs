@@ -518,6 +518,26 @@ impl Parser {
                     }
                 }
             }
+            TokenKind::New if self.check_simple(&TokenKind::With) => {
+                // `New With { .X = 1 }` names no type, so there is none to
+                // construct. It is a value with named members, which is what a
+                // named-element tuple already is -- so it becomes one, and
+                // member access, copying, and printing all follow from that.
+                let Some(inits) = self.parse_object_initializer_allowing_key(true)? else {
+                    return Err(self.error_here("Expected '{' after 'New With'"));
+                };
+                let elements = inits
+                    .into_iter()
+                    .map(|init| TupleElementExpr {
+                        name: Some(init.name),
+                        value: init.value,
+                    })
+                    .collect();
+                Expr {
+                    kind: ExprKind::TupleLiteral(elements),
+                    span: Span::new(self.file_id, span.start, self.previous().span.end),
+                }
+            }
             TokenKind::New => {
                 let mut class_name = if self.match_simple(&TokenKind::Error) {
                     "Error".to_string()
@@ -1066,6 +1086,20 @@ impl Parser {
     pub(super) fn parse_object_initializer(
         &mut self,
     ) -> Result<Option<Vec<MemberInit>>, Diagnostic> {
+        self.parse_object_initializer_allowing_key(false)
+    }
+
+    /// The same, optionally accepting VB.NET's `Key` marker.
+    ///
+    /// `Key` says an anonymous type's member takes part in equality and
+    /// hashing. Valo compares these by value throughout, so the word changes
+    /// nothing and is accepted so VB.NET source carries over. It is not
+    /// accepted in a named type's initializer, where VB.NET does not allow it
+    /// either.
+    pub(super) fn parse_object_initializer_allowing_key(
+        &mut self,
+        allow_key: bool,
+    ) -> Result<Option<Vec<MemberInit>>, Diagnostic> {
         if !self.check_simple(&TokenKind::With) || !self.check_next_simple(&TokenKind::LeftBrace) {
             return Ok(None);
         }
@@ -1075,6 +1109,9 @@ impl Parser {
         let mut inits: Vec<MemberInit> = Vec::new();
         self.skip_newlines();
         while !self.check_simple(&TokenKind::RightBrace) {
+            if allow_key {
+                self.match_identifier("Key");
+            }
             let start = self
                 .expect_simple(
                     TokenKind::Dot,

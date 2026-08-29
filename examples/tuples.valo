@@ -60,4 +60,10 @@ Sub Main()
     Dim widened As (Double, Double)
     widened = (1, 2)
     Console.WriteLine(widened.Item1 / 2)
+
+    ' `New With` builds the same thing under VB.NET's spelling for it. `Key`
+    ' marks a member for equality there; Valo compares by value throughout, so
+    ' it is accepted and changes nothing.
+    Dim person = New With { Key .Name = "Ada", .Age = 36 }
+    Console.WriteLine($"{person.Name} is {person.Age}")
 End Sub

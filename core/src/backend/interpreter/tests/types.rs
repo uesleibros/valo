@@ -299,3 +299,38 @@ End Sub
 
     assert_eq!(output, vec!["9"]);
 }
+
+#[test]
+fn an_anonymous_type_is_a_value_with_named_members() {
+    let output = crate::backend::interpreter::tests::helpers::run_source(
+        r#"
+Sub Main()
+    Dim person = New With { Key .Name = "Ada", .Age = 36 }
+    Console.WriteLine(person.Name & " is " & person.Age)
+
+    ' It behaves as any other grouped value does: assigning copies it.
+    Dim copy_ = person
+    Console.WriteLine(copy_.Name)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["Ada is 36", "Ada"]);
+}
+
+#[test]
+fn an_anonymous_type_reports_a_member_it_does_not_have() {
+    let diagnostic = crate::backend::interpreter::tests::helpers::source_diagnostic(
+        r#"
+Function Make() As (Name As String, Age As Long)
+    Return New With { .Name = "Ada", .Age = 36 }
+End Function
+
+Sub Main()
+    Console.WriteLine(Make().Height)
+End Sub
+"#,
+    );
+
+    assert!(diagnostic.message.contains("has no element 'Height'"));
+}

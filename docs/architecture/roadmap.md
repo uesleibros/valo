@@ -87,8 +87,8 @@ None of this blocks the VM, and the VM blocks none of it.
       passable to native code.
 - [x] **Tuples and tuple returns** — `(a, b)` literals, `As (X As Long, …)`
       types, and `Dim (a, b) = …` to name the elements.
-- [ ] **Anonymous types** — `New With { Key .X = 1 }`. The object-initializer
-      machinery exists; what is missing is a synthesized type.
+- [x] **Anonymous types** — `New With { Key .X = 1 }`, which is a tuple whose
+      elements are all named.
 - [ ] **LINQ query syntax** — `From … Where … Select`. Now viable: it desugars to
       the extension methods and lambdas that already work, and closures are what
       made those lambdas useful.

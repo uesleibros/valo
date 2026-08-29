@@ -244,6 +244,23 @@ does, so `(1, 2)` fits `(Double, Double)`. A tuple is copied when it is
 assigned, as a `Structure` is, and it cannot cross the native boundary --
 pass its elements instead.
 
+### Anonymous types
+
+`New With { ... }` builds the same thing under VB.NET's spelling for it:
+
+```vb
+Dim person = New With { Key .Name = "Ada", .Age = 36 }
+Console.WriteLine(person.Name)
+```
+
+`Key` marks a member as taking part in equality in VB.NET. Valo compares these
+by value throughout, so the word is accepted and changes nothing.
+
+Two differences from VB.NET are worth knowing. An anonymous type there is a
+reference type with a generated class behind it; here it is a value, copied
+when assigned. And its type is structural, so two `New With` expressions with
+the same members produce the same type wherever they are written.
+
 ## Related
 
 - [Example: tuples](../../examples/tuples.valo)
