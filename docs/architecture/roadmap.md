@@ -31,6 +31,7 @@ The goal is that code written against the VB.NET language reference runs on Valo
 - [x] `Inherits` and `Implements` as standalone lines in a class body
 - [x] Bitwise operators over every integral width
 - [x] Multi-line lambdas (`Function() ... End Function`, `Sub() ... End Sub`)
+- [x] Closures: lambdas capture their defining scope, by reference
 - [x] Object initializers (`New Point With { .X = 1 }`)
 - [ ] Anonymous types (`New With { Key .X = 1 }`)
 - [x] Null-conditional access (`obj?.Member`)

@@ -562,6 +562,12 @@ impl Interpreter {
         self.scope_stack.push("Lambda".to_string());
         let result = (|| {
             let mut frame = Frame::default();
+            // The captured scope goes in first so that a parameter, or a
+            // declaration inside the body, shadows an outer name of the same
+            // spelling rather than colliding with it.
+            for captured in &lambda.captured {
+                frame.bind_captured(captured);
+            }
             self.bind_parameter_values(&lambda.params, args, &mut frame, span)?;
             match &lambda.body {
                 crate::LambdaBody::Expression(expr) => self.eval_expr(expr, &mut frame),
@@ -2529,6 +2535,7 @@ impl Interpreter {
                                     dynamic_array: false,
                                     is_const: false,
                                     module_level: false,
+                                    captured: false,
                                     declared_at: Some(param.span),
                                 };
                                 callee_frame.declare_alias(
@@ -2610,6 +2617,7 @@ impl Interpreter {
                                             dynamic_array: false,
                                             is_const: false,
                                             module_level: false,
+                                            captured: false,
                                             declared_at: Some(param.span),
                                         };
                                         callee_frame.declare_alias(
@@ -2687,6 +2695,7 @@ impl Interpreter {
                                             dynamic_array: false,
                                             is_const: false,
                                             module_level: false,
+                                            captured: false,
                                             declared_at: Some(param.span),
                                         };
                                         callee_frame.declare_alias(

@@ -699,10 +699,16 @@ impl Interpreter {
                 Ok(Value::FuncPtr(ptr))
             }
             ExprKind::PassingModeOverride { expr: inner, .. } => self.eval_expr(inner, frame),
-            ExprKind::Lambda { params, body } => Ok(Value::Lambda(Rc::new(LambdaValue {
-                params: params.clone(),
-                body: body.clone(),
-            }))),
+            ExprKind::Lambda { params, body } => {
+                // A lambda closes over the scope that created it, so the
+                // variables it can see are captured now, while that scope
+                // exists, rather than looked up later when it no longer does.
+                Ok(Value::Lambda(Rc::new(LambdaValue {
+                    params: params.clone(),
+                    body: body.clone(),
+                    captured: frame.capture_environment(),
+                })))
+            }
             ExprKind::Await(expr) => self.eval_expr(expr, frame),
             ExprKind::Binary { left, op, right } => {
                 let left_value = self.eval_expr(left, frame)?;

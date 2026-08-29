@@ -28,8 +28,8 @@ pub use diagnostic::{
 pub use naming::{fold, with_folded};
 pub use type_name::TypeName;
 pub use value::{
-    ArrayValue, CollectionItem, CollectionValue, ComObjectValue, EventBinding, LambdaValue,
-    ObjectValue, RecordValue, Value,
+    ArrayValue, CapturedVariable, CollectionItem, CollectionValue, ComObjectValue, EventBinding,
+    LambdaValue, ObjectValue, RecordValue, Value,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

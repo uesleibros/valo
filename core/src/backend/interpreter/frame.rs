@@ -172,8 +172,10 @@ impl Frame {
         let key = key(name);
         if let Some(existing) = self.variables.get(&key) {
             // The same declaration running again means we re-entered its block,
-            // so rebind it fresh instead of rejecting it as a duplicate.
-            if existing.declared_at != Some(span) {
+            // so rebind it fresh instead of rejecting it as a duplicate. A
+            // captured variable belongs to an outer scope, so declaring the name
+            // here shadows it rather than clashing with it.
+            if existing.declared_at != Some(span) && !existing.captured {
                 return Err(Diagnostic::new(
                     crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
                     format!("Variable '{}' is already declared", name),
@@ -225,6 +227,7 @@ impl Frame {
                 dynamic_array,
                 is_const: false,
                 module_level: false,
+                captured: false,
                 declared_at: Some(span),
             },
         );
@@ -267,6 +270,7 @@ impl Frame {
         let key = key(name);
         if let Some(existing) = self.variables.get(&key)
             && existing.declared_at != Some(span)
+            && !existing.captured
         {
             return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
@@ -285,6 +289,7 @@ impl Frame {
                 dynamic_array: false,
                 is_const: true,
                 module_level: false,
+                captured: false,
                 declared_at: Some(span),
             },
         );
@@ -410,6 +415,7 @@ impl Frame {
                 dynamic_array: false,
                 is_const: false,
                 module_level: false,
+                captured: false,
                 declared_at: Some(span),
             },
         );
@@ -470,6 +476,45 @@ impl Frame {
         with_key(name, |k| self.variables.get(k))
             .map(|variable| variable.borrow().clone())
             .ok_or_else(|| self.unknown_variable(name, span))
+    }
+
+    /// Binds a variable captured from the scope that defined a lambda.
+    ///
+    /// The cell is shared, not copied, so the lambda and the defining scope see
+    /// each other's assignments.
+    pub(crate) fn bind_captured(&mut self, captured: &crate::runtime::CapturedVariable) {
+        self.variables.insert(
+            key(&captured.name),
+            Variable {
+                name: captured.name.clone(),
+                ty: captured.ty.clone(),
+                cell: VariableCell::Direct(captured.cell.clone()),
+                dynamic_array: false,
+                is_const: false,
+                module_level: false,
+                captured: true,
+                declared_at: None,
+            },
+        );
+    }
+
+    /// Lists this scope's variables so a lambda defined here can capture them.
+    ///
+    /// Only directly held variables are shared by reference; an alias to an
+    /// array element or a record field is a view into another value, so it is
+    /// captured by value instead.
+    pub(crate) fn capture_environment(&self) -> Vec<crate::runtime::CapturedVariable> {
+        self.variables
+            .values()
+            .map(|variable| crate::runtime::CapturedVariable {
+                name: variable.name.clone(),
+                ty: variable.ty.clone(),
+                cell: match &variable.cell {
+                    VariableCell::Direct(cell) => cell.clone(),
+                    view => Rc::new(RefCell::new(view.borrow().clone())),
+                },
+            })
+            .collect()
     }
 
     /// Returns the variable's value only when it is an object-like target that
@@ -687,6 +732,12 @@ pub(crate) struct Variable {
     pub(crate) dynamic_array: bool,
     pub(crate) is_const: bool,
     pub(crate) module_level: bool,
+    /// True when this variable came from the scope that defined a lambda,
+    /// rather than being declared in this one.
+    ///
+    /// A declaration inside the lambda shadows the captured variable instead of
+    /// colliding with it, which is how an inner scope is expected to behave.
+    pub(crate) captured: bool,
     /// Source span of the declaration that introduced this variable.
     ///
     /// Re-executing the same `Dim` (a declaration inside a loop body) must

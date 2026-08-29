@@ -159,3 +159,114 @@ End Sub
 
     assert_eq!(diagnostic.code, crate::runtime::DiagnosticCode::PARSE);
 }
+
+#[test]
+fn a_lambda_captures_the_scope_that_created_it() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim factor As Long = 3
+    Dim triple = Function(x As Long) x * factor
+    Console.WriteLine(triple(5))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["15"]);
+}
+
+#[test]
+fn a_captured_variable_is_shared_not_copied() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim factor As Long = 3
+    Dim triple = Function(x As Long) x * factor
+
+    ' The lambda sees the assignment made after it was created ...
+    factor = 10
+    Console.WriteLine(triple(5))
+
+    ' ... and the scope sees what the lambda assigns.
+    Dim bump = Sub()
+        factor = factor + 1
+    End Sub
+    bump()
+    Console.WriteLine(factor)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["50", "11"]);
+}
+
+#[test]
+fn a_parameter_or_local_shadows_a_captured_name() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim value As Long = 1
+
+    Dim byParameter = Function(value As Long) value
+    Console.WriteLine(byParameter(7))
+
+    Dim byLocal = Function() As Long
+        Dim value As Long = 99
+        Return value
+    End Function
+    Console.WriteLine(byLocal())
+
+    ' Neither shadow disturbed the captured variable.
+    Console.WriteLine(value)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["7", "99", "1"]);
+}
+
+#[test]
+fn a_lambda_returned_from_a_function_keeps_its_captures() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim base As Long = 100
+
+    Dim makeAdder = Function(delta As Long) As Variant
+        Return Function(x As Long) x + delta + base
+    End Function
+
+    Dim addFive = makeAdder(5)
+    Console.WriteLine(addFive(1))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["106"]);
+}
+
+#[test]
+fn a_lambda_can_mutate_through_a_captured_object() {
+    let output = run_source(
+        r#"
+Class Counter
+    Public N As Long
+End Class
+
+Sub Main()
+    Dim c As New Counter()
+    c.N = 1
+
+    Dim bump = Sub()
+        c.N = c.N + 10
+    End Sub
+
+    bump()
+    bump()
+    Console.WriteLine(c.N)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["21"]);
+}

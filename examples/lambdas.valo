@@ -39,7 +39,25 @@ Sub Main()
 
     ' A lambda can be passed to a procedure and applied there.
     Console.WriteLine($"sum of squares 1..5 = {Accumulate(5, Function(n As Long) n * n)}")
+
+    ' A lambda closes over the scope that created it, by reference.
+    Dim factor As Long = 3
+    Dim scale = Function(n As Long) n * factor
+    Console.WriteLine($"scale(5) with factor {factor} = {scale(5)}")
+
+    factor = 10
+    Console.WriteLine($"scale(5) after factor = {factor} = {scale(5)}")
+
+    ' Captures outlive the scope that built them.
+    Dim addFive = MakeAdder(5)
+    Console.WriteLine($"addFive(1) = {addFive(1)}")
 End Sub
+
+' Returns a lambda that captures both `delta` and this function's own local.
+Function MakeAdder(ByVal delta As Long) As Variant
+    Dim base As Long = 100
+    Return Function(x As Long) x + delta + base
+End Function
 
 ' Applies `transform` to 1..count and adds up the results.
 Function Accumulate(ByVal count As Long, ByVal transform As Variant) As Long

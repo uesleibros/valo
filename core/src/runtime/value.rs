@@ -59,7 +59,20 @@ pub enum Value {
 pub struct LambdaValue {
     pub params: Vec<crate::Parameter>,
     pub body: crate::frontend::ast::LambdaBody,
-    // For now, closures are not fully implemented, we'll just store the code.
+    /// The variables from the defining scope that the body refers to.
+    pub captured: Vec<CapturedVariable>,
+}
+
+/// A variable a lambda captured from the scope that created it.
+///
+/// The cell is shared with that scope rather than copied, so the lambda sees
+/// later assignments to the variable and its own assignments are visible
+/// outside — which is how VB.NET closures behave.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CapturedVariable {
+    pub name: String,
+    pub ty: TypeName,
+    pub cell: Rc<RefCell<Value>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

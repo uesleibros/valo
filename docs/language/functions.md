@@ -68,8 +68,55 @@ End Function
 Console.WriteLine(Accumulate(5, Function(n As Long) n * n))   ' 55
 ```
 
-Closures are not captured yet: a lambda sees its parameters, not the variables
-of the scope that created it.
+### Closures
+
+A lambda closes over the scope that created it, so it can use the variables in
+that scope as well as its own parameters.
+
+```vb
+Dim factor As Long = 3
+Dim triple = Function(x As Long) x * factor
+
+Console.WriteLine(triple(5))   ' 15
+```
+
+Capture is by reference, not by copy. The lambda sees assignments made after it
+was created, and the scope sees what the lambda assigns:
+
+```vb
+factor = 10
+Console.WriteLine(triple(5))   ' 50
+
+Dim total As Long = 0
+Dim add = Sub(n As Long)
+    total = total + n
+End Sub
+
+add(4)
+add(6)
+Console.WriteLine(total)       ' 10
+```
+
+A parameter, or a variable declared inside the lambda, shadows a captured name
+of the same spelling and leaves the outer variable untouched:
+
+```vb
+Dim value As Long = 1
+Dim shadowed = Function(value As Long) value
+
+Console.WriteLine(shadowed(7))   ' 7
+Console.WriteLine(value)         ' 1
+```
+
+Captures survive the scope that created them, so a lambda can be returned from
+the function that built it, and a lambda inside a lambda captures from both:
+
+```vb
+Function MakeAdder(ByVal delta As Long) As Variant
+    Dim base As Long = 100
+    Return Function(x As Long) x + delta + base
+End Function
+```
 
 ## Related
 
