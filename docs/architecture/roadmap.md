@@ -41,8 +41,9 @@ two are worth doing even if the VM never happens.
       to 999ms. `Rc<str>` was tried first and was worse -- it saves eight bytes
       but copies the text again on every concatenation, which cost 15% there
       for 15% less on copies.
-- [ ] **Per-call-site method and property caches.** A method call costs about
-      4.9µs against 1.2µs for a field read, most of it resolution.
+- [ ] **Per-call-site method and property caches.** What a call still pays for
+      is resolution: a module key is built and hashed on every one. Copying the
+      procedure itself is no longer part of it.
 
 ## Phase 2: Bytecode VM
 

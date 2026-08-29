@@ -302,8 +302,8 @@ impl Interpreter {
                 "Sub",
                 method,
                 candidates,
-                |procedure: &Procedure| &procedure.params,
-                &self.argument_types_of(args, caller_frame),
+                |procedure: &Rc<Procedure>| &procedure.params,
+                || self.argument_types_of(args, caller_frame),
                 span,
             )?
             .clone();
@@ -377,8 +377,8 @@ impl Interpreter {
                     "Function",
                     method,
                     candidates,
-                    |function: &Function| &function.params,
-                    &self.argument_types_of(args, caller_frame),
+                    |function: &Rc<Function>| &function.params,
+                    || self.argument_types_of(args, caller_frame),
                     span,
                 )?
                 .clone();
@@ -479,7 +479,7 @@ impl Interpreter {
 
     pub(crate) fn call_function_value(
         &mut self,
-        function: crate::Function,
+        function: Rc<crate::Function>,
         args: &[Value],
         span: Span,
     ) -> Result<Value, Diagnostic> {
@@ -561,12 +561,13 @@ impl Interpreter {
         name: &str,
         candidates: &'a [T],
         params_of: impl Fn(&T) -> &[crate::Parameter],
-        argument_types: &[Option<TypeName>],
+        argument_types: impl FnOnce() -> Vec<Option<TypeName>>,
         span: Span,
     ) -> Result<&'a T, Diagnostic> {
         if let [only] = candidates {
             return Ok(only);
         }
+        let argument_types = argument_types();
 
         let shapes: Vec<Vec<overloads::ParamShape>> = candidates
             .iter()
@@ -582,7 +583,7 @@ impl Interpreter {
             })
             .collect();
 
-        match overloads::resolve(&shapes, argument_types) {
+        match overloads::resolve(&shapes, &argument_types) {
             overloads::Resolution::Single(chosen) => Ok(&candidates[chosen]),
             overloads::Resolution::NoMatch => Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
@@ -637,12 +638,12 @@ impl Interpreter {
             ExprKind::DateLiteral(_) => Some(TypeName::Date),
             ExprKind::Convert { target, .. } => Some(target.clone()),
             ExprKind::Variable(name) => frame
-                .variable_ref(&key(name))
+                .variable_ref(name)
                 .map(|variable| variable.borrow().type_name()),
             ExprKind::Call { name, args, .. } => {
                 // A name with parentheses can be an array or a lambda held in a
                 // variable before it is a call to a declared procedure.
-                if let Some(variable) = frame.variable_ref(&key(name)) {
+                if let Some(variable) = frame.variable_ref(name) {
                     return match args.is_empty() {
                         true => Some(variable.borrow().type_name()),
                         false => None,
@@ -782,24 +783,33 @@ impl Interpreter {
                 Some(span),
             )
         })?;
-        let mut function = self
+        let function = self
             .pick_overload(
                 "Function",
                 name,
                 candidates,
-                |function| &function.params,
-                &self.argument_types_of(args, caller_frame),
+                |function: &Rc<Function>| &function.params,
+                || self.argument_types_of(args, caller_frame),
                 span,
             )?
             .clone();
-        let inferred_type_args;
-        let type_args = if type_args.is_empty() && !function.type_params.is_empty() {
-            inferred_type_args = infer_function_type_args(&function, args, caller_frame, span)?;
-            &inferred_type_args
+
+        // Substituting type arguments rewrites the procedure, so a generic one
+        // has to be copied. A plain one is only read, and stays shared.
+        let function = if function.type_params.is_empty() {
+            function
         } else {
-            type_args
+            let inferred_type_args;
+            let type_args = if type_args.is_empty() {
+                inferred_type_args = infer_function_type_args(&function, args, caller_frame, span)?;
+                &inferred_type_args
+            } else {
+                type_args
+            };
+            let mut instance = (*function).clone();
+            instantiate_function(&mut instance, type_args, span)?;
+            Rc::new(instance)
         };
-        instantiate_function(&mut function, type_args, span)?;
 
         self.call_stack
             .push(format!("Function '{}'", function.name));
@@ -928,7 +938,7 @@ impl Interpreter {
                 && let Some(operator) = class.operators.get(&op)
             {
                 return Ok(Some(self.call_function_value(
-                    operator.clone(),
+                    Rc::new(operator.clone()),
                     &[left.clone(), right.clone()],
                     span,
                 )?));
@@ -937,7 +947,7 @@ impl Interpreter {
                 && let Some(operator) = type_sig.operators.get(&op)
             {
                 return Ok(Some(self.call_function_value(
-                    operator.clone(),
+                    Rc::new(operator.clone()),
                     &[left.clone(), right.clone()],
                     span,
                 )?));
@@ -956,7 +966,7 @@ impl Interpreter {
                 && let Some(operator) = class.operators.get(&op)
             {
                 return Ok(Some(self.call_function_value(
-                    operator.clone(),
+                    Rc::new(operator.clone()),
                     &[left.clone(), right.clone()],
                     span,
                 )?));
@@ -965,7 +975,7 @@ impl Interpreter {
                 && let Some(operator) = type_sig.operators.get(&op)
             {
                 return Ok(Some(self.call_function_value(
-                    operator.clone(),
+                    Rc::new(operator.clone()),
                     &[left, right],
                     span,
                 )?));
@@ -992,7 +1002,7 @@ impl Interpreter {
                 && let Some(operator) = class.operators.get(&op)
             {
                 return Ok(Some(self.call_function_value(
-                    operator.clone(),
+                    Rc::new(operator.clone()),
                     std::slice::from_ref(&value),
                     span,
                 )?));
@@ -1001,7 +1011,7 @@ impl Interpreter {
                 && let Some(operator) = type_sig.operators.get(&op)
             {
                 return Ok(Some(self.call_function_value(
-                    operator.clone(),
+                    Rc::new(operator.clone()),
                     &[value],
                     span,
                 )?));
@@ -1033,7 +1043,7 @@ impl Interpreter {
                 if let Some(candidates) = self.functions.get(&qualified_name)
                     && candidates.iter().any(|func| named(&func.name))
                 {
-                    let candidates: Vec<Function> = candidates
+                    let candidates: Vec<Rc<Function>> = candidates
                         .iter()
                         .filter(|func| named(&func.name))
                         .cloned()
@@ -1045,14 +1055,13 @@ impl Interpreter {
                     }
                     // The receiver is the extension method's first parameter,
                     // so it takes part in choosing between overloads.
-                    let types = Self::argument_types_of_values(&eval_args);
                     let func = self
                         .pick_overload(
                             "Function",
                             method,
                             &candidates,
                             |func| &func.params,
-                            &types,
+                            || Self::argument_types_of_values(&eval_args),
                             span,
                         )?
                         .clone();
@@ -1061,7 +1070,7 @@ impl Interpreter {
                 if let Some(candidates) = self.procedures.get(&qualified_name)
                     && candidates.iter().any(|proc| named(&proc.name))
                 {
-                    let candidates: Vec<Procedure> = candidates
+                    let candidates: Vec<Rc<Procedure>> = candidates
                         .iter()
                         .filter(|proc| named(&proc.name))
                         .cloned()
@@ -1071,14 +1080,13 @@ impl Interpreter {
                     for arg in args {
                         eval_args.push(self.eval_expr(arg, caller_frame)?);
                     }
-                    let types = Self::argument_types_of_values(&eval_args);
                     let proc = self
                         .pick_overload(
                             "Sub",
                             method,
                             &candidates,
                             |proc| &proc.params,
-                            &types,
+                            || Self::argument_types_of_values(&eval_args),
                             span,
                         )?
                         .clone();
@@ -1092,7 +1100,7 @@ impl Interpreter {
 
     pub(crate) fn call_sub_value(
         &mut self,
-        procedure: crate::frontend::ast::Procedure,
+        procedure: Rc<crate::frontend::ast::Procedure>,
         args: &[Value],
         span: Span,
     ) -> Result<(), Diagnostic> {
@@ -1167,8 +1175,8 @@ impl Interpreter {
                 "Sub",
                 name,
                 candidates,
-                |procedure: &Procedure| &procedure.params,
-                &Self::argument_types_of_values(args),
+                |procedure: &Rc<Procedure>| &procedure.params,
+                || Self::argument_types_of_values(args),
                 span,
             )?
             .clone();
@@ -1271,8 +1279,8 @@ impl Interpreter {
                     "Sub",
                     name,
                     candidates,
-                    |procedure: &Procedure| &procedure.params,
-                    &self.argument_types_of(args, caller_frame),
+                    |procedure: &Rc<Procedure>| &procedure.params,
+                    || self.argument_types_of(args, caller_frame),
                     span,
                 )?
                 .clone(),
@@ -1393,7 +1401,7 @@ impl Interpreter {
                 name,
                 candidates,
                 |function| &function.params,
-                &self.argument_types_of(args, caller_frame),
+                || self.argument_types_of(args, caller_frame),
                 span,
             )?
             .clone();
@@ -1529,8 +1537,8 @@ impl Interpreter {
                     "Sub",
                     name,
                     candidates,
-                    |procedure: &Procedure| &procedure.params,
-                    &self.argument_types_of(args, caller_frame),
+                    |procedure: &Rc<Procedure>| &procedure.params,
+                    || self.argument_types_of(args, caller_frame),
                     span,
                 )?
                 .clone(),
@@ -1897,8 +1905,8 @@ impl Interpreter {
                 "Sub",
                 method,
                 candidates,
-                |procedure: &Procedure| &procedure.params,
-                &self.argument_types_of(args, caller_frame),
+                |procedure: &Rc<Procedure>| &procedure.params,
+                || self.argument_types_of(args, caller_frame),
                 span,
             )?
             .clone();
@@ -2036,8 +2044,8 @@ impl Interpreter {
                 "Sub",
                 method,
                 candidates,
-                |procedure: &Procedure| &procedure.params,
-                &Self::argument_types_of_values(args),
+                |procedure: &Rc<Procedure>| &procedure.params,
+                || Self::argument_types_of_values(args),
                 span,
             )?
             .clone();
@@ -2218,8 +2226,8 @@ impl Interpreter {
                             "Function",
                             method,
                             candidates,
-                            |function: &Function| &function.params,
-                            &self.argument_types_of(args, caller_frame),
+                            |function: &Rc<Function>| &function.params,
+                            || self.argument_types_of(args, caller_frame),
                             span,
                         )?
                         .clone();
@@ -2394,8 +2402,8 @@ impl Interpreter {
                 "Function",
                 method,
                 candidates,
-                |function: &Function| &function.params,
-                &self.argument_types_of(args, caller_frame),
+                |function: &Rc<Function>| &function.params,
+                || self.argument_types_of(args, caller_frame),
                 span,
             )?
             .clone();
@@ -2471,8 +2479,8 @@ impl Interpreter {
                 "Sub",
                 method,
                 candidates,
-                |procedure: &Procedure| &procedure.params,
-                &self.argument_types_of(args, caller_frame),
+                |procedure: &Rc<Procedure>| &procedure.params,
+                || self.argument_types_of(args, caller_frame),
                 span,
             )?
             .clone();

@@ -122,7 +122,7 @@ impl Interpreter {
                 .chain(instance.shared_subs.values_mut())
                 .flatten()
             {
-                substitute_procedure_types(procedure, &bindings);
+                substitute_procedure_types(Rc::make_mut(procedure), &bindings);
             }
             for function in instance
                 .functions
@@ -130,7 +130,7 @@ impl Interpreter {
                 .chain(instance.shared_functions.values_mut())
                 .flatten()
             {
-                substitute_function_types(function, &bindings);
+                substitute_function_types(Rc::make_mut(function), &bindings);
             }
             if let Some(iterator) = &mut instance.iterator {
                 substitute_function_types(iterator, &bindings);
@@ -191,10 +191,10 @@ impl Interpreter {
                     .map(|init| init.substitute_generics(&bindings));
             }
             for procedure in instance.subs.values_mut().flatten() {
-                substitute_procedure_types(procedure, &bindings);
+                substitute_procedure_types(Rc::make_mut(procedure), &bindings);
             }
             for function in instance.functions.values_mut().flatten() {
-                substitute_function_types(function, &bindings);
+                substitute_function_types(Rc::make_mut(function), &bindings);
             }
             for property in instance.properties.values_mut() {
                 if let Some(get) = &mut property.get {
@@ -435,8 +435,8 @@ impl Interpreter {
                         "Sub",
                         "New",
                         candidates,
-                        |init: &crate::Procedure| &init.params,
-                        &self.argument_types_of(args, caller_frame),
+                        |init: &Rc<crate::Procedure>| &init.params,
+                        || self.argument_types_of(args, caller_frame),
                         span,
                     )?
                     .clone();
@@ -1411,10 +1411,13 @@ pub(crate) struct RuntimeClass {
     pub(crate) constants: Vec<crate::ConstDecl>,
     pub(crate) events: HashMap<String, RuntimeEvent>,
     /// Methods grouped by name; overloading makes a group hold more than one.
-    pub(crate) subs: HashMap<String, Vec<Procedure>>,
-    pub(crate) shared_subs: HashMap<String, Vec<Procedure>>,
-    pub(crate) functions: HashMap<String, Vec<Function>>,
-    pub(crate) shared_functions: HashMap<String, Vec<Function>>,
+    ///
+    /// Shared rather than owned: a method holds its whole body, and calling one
+    /// used to copy that body every time.
+    pub(crate) subs: HashMap<String, Vec<Rc<Procedure>>>,
+    pub(crate) shared_subs: HashMap<String, Vec<Rc<Procedure>>>,
+    pub(crate) functions: HashMap<String, Vec<Rc<Function>>>,
+    pub(crate) shared_functions: HashMap<String, Vec<Rc<Function>>>,
     pub(crate) iterator: Option<Function>,
     pub(crate) properties: HashMap<String, RuntimeProperty>,
     pub(crate) operators: HashMap<crate::OperatorKind, Function>,
@@ -1498,7 +1501,7 @@ impl From<&crate::ClassDecl> for RuntimeClass {
                     };
                     into.entry(key(&method.procedure.name))
                         .or_insert_with(Vec::new)
-                        .push(method.procedure.clone());
+                        .push(Rc::new(method.procedure.clone()));
                 }
                 ClassMember::Function(method) => {
                     if method.is_enumerator {
@@ -1514,7 +1517,7 @@ impl From<&crate::ClassDecl> for RuntimeClass {
                     };
                     into.entry(key(&method.function.name))
                         .or_insert_with(Vec::new)
-                        .push(method.function.clone());
+                        .push(Rc::new(method.function.clone()));
                 }
                 ClassMember::Iterator(method) => {
                     iterator = Some(method.function.clone());

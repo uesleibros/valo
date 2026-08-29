@@ -28,8 +28,12 @@ pub struct Interpreter {
     ///
     /// A name usually names one, but overloads make it several and the call
     /// site picks between them. See [`Interpreter::pick_overload`].
-    pub(crate) procedures: HashMap<String, Vec<Procedure>>,
-    pub(crate) functions: HashMap<String, Vec<Function>>,
+    ///
+    /// Shared rather than owned: a procedure holds its whole body, and calling
+    /// one used to copy that body. The cost was proportional to how much code
+    /// the procedure contained, which is not a price a call should pay.
+    pub(crate) procedures: HashMap<String, Vec<Rc<Procedure>>>,
+    pub(crate) functions: HashMap<String, Vec<Rc<Function>>>,
     pub(crate) declares: HashMap<String, DeclareDecl>,
     /// The names declared as `Delegate`.
     ///
@@ -393,13 +397,13 @@ impl Interpreter {
             self.procedures
                 .entry(key(&procedure.name))
                 .or_default()
-                .push(procedure.clone());
+                .push(Rc::new(procedure.clone()));
         }
         for function in &program.functions {
             self.functions
                 .entry(key(&function.name))
                 .or_default()
-                .push(function.clone());
+                .push(Rc::new(function.clone()));
         }
         self.register_declares(&program.declares, None);
         self.register_delegates(&program.delegates);
@@ -564,13 +568,13 @@ impl Interpreter {
             self.procedures
                 .entry(key(&procedure.name))
                 .or_default()
-                .push(procedure.clone());
+                .push(Rc::new(procedure.clone()));
         }
         for function in &program.functions {
             self.functions
                 .entry(key(&function.name))
                 .or_default()
-                .push(function.clone());
+                .push(Rc::new(function.clone()));
         }
         self.register_declares(&program.declares, None);
         self.register_delegates(&program.delegates);
@@ -852,7 +856,7 @@ impl Interpreter {
                 self.procedures
                     .entry(qualified.clone())
                     .or_default()
-                    .push(procedure.clone());
+                    .push(Rc::new(procedure.clone()));
                 if module_key == entry_key || crate::modules::is_public(procedure.visibility) {
                     self.sub_modules
                         .entry(super::values::key(&procedure.name))
@@ -877,7 +881,7 @@ impl Interpreter {
                 self.functions
                     .entry(qualified.clone())
                     .or_default()
-                    .push(function.clone());
+                    .push(Rc::new(function.clone()));
                 if module_key == entry_key || crate::modules::is_public(function.visibility) {
                     self.function_modules
                         .entry(super::values::key(&function.name))

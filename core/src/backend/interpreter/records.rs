@@ -151,8 +151,8 @@ pub(crate) struct RuntimeType {
     pub(crate) implements: Vec<TypeName>,
     pub(crate) fields: Vec<RuntimeField>,
     /// Methods grouped by name; overloading makes a group hold more than one.
-    pub(crate) subs: std::collections::HashMap<String, Vec<crate::Procedure>>,
-    pub(crate) functions: std::collections::HashMap<String, Vec<crate::Function>>,
+    pub(crate) subs: std::collections::HashMap<String, Vec<Rc<crate::Procedure>>>,
+    pub(crate) functions: std::collections::HashMap<String, Vec<Rc<crate::Function>>>,
     pub(crate) properties: std::collections::HashMap<String, RuntimeProperty>,
     pub(crate) operators: std::collections::HashMap<crate::OperatorKind, crate::Function>,
     pub(crate) default_property: Option<String>,
@@ -218,9 +218,10 @@ impl From<&TypeDecl> for RuntimeType {
                 .members
                 .iter()
                 .filter_map(|member| match member {
-                    ClassMember::Sub(method) => {
-                        Some((key(&method.procedure.name), method.procedure.clone()))
-                    }
+                    ClassMember::Sub(method) => Some((
+                        key(&method.procedure.name),
+                        Rc::new(method.procedure.clone()),
+                    )),
                     ClassMember::Field(_)
                     | ClassMember::Fields(_)
                     | ClassMember::Const(_)
@@ -240,7 +241,7 @@ impl From<&TypeDecl> for RuntimeType {
                 .iter()
                 .filter_map(|member| match member {
                     ClassMember::Function(method) => {
-                        Some((key(&method.function.name), method.function.clone()))
+                        Some((key(&method.function.name), Rc::new(method.function.clone())))
                     }
                     ClassMember::Field(_)
                     | ClassMember::Fields(_)

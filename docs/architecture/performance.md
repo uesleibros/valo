@@ -128,3 +128,22 @@ wrong: short runs alternating between two builds showed the change as 8% *slower
 before longer runs showed it 32% faster. Process startup is 58ms here, so a
 benchmark has to run for seconds before the difference it is measuring is larger
 than the noise around it.
+
+## Calling a procedure does not copy it
+
+A procedure holds its body. Calling one used to copy that body, so the cost of a
+call was proportional to how much code the procedure contained -- 300,000 calls
+to a function with 120 statements that never ran took 28.9 seconds, against 1.4
+for an empty one. Procedures, methods, and constructors are now shared
+(`Rc<Procedure>`, `Rc<Function>`), and the same benchmark takes 1.6 seconds:
+body size costs a call essentially nothing.
+
+A generic procedure is still copied, because substituting its type arguments
+rewrites it. That happens per call site, not per procedure, and only for the
+ones that are generic.
+
+Overload resolution now works out the argument types only when there is more
+than one candidate. Building that list walks the arguments and folds their
+names, which for a name with one procedure behind it was work with nothing to
+decide: doing it lazily took 18% off a benchmark that passes a string to a
+function 600,000 times.
