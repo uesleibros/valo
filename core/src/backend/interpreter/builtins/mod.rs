@@ -131,6 +131,8 @@ mod handler_tests {
         ("arrays", arrays::HANDLERS),
         ("misc", MISC_HANDLERS),
         ("file system", FILE_SYSTEM_HANDLERS),
+        ("files", FILE_HANDLERS),
+        ("date and time", DATETIME_HANDLERS),
     ];
 
     /// The lazy table and the value tables must not claim the same builtin.
@@ -178,20 +180,35 @@ mod handler_tests {
 
     /// A group routed to a table must list exactly the same builtins.
     ///
-    /// Dispatch selects the table by group and then expects to find a handler,
-    /// so a disagreement would be a panic at run time rather than a diagnostic.
+    /// Dispatch selects a table by group, so a disagreement would silently send
+    /// a builtin somewhere with no handler for it.
     #[test]
-    fn the_file_system_group_and_its_table_agree() {
+    fn every_routed_group_matches_its_table() {
         use crate::runtime::builtins::{BUILTINS, BuiltinGroup};
 
-        for builtin in BUILTINS {
-            let in_group = builtin.group == BuiltinGroup::FileSystem;
-            let in_table = find_handler(FILE_SYSTEM_HANDLERS, builtin.name).is_some();
-            assert_eq!(
-                in_group, in_table,
-                "'{}' is in the FileSystem group ({in_group}) but its handler table says {in_table}",
-                builtin.name
-            );
+        /// A dispatch group paired with the table it routes to.
+        type RoutedGroup = (
+            BuiltinGroup,
+            &'static str,
+            &'static [(&'static str, ValueFn)],
+        );
+
+        let routed: &[RoutedGroup] = &[
+            (BuiltinGroup::FileSystem, "FileSystem", FILE_SYSTEM_HANDLERS),
+            (BuiltinGroup::File, "File", FILE_HANDLERS),
+            (BuiltinGroup::DateTime, "DateTime", DATETIME_HANDLERS),
+        ];
+
+        for (group, label, handlers) in routed {
+            for builtin in BUILTINS {
+                let in_group = builtin.group == *group;
+                let in_table = find_handler(handlers, builtin.name).is_some();
+                assert_eq!(
+                    in_group, in_table,
+                    "'{}' is in the {label} group ({in_group}) but its handler table says {in_table}",
+                    builtin.name
+                );
+            }
         }
     }
 
@@ -218,40 +235,7 @@ mod handler_tests {
     /// Each entry is a module not yet converted to a handler table. The list
     /// only shrinks: adding a name to it hides a builtin from the check above,
     /// so a new builtin belongs in a table instead.
-    const UNCONVERTED: &[&str] = &[
-        // Routed to a dispatcher by group rather than by name.
-        "FreeFile",
-        "EOF",
-        "FileAttr",
-        "LOF",
-        "Loc",
-        "Seek",
-        "Dir",
-        "GetAttr",
-        "FileLen",
-        "FileDateTime",
-        "CurDir",
-        "Timer",
-        "Now",
-        "Date",
-        "Time",
-        "DateSerial",
-        "TimeSerial",
-        "DateValue",
-        "TimeValue",
-        "DateAdd",
-        "DateDiff",
-        "DatePart",
-        "Year",
-        "Month",
-        "Day",
-        "Hour",
-        "Minute",
-        "Second",
-        "Weekday",
-        "MonthName",
-        "WeekdayName",
-    ];
+    const UNCONVERTED: &[&str] = &[];
 
     /// A handler table may only name builtins the registry declares.
     ///
@@ -955,7 +939,7 @@ pub(crate) fn dispatch_function(
         for arg in args {
             values.push(interpreter.eval_expr(arg, frame)?);
         }
-        return dispatch_datetime_function(effective_name, &values, span);
+        return dispatch_datetime_function(interpreter, effective_name, &values, span);
     }
 
     if is_in_group(effective_name, BuiltinGroup::FileSystem) {
@@ -995,263 +979,460 @@ pub(crate) fn dispatch_function(
     Ok(None)
 }
 
+/// Builtins that read from or ask about open files and the file system.
+pub(super) const FILE_HANDLERS: &[(&str, ValueFn)] = &[
+    ("FreeFile", freefile),
+    ("EOF", eof),
+    ("FileAttr", fileattr),
+    ("LOF", lof),
+    ("Loc", loc_builtin),
+    ("Seek", seek_builtin),
+    ("GetAttr", getattr),
+    ("FileLen", filelen),
+    ("FileDateTime", filedatetime),
+    ("CurDir", curdir),
+    ("Dir", dir_builtin),
+];
+
 fn dispatch_file_function(
     interpreter: &mut Interpreter,
     name: &str,
     args: &[Value],
     span: crate::runtime::Span,
 ) -> Result<Option<Value>, Diagnostic> {
-    match name.to_ascii_lowercase().as_str() {
-        "freefile" => {
-            if !args.is_empty() {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                    "FreeFile expects no arguments",
-                    Some(span),
-                ));
-            }
-            Ok(Some(Value::Int64(i64::from(
-                interpreter.free_file_number(),
-            ))))
-        }
-        "eof" => {
-            expect_value_count(name, args, 1, span)?;
-            let number = file_number_arg(name, &args[0], span)?;
-            Ok(Some(Value::Boolean(interpreter.eof_file(number, span)?)))
-        }
-        "fileattr" => {
-            expect_value_count(name, args, 2, span)?;
-            let number = file_number_arg(name, &args[0], span)?;
-            let attribute = integer_arg(name, &args[1], span)?;
-            Ok(Some(Value::Int64(
-                interpreter.file_attr(number, attribute, span)?,
-            )))
-        }
-        "lof" => {
-            expect_value_count(name, args, 1, span)?;
-            let number = file_number_arg(name, &args[0], span)?;
-            Ok(Some(Value::Int64(interpreter.lof_file(number, span)?)))
-        }
-        "loc" => {
-            expect_value_count(name, args, 1, span)?;
-            let number = file_number_arg(name, &args[0], span)?;
-            Ok(Some(Value::Int64(interpreter.loc_file(number, span)?)))
-        }
-        "seek" => {
-            expect_value_count(name, args, 1, span)?;
-            let number = file_number_arg(name, &args[0], span)?;
-            Ok(Some(Value::Int64(
-                interpreter.seek_file_position(number, span)?,
-            )))
-        }
-        "dir" => Ok(Some(Value::String(interpreter.dir(args, span)?))),
-        "getattr" => {
-            expect_value_count(name, args, 1, span)?;
-            Ok(Some(Value::Int64(get_attr(
-                &args[0].to_output_string(),
-                span,
-            )?)))
-        }
-        "filelen" => {
-            expect_value_count(name, args, 1, span)?;
-            let path = args[0].to_output_string();
-            let len = std::fs::metadata(&path).map_err(|error| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
-                    format!("Unable to get FileLen for '{}': {}", path, error),
-                    Some(span),
-                )
-            })?;
-            Ok(Some(Value::Int64(len.len() as i64)))
-        }
-        "filedatetime" => {
-            expect_value_count(name, args, 1, span)?;
-            let path = args[0].to_output_string();
-            let modified = std::fs::metadata(&path)
-                .and_then(|metadata| metadata.modified())
-                .map_err(|error| {
-                    Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
-                        format!("Unable to get FileDateTime for '{}': {}", path, error),
-                        Some(span),
-                    )
-                })?;
-            Ok(Some(Value::Date(system_time_to_vba_date(modified)?)))
-        }
-        "curdir" => {
-            if args.len() > 1 {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                    "CurDir expects 0 to 1 arguments",
-                    Some(span),
-                ));
-            }
-            let cwd = std::env::current_dir().map_err(|error| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
-                    format!("Unable to get current directory: {}", error),
-                    Some(span),
-                )
-            })?;
-            Ok(Some(Value::String(cwd.display().to_string())))
-        }
-        _ => Ok(None),
+    match find_handler(FILE_HANDLERS, name) {
+        Some(handler) => handler(interpreter, name, args, span).map(Some),
+        None => Ok(None),
     }
 }
 
+fn freefile(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if !args.is_empty() {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "FreeFile expects no arguments",
+            Some(span),
+        ));
+    }
+    Ok(Value::Int64(i64::from(interpreter.free_file_number())))
+}
+
+fn eof(
+    interpreter: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    let number = file_number_arg(name, &args[0], span)?;
+    Ok(Value::Boolean(interpreter.eof_file(number, span)?))
+}
+
+fn fileattr(
+    interpreter: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 2, span)?;
+    let number = file_number_arg(name, &args[0], span)?;
+    let attribute = integer_arg(name, &args[1], span)?;
+    Ok(Value::Int64(
+        interpreter.file_attr(number, attribute, span)?,
+    ))
+}
+
+fn lof(
+    interpreter: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    let number = file_number_arg(name, &args[0], span)?;
+    Ok(Value::Int64(interpreter.lof_file(number, span)?))
+}
+
+fn loc_builtin(
+    interpreter: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    let number = file_number_arg(name, &args[0], span)?;
+    Ok(Value::Int64(interpreter.loc_file(number, span)?))
+}
+
+fn seek_builtin(
+    interpreter: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    let number = file_number_arg(name, &args[0], span)?;
+    Ok(Value::Int64(interpreter.seek_file_position(number, span)?))
+}
+
+fn getattr(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    Ok(Value::Int64(get_attr(&args[0].to_output_string(), span)?))
+}
+
+fn filelen(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    let path = args[0].to_output_string();
+    let len = std::fs::metadata(&path).map_err(|error| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            format!("Unable to get FileLen for '{}': {}", path, error),
+            Some(span),
+        )
+    })?;
+    Ok(Value::Int64(len.len() as i64))
+}
+
+fn filedatetime(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    let path = args[0].to_output_string();
+    let modified = std::fs::metadata(&path)
+        .and_then(|metadata| metadata.modified())
+        .map_err(|error| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::GENERIC,
+                format!("Unable to get FileDateTime for '{}': {}", path, error),
+                Some(span),
+            )
+        })?;
+    Ok(Value::Date(system_time_to_vba_date(modified)?))
+}
+
+fn curdir(
+    _: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.len() > 1 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "CurDir expects 0 to 1 arguments",
+            Some(span),
+        ));
+    }
+    let cwd = std::env::current_dir().map_err(|error| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            format!("Unable to get current directory: {}", error),
+            Some(span),
+        )
+    })?;
+    Ok(Value::String(cwd.display().to_string()))
+}
+
+fn dir_builtin(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    Ok(Value::String(interpreter.dir(args, span)?))
+}
+
+/// Builtins over dates and times.
+pub(super) const DATETIME_HANDLERS: &[(&str, ValueFn)] = &[
+    ("Timer", timer),
+    ("Now", now),
+    ("Date", date_builtin),
+    ("Time", time_builtin),
+    ("DateSerial", dateserial),
+    ("TimeSerial", timeserial),
+    ("DateValue", datevalue),
+    ("TimeValue", timevalue),
+    ("DateAdd", dateadd),
+    ("DateDiff", datediff),
+    ("DatePart", datepart),
+    ("Year", year),
+    ("Month", year),
+    ("Day", year),
+    ("Hour", hour),
+    ("Minute", hour),
+    ("Second", hour),
+    ("Weekday", weekday),
+    ("MonthName", monthname),
+    ("WeekdayName", weekdayname),
+];
+
 fn dispatch_datetime_function(
+    interpreter: &mut Interpreter,
     name: &str,
     args: &[Value],
     span: crate::runtime::Span,
 ) -> Result<Option<Value>, Diagnostic> {
-    match name.to_ascii_lowercase().as_str() {
-        "timer" => {
-            expect_value_count(name, args, 0, span)?;
-            Ok(Some(Value::Double(timer_seconds()?)))
-        }
-        "now" => {
-            expect_value_count(name, args, 0, span)?;
-            Ok(Some(Value::Date(system_time_to_vba_date(
-                std::time::SystemTime::now(),
-            )?)))
-        }
-        "date" => {
-            expect_value_count(name, args, 0, span)?;
-            let now = system_time_to_vba_date(std::time::SystemTime::now())?;
-            Ok(Some(Value::Date(now.floor())))
-        }
-        "time" => {
-            expect_value_count(name, args, 0, span)?;
-            let now = system_time_to_vba_date(std::time::SystemTime::now())?;
-            Ok(Some(Value::Date(now.fract())))
-        }
-        "dateserial" => {
-            expect_value_count(name, args, 3, span)?;
-            let year = integer_arg(name, &args[0], span)?;
-            let month = integer_arg(name, &args[1], span)?;
-            let day = integer_arg(name, &args[2], span)?;
-            Ok(Some(Value::Date(date_serial(year, month, day))))
-        }
-        "timeserial" => {
-            expect_value_count(name, args, 3, span)?;
-            let hour = integer_arg(name, &args[0], span)?;
-            let minute = integer_arg(name, &args[1], span)?;
-            let second = integer_arg(name, &args[2], span)?;
-            Ok(Some(Value::Date(time_serial(hour, minute, second))))
-        }
-        "datevalue" => {
-            expect_value_count(name, args, 1, span)?;
-            Ok(Some(Value::Date(parse_date_value(
-                &args[0].to_output_string(),
-                span,
-            )?)))
-        }
-        "timevalue" => {
-            expect_value_count(name, args, 1, span)?;
-            Ok(Some(Value::Date(parse_time_value(
-                &args[0].to_output_string(),
-                span,
-            )?)))
-        }
-        "dateadd" => {
-            expect_value_count(name, args, 3, span)?;
-            let interval = args[0].to_output_string();
-            let number = integer_arg(name, &args[1], span)?;
-            let date = date_arg(name, &args[2], span)?;
-            Ok(Some(Value::Date(date_add(&interval, number, date, span)?)))
-        }
-        "datediff" => {
-            if args.len() < 3 || args.len() > 5 {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                    "DateDiff expects 3 to 5 arguments",
-                    Some(span),
-                ));
-            }
-            let interval = args[0].to_output_string();
-            let start = date_arg(name, &args[1], span)?;
-            let end = date_arg(name, &args[2], span)?;
-            Ok(Some(Value::Int64(date_diff(&interval, start, end, span)?)))
-        }
-        "datepart" => {
-            if args.len() < 2 || args.len() > 4 {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                    "DatePart expects 2 to 4 arguments",
-                    Some(span),
-                ));
-            }
-            let interval = args[0].to_output_string();
-            let date = date_arg(name, &args[1], span)?;
-            Ok(Some(Value::Int64(date_part(&interval, date, span)?)))
-        }
-        "year" | "month" | "day" => {
-            expect_value_count(name, args, 1, span)?;
-            let serial = date_arg(name, &args[0], span)?;
-            let (year, month, day) = civil_from_days(serial.floor() as i64 - UNIX_EPOCH_AS_VBA);
-            let value = match name.to_ascii_lowercase().as_str() {
-                "year" => year,
-                "month" => i64::from(month),
-                "day" => i64::from(day),
-                _ => unreachable!(),
-            };
-            Ok(Some(Value::Int64(value)))
-        }
-        "hour" | "minute" | "second" => {
-            expect_value_count(name, args, 1, span)?;
-            let serial = date_arg(name, &args[0], span)?;
-            let total = seconds_since_midnight(serial);
-            let value = match name.to_ascii_lowercase().as_str() {
-                "hour" => total / 3600,
-                "minute" => (total % 3600) / 60,
-                "second" => total % 60,
-                _ => unreachable!(),
-            };
-            Ok(Some(Value::Int64(value)))
-        }
-        "weekday" => {
-            if args.is_empty() || args.len() > 2 {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                    "Weekday expects 1 to 2 arguments",
-                    Some(span),
-                ));
-            }
-            let serial = date_arg(name, &args[0], span)?;
-            let first_day = args
-                .get(1)
-                .and_then(crate::runtime::numeric::value_to_i64)
-                .unwrap_or(1);
-            Ok(Some(Value::Int64(weekday_value(serial, first_day))))
-        }
-        "monthname" => {
-            if args.is_empty() || args.len() > 2 {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                    "MonthName expects 1 to 2 arguments",
-                    Some(span),
-                ));
-            }
-            let month = integer_arg(name, &args[0], span)?;
-            let abbreviate = args.get(1).is_some_and(Value::is_truthy);
-            Ok(Some(Value::String(month_name(month, abbreviate, span)?)))
-        }
-        "weekdayname" => {
-            if args.is_empty() || args.len() > 3 {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                    "WeekdayName expects 1 to 3 arguments",
-                    Some(span),
-                ));
-            }
-            let weekday = integer_arg(name, &args[0], span)?;
-            let abbreviate = args.get(1).is_some_and(Value::is_truthy);
-            Ok(Some(Value::String(weekday_name(
-                weekday, abbreviate, span,
-            )?)))
-        }
-        _ => Ok(None),
+    match find_handler(DATETIME_HANDLERS, name) {
+        Some(handler) => handler(interpreter, name, args, span).map(Some),
+        None => Ok(None),
     }
+}
+
+fn timer(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 0, span)?;
+    Ok(Value::Double(timer_seconds()?))
+}
+
+fn now(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 0, span)?;
+    Ok(Value::Date(system_time_to_vba_date(
+        std::time::SystemTime::now(),
+    )?))
+}
+
+fn date_builtin(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 0, span)?;
+    let now = system_time_to_vba_date(std::time::SystemTime::now())?;
+    Ok(Value::Date(now.floor()))
+}
+
+fn time_builtin(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 0, span)?;
+    let now = system_time_to_vba_date(std::time::SystemTime::now())?;
+    Ok(Value::Date(now.fract()))
+}
+
+fn dateserial(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 3, span)?;
+    let year = integer_arg(name, &args[0], span)?;
+    let month = integer_arg(name, &args[1], span)?;
+    let day = integer_arg(name, &args[2], span)?;
+    Ok(Value::Date(date_serial(year, month, day)))
+}
+
+fn timeserial(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 3, span)?;
+    let hour = integer_arg(name, &args[0], span)?;
+    let minute = integer_arg(name, &args[1], span)?;
+    let second = integer_arg(name, &args[2], span)?;
+    Ok(Value::Date(time_serial(hour, minute, second)))
+}
+
+fn datevalue(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    Ok(Value::Date(parse_date_value(
+        &args[0].to_output_string(),
+        span,
+    )?))
+}
+
+fn timevalue(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    Ok(Value::Date(parse_time_value(
+        &args[0].to_output_string(),
+        span,
+    )?))
+}
+
+fn dateadd(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 3, span)?;
+    let interval = args[0].to_output_string();
+    let number = integer_arg(name, &args[1], span)?;
+    let date = date_arg(name, &args[2], span)?;
+    Ok(Value::Date(date_add(&interval, number, date, span)?))
+}
+
+fn datediff(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.len() < 3 || args.len() > 5 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "DateDiff expects 3 to 5 arguments",
+            Some(span),
+        ));
+    }
+    let interval = args[0].to_output_string();
+    let start = date_arg(name, &args[1], span)?;
+    let end = date_arg(name, &args[2], span)?;
+    Ok(Value::Int64(date_diff(&interval, start, end, span)?))
+}
+
+fn datepart(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.len() < 2 || args.len() > 4 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "DatePart expects 2 to 4 arguments",
+            Some(span),
+        ));
+    }
+    let interval = args[0].to_output_string();
+    let date = date_arg(name, &args[1], span)?;
+    Ok(Value::Int64(date_part(&interval, date, span)?))
+}
+
+fn year(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    let serial = date_arg(name, &args[0], span)?;
+    let (year, month, day) = civil_from_days(serial.floor() as i64 - UNIX_EPOCH_AS_VBA);
+    let value = match name.to_ascii_lowercase().as_str() {
+        "year" => year,
+        "month" => i64::from(month),
+        "day" => i64::from(day),
+        _ => unreachable!(),
+    };
+    Ok(Value::Int64(value))
+}
+
+fn hour(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_value_count(name, args, 1, span)?;
+    let serial = date_arg(name, &args[0], span)?;
+    let total = seconds_since_midnight(serial);
+    let value = match name.to_ascii_lowercase().as_str() {
+        "hour" => total / 3600,
+        "minute" => (total % 3600) / 60,
+        "second" => total % 60,
+        _ => unreachable!(),
+    };
+    Ok(Value::Int64(value))
+}
+
+fn weekday(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "Weekday expects 1 to 2 arguments",
+            Some(span),
+        ));
+    }
+    let serial = date_arg(name, &args[0], span)?;
+    let first_day = args
+        .get(1)
+        .and_then(crate::runtime::numeric::value_to_i64)
+        .unwrap_or(1);
+    Ok(Value::Int64(weekday_value(serial, first_day)))
+}
+
+fn monthname(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "MonthName expects 1 to 2 arguments",
+            Some(span),
+        ));
+    }
+    let month = integer_arg(name, &args[0], span)?;
+    let abbreviate = args.get(1).is_some_and(Value::is_truthy);
+    Ok(Value::String(month_name(month, abbreviate, span)?))
+}
+
+fn weekdayname(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 3 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "WeekdayName expects 1 to 3 arguments",
+            Some(span),
+        ));
+    }
+    let weekday = integer_arg(name, &args[0], span)?;
+    let abbreviate = args.get(1).is_some_and(Value::is_truthy);
+    Ok(Value::String(weekday_name(weekday, abbreviate, span)?))
 }
 
 fn environ_value(

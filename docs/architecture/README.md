@@ -136,10 +136,14 @@ check is stale.
 
 That fifth test is the one the registry existed for. It was not checkable while
 dispatch was a chain of name comparisons, because an implementation could only be
-found by running it. The modules still using a chain — arrays, the file and
-date/time dispatchers, and a handful of miscellaneous builtins — are named in an
-exemption list that only shrinks: a test fails if an entry is added for something
-that is in fact implemented.
+found by running it. Its exemption list — the record of what was still unchecked
+— is now empty: every builtin the language declares is reachable through a table.
+
+Some builtins are routed by group rather than by name: the file, date/time, and
+file-system dispatchers each own a table, and dispatch picks the table from the
+group recorded in the registry. A test asserts each group and its table name
+exactly the same builtins, since a disagreement would send a builtin somewhere
+with no handler for it.
 
 ## Cross-cutting: well-known names
 
