@@ -57,3 +57,28 @@ fn imports_with_alias_works() {
         vec!["3".to_string()]
     );
 }
+
+#[test]
+fn an_imported_module_can_name_types_from_its_own_imports() {
+    let dir = temp_project();
+    write(
+        &dir,
+        "Shapes.valo",
+        "Public Class Dot\nPublic N As Double\nEnd Class\n",
+    );
+    write(
+        &dir,
+        "Middle.valo",
+        "Imports Shapes\n\nPublic Function MakeDot() As Dot\nDim d As New Dot()\nd.N = 42\nReturn d\nEnd Function\n",
+    );
+    write(
+        &dir,
+        "main.valo",
+        "Imports Middle\n\nSub Main()\nConsole.WriteLine(Middle.MakeDot().N)\nEnd Sub\n",
+    );
+
+    assert_eq!(
+        run_file(dir.join("main.valo")).unwrap(),
+        vec!["42".to_string()]
+    );
+}

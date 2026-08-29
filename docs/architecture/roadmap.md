@@ -25,9 +25,6 @@ VM-class performance.
 These are known wrong, not merely missing. All were found by writing a whole
 program — [the Breakout demo](../../game/README.md) — rather than by reading code.
 
-- [ ] An imported type is only in scope in the module that imports it directly.
-      A module that is itself imported cannot name a type from its own imports.
-      The entry-module case is fixed; the transitive one is not.
 - [ ] `CInt(3.9)` gives 3; VB.NET gives 4. Conversions truncate where VB.NET
       rounds. This changes numeric behaviour, so it wants its own commit and a
       decision about how far VBA compatibility bends.

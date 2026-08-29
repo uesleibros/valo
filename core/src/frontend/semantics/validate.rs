@@ -122,15 +122,9 @@ fn validate_module(
     imports: &[crate::modules::ResolvedImport],
     project: &crate::modules::Project,
 ) -> Result<(), Diagnostic> {
-    // Imported types are in scope while this module's own declarations are
-    // checked, since a member declared `As Thing` may well name an import.
-    let mut imported = TypeRegistry::default();
-    merge_imported_types(imports, project, &mut imported)?;
-    let mut types = collect_types_in_scope(program, &imported)?;
-    merge_imported_types(imports, project, &mut types)?;
-    merge_project_partial_classes(program, project, &mut types)?;
+    let types = module_type_scope(program, imports, project)?;
     let mut signatures = collect_signatures(program, &types)?;
-    merge_imported_callables(imports, project, &types, &mut signatures)?;
+    merge_imported_callables(imports, project, &mut signatures)?;
     let mut module_symbols = collect_module_symbols(program, &types, &signatures)?;
     for import in imports {
         module_symbols.insert(
@@ -167,6 +161,23 @@ fn validate_module(
         &module_symbols,
         program.option_explicit,
     )
+}
+
+/// The types a module can name: its own, plus those of the modules it imports.
+///
+/// Imported types are in scope while a module's own declarations are checked,
+/// since a member declared `As Thing` may well name an import.
+fn module_type_scope(
+    program: &Program,
+    imports: &[crate::modules::ResolvedImport],
+    project: &crate::modules::Project,
+) -> Result<TypeRegistry, Diagnostic> {
+    let mut imported = TypeRegistry::default();
+    merge_imported_types(imports, project, &mut imported)?;
+    let mut types = collect_types_in_scope(program, &imported)?;
+    merge_imported_types(imports, project, &mut types)?;
+    merge_project_partial_classes(program, project, &mut types)?;
+    Ok(types)
 }
 
 /// Brings the types and extension methods of imported modules into scope.
@@ -223,7 +234,6 @@ fn merge_imported_types(
 fn merge_imported_callables(
     imports: &[crate::modules::ResolvedImport],
     project: &crate::modules::Project,
-    types: &TypeRegistry,
     signatures: &mut Signatures,
 ) -> Result<(), Diagnostic> {
     for import in imports {
@@ -231,7 +241,12 @@ fn merge_imported_callables(
             continue;
         };
         let qualifier = key(&import.qualifier);
-        let imported_signatures = collect_signatures(&imported.program, types)?;
+        // Against the imported module's own scope, not this one's. A procedure
+        // declared `As Thing` in a module that imports `Thing` is well-formed
+        // there, and stays well-formed when a third module imports it without
+        // knowing `Thing` at all.
+        let imported_types = module_type_scope(&imported.program, &imported.imports, project)?;
+        let imported_signatures = collect_signatures(&imported.program, &imported_types)?;
 
         for (type_key, methods) in imported_signatures.extension_methods {
             signatures
