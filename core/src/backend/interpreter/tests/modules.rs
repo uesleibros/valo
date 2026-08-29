@@ -1344,3 +1344,46 @@ End Sub
     assert_eq!(run_file(dir.join("main.valo")).unwrap(), vec!["7"]);
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn a_class_can_inherit_from_one_declared_in_the_same_imported_module() {
+    let dir = temp_project();
+    write(
+        &dir,
+        "Zoo.valo",
+        r#"
+Public Class Animal
+    Public Name As String
+
+    Public Overridable Function Speak() As String
+        Return "..."
+    End Function
+End Class
+
+Public Class Dog Inherits Animal
+    Public Overrides Function Speak() As String
+        Return Name & " says woof"
+    End Function
+End Class
+"#,
+    );
+    write(
+        &dir,
+        "main.valo",
+        r#"
+Imports Zoo
+
+Sub Main()
+    Dim pet As New Dog()
+    pet.Name = "Rex"
+    Console.WriteLine(pet.Speak())
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        run_file(dir.join("main.valo")).unwrap(),
+        vec!["Rex says woof"]
+    );
+    fs::remove_dir_all(dir).unwrap();
+}

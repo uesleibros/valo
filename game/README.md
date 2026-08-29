@@ -1,0 +1,93 @@
+# Games
+
+Programs written in Valo that exercise the language against something real.
+
+Unlike [`examples/`](../examples/README.md), which demonstrates one feature at a
+time, these are whole programs. They exist to find the gaps that only show up
+when features have to work together — and they have: every entry in "What this
+found" below was a real defect, fixed in the commit that reports it.
+
+## Breakout
+
+[`breakout/`](breakout/) is a playable Breakout drawn with SDL3 through Valo's
+native FFI.
+
+```sh
+valo run game/breakout/main.valo
+```
+
+The paddle plays by itself until you press a key, so simply running it
+demonstrates the game. After that: **←/→** or **A/D** to move, **R** to serve a
+new ball, **Esc** to quit. The window title carries the score. The program stops
+on its own after a fixed number of frames, so a run always terminates.
+
+### Getting SDL3
+
+The declarations name the library as `SDL3`, which the loader resolves against
+the current directory, the executable's directory, and `PATH`. Put the library
+in one of those:
+
+| Platform | File | Where to get it |
+|---|---|---|
+| Windows | `SDL3.dll` | [SDL releases](https://github.com/libsdl-org/SDL/releases) |
+| Linux | `libSDL3.so.0` | `libsdl3-0` from your package manager |
+| macOS | `libSDL3.dylib` | `brew install sdl3` |
+
+Without it the program says so and exits rather than failing at the first call.
+
+### How it is put together
+
+| File | Holds |
+|---|---|
+| [`Sdl.valo`](breakout/Sdl.valo) | Every `Declare`, plus the two structs that mirror the native ABI |
+| [`Game.valo`](breakout/Game.valo) | Geometry, entities, and the rules that move them |
+| [`main.valo`](breakout/main.valo) | The window, the loop, input, and drawing |
+
+Nothing outside `Sdl.valo` mentions the native library, so the model can be read
+and changed without knowing anything about SDL.
+
+### What the language is doing here
+
+- **Native interop** — `Declare` for every SDL entry point, a `Type` passed
+  `ByRef` for `SDL_FRect`, and a 128-byte `Type` that the native side fills in
+  for `SDL_Event`
+- **Classes and inheritance** — `Entity` with `Paddle`, `Ball`, and `Brick`
+  overriding `Advance`
+- **An interface** — the loop draws through `IDrawable` without knowing what
+  each thing is
+- **Events** — a brick announces its own destruction; scoring lives with the
+  event rather than inside the brick
+- **Operator overloading** — `Vector2` addition and scaling, so the physics
+  reads as arithmetic
+- **Properties** — `Left`, `Right`, `Top`, `Bottom`, and `CenterX` derived from
+  a position and a size
+- **String interpolation** — the HUD, including a format specifier
+- **Shift operators** — colours packed into one value and unpacked to draw
+- **`Select Case`, `Enum`, `Continue For`, compound assignment, `Optional`
+  parameters, object initializers, and `Collection` with `For Each`**
+
+### What this found
+
+Writing it surfaced five defects that the test suite and the single-feature
+examples had not:
+
+1. Reading a property off another instance ran the getter against the wrong
+   object, so every comparison between two objects through their properties was
+   wrong.
+2. A member could not be reached through a parenthesised expression:
+   `(a + b).Describe()` did not parse.
+3. `Imports` did not bring a type into scope: `As Thing` was rejected, and the
+   qualified `As Shapes.Thing` was accepted without being checked at all.
+4. A class could not inherit from one declared in the same imported module.
+5. `Set` on a nested member and assignment through an unqualified field name do
+   not resolve — worked around here by giving `Bounds` the movement it owns and
+   by writing `Me.` where a field is assigned through. Still open.
+
+### Known rough edges
+
+- Drawing fifty-odd rectangles a frame through a tree-walking interpreter runs
+  at roughly 60ms a frame rather than the 16ms the loop asks for. The game is
+  playable but not smooth; this is the interpreter, not SDL, and is what the
+  [bytecode VM](../docs/architecture/roadmap.md) on the roadmap is for.
+- `Event` and `Lib` are keywords, so neither can name a variable or parameter.
+  Escaped identifiers work: `[event]`.

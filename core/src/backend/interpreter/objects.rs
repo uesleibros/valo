@@ -684,6 +684,23 @@ impl Interpreter {
         }
     }
 
+    /// Finds the registry key for a class's base class.
+    ///
+    /// Classes declared in a module are registered under a module-qualified
+    /// key, so a base class named inside that module has to be looked for there
+    /// before falling back to the unqualified name. Without this, a class could
+    /// only inherit from one declared in the program's entry module.
+    fn resolve_base_class_key(&self, class_key: &str, base_name: &str) -> String {
+        let base_key = key(base_name);
+        if let Some((module_key, _)) = class_key.rsplit_once('.') {
+            let qualified = format!("{module_key}.{base_key}");
+            if self.classes.contains_key(&qualified) {
+                return qualified;
+            }
+        }
+        base_key
+    }
+
     pub(crate) fn read_shared_member(
         &mut self,
         class_name: &str,
@@ -1591,7 +1608,7 @@ impl Interpreter {
             return Ok(class);
         };
         let base_name = base_ty.display_name();
-        let base_key = key(&base_name);
+        let base_key = self.resolve_base_class_key(class_key, &base_name);
         let base = self.classes.get(&base_key).cloned().ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::UNKNOWN_NAME,

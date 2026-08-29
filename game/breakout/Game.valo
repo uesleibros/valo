@@ -1,0 +1,301 @@
+' The game's model: geometry, entities, and the rules that move them.
+'
+' Geometry and entities live together because the entities are defined in terms
+' of the geometry, and Valo cannot yet name an imported type from a module that
+' is itself imported -- see game/README.md.
+
+' Geometry shared by the game's entities.
+
+' A point or a direction on the playfield.
+'
+' Overloaded operators let the physics read as arithmetic rather than as
+' bookkeeping over separate X and Y variables.
+Public Class Vector2
+    Public X As Double
+    Public Y As Double
+
+    Public Sub Initialize(Optional ByVal startX As Double = 0, Optional ByVal startY As Double = 0)
+        X = startX
+        Y = startY
+    End Sub
+
+    Public Shared Operator +(ByVal left As Vector2, ByVal right As Vector2) As Vector2
+        Return New Vector2 With { .X = left.X + right.X, .Y = left.Y + right.Y }
+    End Operator
+
+    Public Shared Operator -(ByVal left As Vector2, ByVal right As Vector2) As Vector2
+        Return New Vector2 With { .X = left.X - right.X, .Y = left.Y - right.Y }
+    End Operator
+
+    Public Shared Operator *(ByVal value As Vector2, ByVal factor As Double) As Vector2
+        Return New Vector2 With { .X = value.X * factor, .Y = value.Y * factor }
+    End Operator
+
+    Public Function WithX(ByVal newX As Double) As Vector2
+        Return New Vector2 With { .X = newX, .Y = Y }
+    End Function
+
+    Public Function WithY(ByVal newY As Double) As Vector2
+        Return New Vector2 With { .X = X, .Y = newY }
+    End Function
+
+    Public Function Describe() As String
+        Return $"({X:0.0}, {Y:0.0})"
+    End Function
+End Class
+
+' An axis-aligned box, used both for layout and for collision.
+Public Class Bounds
+    Public Position As Vector2
+    Public Size As Vector2
+
+    Public Sub Initialize(ByVal x As Double, ByVal y As Double, ByVal w As Double, ByVal h As Double)
+        Set Position = New Vector2 With { .X = x, .Y = y }
+        Set Size = New Vector2 With { .X = w, .Y = h }
+    End Sub
+
+    Public Property Left As Double
+        Get
+            Return Position.X
+        End Get
+    End Property
+
+    Public Property Top As Double
+        Get
+            Return Position.Y
+        End Get
+    End Property
+
+    Public Property Right As Double
+        Get
+            Return Position.X + Size.X
+        End Get
+    End Property
+
+    Public Property Bottom As Double
+        Get
+            Return Position.Y + Size.Y
+        End Get
+    End Property
+
+    Public Property CenterX As Double
+        Get
+            Return Position.X + Size.X / 2
+        End Get
+    End Property
+
+    ' Moves the box to an absolute position.
+    Public Sub MoveTo(ByVal x As Double, ByVal y As Double)
+        Me.Position.X = x
+        Me.Position.Y = y
+    End Sub
+
+    ' Moves the box by a delta.
+    Public Sub Offset(ByVal dx As Double, ByVal dy As Double)
+        Me.Position.X = Me.Position.X + dx
+        Me.Position.Y = Me.Position.Y + dy
+    End Sub
+
+    ' Reports whether two boxes overlap.
+    Public Function Overlaps(ByVal other As Bounds) As Boolean
+        If Right <= other.Left Or Left >= other.Right Then
+            Return False
+        End If
+        If Bottom <= other.Top Or Top >= other.Bottom Then
+            Return False
+        End If
+        Return True
+    End Function
+End Class
+
+' Packs a colour into a single value, so palettes can be held in one array.
+'
+' The channels are laid out the way the renderer wants them read back, which is
+' what the shift operators below express.
+Public Function PackColor(ByVal red As Long, ByVal green As Long, ByVal blue As Long) As Long
+    Return (red << 16) Or (green << 8) Or blue
+End Function
+
+Public Function RedOf(ByVal packed As Long) As Long
+    Return (packed >> 16) And 255
+End Function
+
+Public Function GreenOf(ByVal packed As Long) As Long
+    Return (packed >> 8) And 255
+End Function
+
+Public Function BlueOf(ByVal packed As Long) As Long
+    Return packed And 255
+End Function
+
+' Anything the renderer can draw.
+'
+' The interface keeps drawing independent of what a thing *is*: the game loop
+' walks one collection and asks each member where it is and what colour it
+' should be, without knowing whether it is a paddle, a ball, or a brick.
+Public Interface IDrawable
+    Function Box() As Bounds
+    Function Color() As Long
+    Function IsAlive() As Boolean
+End Interface
+
+' Shared state and behaviour for everything on the playfield.
+Public Class Entity Implements IDrawable
+    Public Area As Bounds
+    Public Tint As Long
+    Public Alive As Boolean
+
+    Public Sub Initialize()
+        Alive = True
+        Tint = PackColor(255, 255, 255)
+    End Sub
+
+    Public Function Box() As Bounds Implements IDrawable.Box
+        Return Area
+    End Function
+
+    Public Function Color() As Long Implements IDrawable.Color
+        Return Tint
+    End Function
+
+    Public Function IsAlive() As Boolean Implements IDrawable.IsAlive
+        Return Alive
+    End Function
+
+    ' Advances the entity by one step. Subclasses that move override this.
+    Public Overridable Sub Advance(ByVal seconds As Double)
+    End Sub
+
+    Public Overridable Function Describe() As String
+        Return $"{NameOf(Entity)} at {Area.Position.Describe()}"
+    End Function
+End Class
+
+' The player's paddle. Moves horizontally and is clamped to the playfield.
+Public Class Paddle Inherits Entity
+    Public Speed As Double
+    Public Direction As Double
+    Public FieldWidth As Double
+
+    Public Overrides Sub Advance(ByVal seconds As Double)
+        Dim moved As Double = Area.Position.X + Direction * Speed * seconds
+
+        ' Clamp rather than wrap: a paddle that reappears on the other side
+        ' would make the game unplayable.
+        If moved < 0 Then
+            moved = 0
+        ElseIf moved + Area.Size.X > FieldWidth Then
+            moved = FieldWidth - Area.Size.X
+        End If
+
+        Area.MoveTo(moved, Area.Position.Y)
+    End Sub
+
+    Public Overrides Function Describe() As String
+        Return $"Paddle at x={Area.Position.X:0} moving {Direction:0}"
+    End Function
+End Class
+
+' The ball. Carries its own velocity and reports when it falls off the bottom.
+Public Class Ball Inherits Entity
+    Public Velocity As Vector2
+    Public FieldWidth As Double
+
+    Public Overrides Sub Advance(ByVal seconds As Double)
+        Area.Offset(Velocity.X * seconds, Velocity.Y * seconds)
+
+        ' Bounce off the side walls and the ceiling.
+        If Area.Left <= 0 Then
+            Area.MoveTo(0, Area.Position.Y)
+            Me.Velocity.X = Abs(Me.Velocity.X)
+        ElseIf Area.Right >= FieldWidth Then
+            Area.MoveTo(FieldWidth - Area.Size.X, Area.Position.Y)
+            Me.Velocity.X = -Abs(Me.Velocity.X)
+        End If
+
+        If Area.Top <= 0 Then
+            Area.MoveTo(Area.Position.X, 0)
+            Me.Velocity.Y = Abs(Me.Velocity.Y)
+        End If
+    End Sub
+
+    ' Reflects off a surface, nudging the horizontal direction by where the ball
+    ' struck so the player can aim.
+    Public Sub BounceOff(ByVal surface As Bounds)
+        Me.Velocity.Y = -Abs(Me.Velocity.Y)
+
+        Dim offset As Double = (Area.CenterX - surface.CenterX) / (surface.Size.X / 2)
+        Me.Velocity.X = Me.Velocity.X + offset * 120
+    End Sub
+
+    Public Overrides Function Describe() As String
+        Return $"Ball at {Area.Position.Describe()} heading {Velocity.Describe()}"
+    End Function
+End Class
+
+' A brick worth points, which announces its own destruction.
+Public Class Brick Inherits Entity
+    Public Points As Long
+
+    ' Raised when the brick is broken, so scoring lives with the game rather
+    ' than inside the brick.
+    Public Event Destroyed(ByVal points As Long)
+
+    Public Sub Break()
+        If Not Alive Then
+            Exit Sub
+        End If
+        Alive = False
+        RaiseEvent Destroyed(Points)
+    End Sub
+
+    Public Overrides Function Describe() As String
+        Return $"Brick worth {Points} at {Area.Position.Describe()}"
+    End Function
+End Class
+
+' -- Scoring -------------------------------------------------------------
+'
+' The running score lives beside the event that feeds it, so a brick's
+' announcement is handled in the module that declares it.
+
+Private TotalScore As Long
+
+Public Function CurrentScore() As Long
+    Return TotalScore
+End Function
+
+Public Sub ResetScore()
+    TotalScore = 0
+End Sub
+
+' Runs when a brick announces it was broken.
+Public Sub OnBrickBroken(ByVal points As Long)
+    TotalScore += points
+End Sub
+
+' Builds the brick wall, wiring each brick's score into the running total.
+Public Function MakeBricks() As Collection
+    Const COLUMNS As Long = 10
+    Const ROWS As Long = 5
+
+    Dim wall As New Collection()
+    Dim row As Long
+    Dim column As Long
+
+    For row = 0 To ROWS - 1
+        For column = 0 To COLUMNS - 1
+            Dim brick As New Brick()
+            Set brick.Area = New Bounds(20 + column * 60, 50 + row * 24, 54, 18)
+
+            ' Rows nearer the top are worth more, and are tinted to match.
+            brick.Points = (ROWS - row) * 10
+            brick.Tint = PackColor(80 + row * 30, 200 - row * 30, 120 + row * 20)
+
+            AddHandler brick.Destroyed, AddressOf OnBrickBroken
+            wall.Add(brick)
+        Next column
+    Next row
+
+    Return wall
+End Function

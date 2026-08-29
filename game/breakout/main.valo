@@ -1,0 +1,254 @@
+' Breakout, written in Valo and drawn with SDL3.
+'
+' The game exists to exercise the language against something real: classes and
+' inheritance for the entities, an interface for drawing, closures for scoring,
+' events for brick destruction, generics-free collections for the playfield,
+' native interop for the window, and string interpolation for the HUD.
+'
+' Run it with a frame budget to make it self-checking:
+'
+'     valo run game/breakout/main.valo
+'
+' See game/README.md for where SDL3 has to be.
+
+Imports Sdl
+Imports Game
+
+' What the game is currently doing.
+Public Enum Phase
+    Playing
+    Won
+    Lost
+End Enum
+
+' The playfield, in renderer units.
+Private Const FIELD_WIDTH As Double = 640
+Private Const FIELD_HEIGHT As Double = 480
+
+' How long the game runs before closing itself, so a run always terminates.
+Private Const MAX_FRAMES As Long = 900
+
+' Until the player first touches a key the paddle plays by itself, so simply
+' running the program demonstrates the game rather than dropping the ball.
+Private Attract As Boolean
+
+Private Phase_ As Long
+
+Sub Main()
+    If SDL_Init(Sdl.INIT_VIDEO) = 0 Then
+        Console.WriteLine("SDL_Init failed; is SDL3 next to the program?")
+        Exit Sub
+    End If
+
+    Dim window As LongPtr
+    window = SDL_CreateWindow("Valo Breakout", CLng(FIELD_WIDTH), CLng(FIELD_HEIGHT), 0)
+    If window = 0 Then
+        Console.WriteLine("Could not open a window.")
+        SDL_Quit()
+        Exit Sub
+    End If
+
+    Dim renderer As LongPtr
+    renderer = SDL_CreateRenderer(window, 0)
+    If renderer = 0 Then
+        Console.WriteLine("Could not create a renderer.")
+        SDL_DestroyWindow(window)
+        SDL_Quit()
+        Exit Sub
+    End If
+
+    RunGame(window, renderer)
+
+    SDL_DestroyRenderer(renderer)
+    SDL_DestroyWindow(window)
+    SDL_Quit()
+
+    Console.WriteLine($"Final score: {Game.CurrentScore()}")
+End Sub
+
+Private Sub RunGame(ByVal window As LongPtr, ByVal renderer As LongPtr)
+    Game.ResetScore()
+    Phase_ = Phase.Playing
+    Attract = True
+
+    Dim paddle As Paddle
+    Set paddle = MakePaddle()
+
+    Dim ball As Ball
+    Set ball = MakeBall()
+
+    Dim bricks As Collection
+    Set bricks = Game.MakeBricks()
+
+    ' Everything drawable, walked once per frame through the interface.
+    Dim scene As New Collection()
+    scene.Add(paddle)
+    scene.Add(ball)
+    Dim brick As Variant
+    For Each brick In bricks
+        scene.Add(brick)
+    Next brick
+
+    Dim pending As SdlEvent
+    Dim frame As Long
+    Dim quitting As Boolean = False
+
+    Do While Not quitting And frame < MAX_FRAMES
+        frame += 1
+
+        ' -- Input ------------------------------------------------------
+        Do While SDL_PollEvent(pending) <> 0
+            Select Case pending.Kind
+                Case Sdl.EVENT_QUIT
+                    quitting = True
+                Case Sdl.EVENT_KEY_DOWN
+                    Attract = False
+                    If pending.Scancode = Sdl.KEY_ESCAPE Then
+                        quitting = True
+                    ElseIf Sdl.IsLeftKey(pending.Scancode) Then
+                        paddle.Direction = -1
+                    ElseIf Sdl.IsRightKey(pending.Scancode) Then
+                        paddle.Direction = 1
+                    ElseIf pending.Scancode = Sdl.KEY_R Then
+                        Set ball = MakeBall()
+                        scene.Remove(2)
+                        scene.Add(ball, , 2)
+                    End If
+                Case Sdl.EVENT_KEY_UP
+                    If Sdl.IsLeftKey(pending.Scancode) Or Sdl.IsRightKey(pending.Scancode) Then
+                        paddle.Direction = 0
+                    End If
+            End Select
+        Loop
+
+        ' -- Simulation -------------------------------------------------
+        If Phase_ = Phase.Playing Then
+            If Attract Then
+                TrackBall(paddle, ball)
+            End If
+            Step_(paddle, ball, bricks)
+        End If
+
+        ' -- Presentation -----------------------------------------------
+        Draw(renderer, scene)
+        SDL_SetWindowTitle(window, StatusLine(bricks))
+        SDL_Delay(16)
+    Loop
+End Sub
+
+' Steers the paddle toward the ball, used until the player takes over.
+Private Sub TrackBall(ByVal paddle As Paddle, ByVal ball As Ball)
+    Dim gap As Double = ball.Box().CenterX - paddle.Box().CenterX
+
+    ' A dead zone keeps the paddle from juddering once it is lined up.
+    If gap < -6 Then
+        paddle.Direction = -1
+    ElseIf gap > 6 Then
+        paddle.Direction = 1
+    Else
+        paddle.Direction = 0
+    End If
+End Sub
+
+' Advances the world by one frame.
+Private Sub Step_(ByVal paddle As Paddle, ByVal ball As Ball, ByVal bricks As Collection)
+    Const SECONDS_PER_FRAME As Double = 0.016
+
+    paddle.Advance(SECONDS_PER_FRAME)
+    ball.Advance(SECONDS_PER_FRAME)
+
+    If ball.Box().Overlaps(paddle.Box()) And ball.Velocity.Y > 0 Then
+        ball.BounceOff(paddle.Box())
+    End If
+
+    Dim remaining As Long = 0
+    Dim item As Variant
+    For Each item In bricks
+        Dim brick As Brick
+        Set brick = CType(item, Brick)
+
+        If Not brick.IsAlive() Then
+            Continue For
+        End If
+        remaining += 1
+
+        If ball.Box().Overlaps(brick.Box()) Then
+            ball.BounceOff(brick.Box())
+            brick.Break()
+            remaining -= 1
+        End If
+    Next item
+
+    If remaining = 0 Then
+        Phase_ = Phase.Won
+    ElseIf ball.Box().Top > FIELD_HEIGHT Then
+        Phase_ = Phase.Lost
+    End If
+End Sub
+
+' Draws every live member of the scene.
+Private Sub Draw(ByVal renderer As LongPtr, ByVal scene As Collection)
+    SDL_SetRenderDrawColor(renderer, CByte(18), CByte(18), CByte(24), CByte(255))
+    SDL_RenderClear(renderer)
+
+    Dim shape As FRect
+    Dim item As Variant
+    For Each item In scene
+        Dim drawable As IDrawable
+        Set drawable = CType(item, IDrawable)
+
+        If Not drawable.IsAlive() Then
+            Continue For
+        End If
+
+        Dim area As Bounds
+        Set area = drawable.Box()
+        shape.X = CSng(area.Left)
+        shape.Y = CSng(area.Top)
+        shape.W = CSng(area.Size.X)
+        shape.H = CSng(area.Size.Y)
+
+        Dim tint As Long = drawable.Color()
+        SDL_SetRenderDrawColor(renderer, _
+            CByte(RedOf(tint)), CByte(GreenOf(tint)), CByte(BlueOf(tint)), CByte(255))
+        SDL_RenderFillRect(renderer, shape)
+    Next item
+
+    SDL_RenderPresent(renderer)
+End Sub
+
+' The window title doubles as the HUD.
+Private Function StatusLine(ByVal bricks As Collection) As String
+    Dim label As String
+
+    Select Case Phase_
+        Case Phase.Won
+            label = "cleared!"
+        Case Phase.Lost
+            label = "ball lost - press R"
+        Case Else
+            label = IIf(Attract, "demo - press a key to play", "playing")
+    End Select
+
+    Return $"Valo Breakout - score {Game.CurrentScore()} - {label}"
+End Function
+
+Private Function MakePaddle() As Paddle
+    Dim paddle As New Paddle()
+    Set paddle.Area = New Bounds(FIELD_WIDTH / 2 - 45, FIELD_HEIGHT - 40, 90, 12)
+    paddle.Speed = 420
+    paddle.FieldWidth = FIELD_WIDTH
+    paddle.Tint = PackColor(230, 230, 240)
+    Return paddle
+End Function
+
+Private Function MakeBall() As Ball
+    Dim ball As New Ball()
+    Set ball.Area = New Bounds(FIELD_WIDTH / 2 - 5, FIELD_HEIGHT / 2, 10, 10)
+    Set ball.Velocity = New Vector2 With { .X = 150, .Y = 260 }
+    ball.FieldWidth = FIELD_WIDTH
+    ball.Tint = PackColor(250, 220, 90)
+    Return ball
+End Function
+
+
