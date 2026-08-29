@@ -1,7 +1,46 @@
 use super::super::Interpreter;
+use super::{ValueFn, find_handler};
 use crate::runtime::numeric::value_to_i64;
 use crate::runtime::{ArrayValue, Diagnostic, Value};
 use std::rc::Rc;
+
+/// The builtins this module implements.
+pub(super) const HANDLERS: &[(&str, ValueFn)] = &[
+    ("Filter", filter),
+    ("CStr", c_str),
+    ("Len", len),
+    ("LenB", len_b),
+    ("Left", left),
+    ("Right", right),
+    ("Mid", mid),
+    ("Trim", trim),
+    ("LTrim", l_trim),
+    ("RTrim", r_trim),
+    ("UCase", u_case),
+    ("LCase", l_case),
+    ("Replace", replace),
+    ("Format", format),
+    ("FormatNumber", format_number),
+    ("FormatCurrency", format_number),
+    ("FormatPercent", format_number),
+    ("FormatDateTime", format_date_time),
+    ("InStr", in_str),
+    ("InStrRev", in_str_rev),
+    ("Space", space),
+    ("String", string),
+    ("StrReverse", str_reverse),
+    ("StrConv", str_conv),
+    ("Chr", chr),
+    ("ChrW", chr),
+    ("Asc", asc),
+    ("AscW", asc),
+    ("Val", val),
+    ("Str", str),
+    ("Hex", hex),
+    ("Oct", hex),
+    ("StrComp", str_comp),
+    ("Partition", partition),
+];
 
 pub(crate) fn eval_strings(
     interpreter: &mut Interpreter,
@@ -9,485 +48,590 @@ pub(crate) fn eval_strings(
     args: &[Value],
     span: crate::runtime::Span,
 ) -> Result<Option<Value>, Diagnostic> {
-    if name.eq_ignore_ascii_case("Filter") {
-        if args.len() < 2 || args.len() > 4 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Filter expects 2 to 4 arguments",
-                Some(span),
-            ));
-        }
-        let array_value = &args[0];
-        let match_text = args[1].to_output_string();
-        let include = if args.len() >= 3 {
-            args[2].is_truthy()
-        } else {
-            true
-        };
-        let compare = if args.len() == 4 {
-            value_to_i64(&args[3]).ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                    "Compare mode must be Integer",
-                    Some(span),
-                )
-            })? == 1
-        } else {
-            interpreter.option_compare == crate::OptionCompare::Text
-        };
-
-        let elements = super::super::arrays::array_values(array_value, span)?;
-        let mut filtered = Vec::new();
-        for val in elements {
-            let s = val.to_output_string();
-            let contains = if compare {
-                s.to_lowercase().contains(&match_text.to_lowercase())
-            } else {
-                s.contains(&match_text)
-            };
-            if contains == include {
-                filtered.push(val);
-            }
-        }
-        let len = filtered.len() as i64;
-        return Ok(Some(Value::Array(Rc::new(ArrayValue {
-            element_type: crate::runtime::TypeName::Variant,
-            elements: filtered,
-            bounds: vec![crate::runtime::ArrayBound {
-                lower: 0,
-                upper: len - 1,
-            }],
-            allocated: true,
-            dynamic: true,
-        }))));
+    match find_handler(HANDLERS, name) {
+        Some(handler) => handler(interpreter, name, args, span).map(Some),
+        None => Ok(None),
     }
-
-    if name.eq_ignore_ascii_case("CStr") {
-        if args.len() != 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "CStr expects exactly 1 argument",
-                Some(span),
-            ));
-        }
-        return Ok(Some(Value::String(args[0].to_output_string())));
-    }
-
-    if name.eq_ignore_ascii_case("Len") {
-        if args.len() != 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Len expects exactly 1 argument",
-                Some(span),
-            ));
-        }
-        let s = args[0].to_output_string();
-        return Ok(Some(Value::Int64(s.chars().count() as i64)));
-    }
-
-    if name.eq_ignore_ascii_case("LenB") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::Int64(args[0].to_output_string().len() as i64)));
-    }
-
-    if name.eq_ignore_ascii_case("Left") {
-        expect_arg_range(name, args, 2, 2, span)?;
-        let text = args[0].to_output_string();
-        let count = non_negative_len(name, &args[1], span)?;
-        return Ok(Some(Value::String(text.chars().take(count).collect())));
-    }
-
-    if name.eq_ignore_ascii_case("Right") {
-        expect_arg_range(name, args, 2, 2, span)?;
-        let text = args[0].to_output_string();
-        let count = non_negative_len(name, &args[1], span)?;
-        let len = text.chars().count();
-        return Ok(Some(Value::String(
-            text.chars().skip(len.saturating_sub(count)).collect(),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("Mid") {
-        expect_arg_range(name, args, 2, 3, span)?;
-        let text = args[0].to_output_string();
-        let start = one_based_start(name, &args[1], span)?;
-        let chars = text.chars().skip(start.saturating_sub(1));
-        let result: String = if let Some(length) = args.get(2) {
-            chars.take(non_negative_len(name, length, span)?).collect()
-        } else {
-            chars.collect()
-        };
-        return Ok(Some(Value::String(result)));
-    }
-
-    if name.eq_ignore_ascii_case("Trim") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::String(
-            args[0].to_output_string().trim().to_string(),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("LTrim") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::String(
-            args[0].to_output_string().trim_start().to_string(),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("RTrim") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::String(
-            args[0].to_output_string().trim_end().to_string(),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("UCase") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::String(
-            args[0].to_output_string().to_uppercase(),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("LCase") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::String(
-            args[0].to_output_string().to_lowercase(),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("Replace") {
-        expect_arg_range(name, args, 3, 6, span)?;
-        let expression = args[0].to_output_string();
-        let find = args[1].to_output_string();
-        let replacement = args[2].to_output_string();
-        let start = if let Some(start) = args.get(3) {
-            one_based_start(name, start, span)?
-        } else {
-            1
-        };
-        let count = if let Some(count) = args.get(4) {
-            value_to_i64(count).ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                    "Replace count must be Integer",
-                    Some(span),
-                )
-            })?
-        } else {
-            -1
-        };
-        let compare_text = args
-            .get(5)
-            .map(|value| compare_is_text(value, span))
-            .transpose()?
-            .unwrap_or(interpreter.option_compare == crate::OptionCompare::Text);
-        let prefix: String = expression.chars().take(start.saturating_sub(1)).collect();
-        let tail: String = expression.chars().skip(start.saturating_sub(1)).collect();
-        let replaced = replace_limited(&tail, &find, &replacement, count, compare_text);
-        return Ok(Some(Value::String(format!("{prefix}{replaced}"))));
-    }
-
-    if name.eq_ignore_ascii_case("Format") {
-        if args.is_empty() || args.len() > 4 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Format expects 1 to 4 arguments",
-                Some(span),
-            ));
-        }
-        let expression = &args[0];
-        let format = args.get(1).map(Value::to_output_string).unwrap_or_default();
-        return Ok(Some(Value::String(format_value(expression, &format))));
-    }
-
-    if name.eq_ignore_ascii_case("FormatNumber")
-        || name.eq_ignore_ascii_case("FormatCurrency")
-        || name.eq_ignore_ascii_case("FormatPercent")
-    {
-        if args.is_empty() || args.len() > 5 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                format!("{name} expects 1 to 5 arguments"),
-                Some(span),
-            ));
-        }
-        let value = crate::runtime::numeric::value_to_f64(&args[0]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                format!("{name} expression must be numeric"),
-                Some(span),
-            )
-        })?;
-        let digits = args
-            .get(1)
-            .and_then(value_to_i64)
-            .filter(|digits| *digits >= 0)
-            .unwrap_or(2) as usize;
-        let value = if name.eq_ignore_ascii_case("FormatPercent") {
-            value * 100.0
-        } else {
-            value
-        };
-        let mut text = format!("{value:.digits$}");
-        if name.eq_ignore_ascii_case("FormatCurrency") {
-            text = format!("${text}");
-        } else if name.eq_ignore_ascii_case("FormatPercent") {
-            text.push('%');
-        }
-        return Ok(Some(Value::String(text)));
-    }
-
-    if name.eq_ignore_ascii_case("FormatDateTime") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "FormatDateTime expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        let named_format = args.get(1).and_then(value_to_i64).unwrap_or(0);
-        return Ok(Some(Value::String(format_datetime(
-            &args[0],
-            named_format,
-            span,
-        )?)));
-    }
-
-    if name.eq_ignore_ascii_case("InStr") {
-        expect_arg_range(name, args, 2, 4, span)?;
-        let (start, text, find, compare_arg) = match args.len() {
-            2 => (
-                1,
-                args[0].to_output_string(),
-                args[1].to_output_string(),
-                None,
-            ),
-            3 => (
-                one_based_start(name, &args[0], span)?,
-                args[1].to_output_string(),
-                args[2].to_output_string(),
-                None,
-            ),
-            _ => (
-                one_based_start(name, &args[0], span)?,
-                args[1].to_output_string(),
-                args[2].to_output_string(),
-                Some(&args[3]),
-            ),
-        };
-        let compare_text = compare_arg
-            .map(|value| compare_is_text(value, span))
-            .transpose()?
-            .unwrap_or(interpreter.option_compare == crate::OptionCompare::Text);
-        return Ok(Some(Value::Int64(
-            instr(&text, &find, start, compare_text).unwrap_or(0),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("InStrRev") {
-        expect_arg_range(name, args, 2, 4, span)?;
-        let text = args[0].to_output_string();
-        let find = args[1].to_output_string();
-        let start = if let Some(start) = args.get(2) {
-            value_to_i64(start).ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                    "InStrRev start must be Integer",
-                    Some(span),
-                )
-            })?
-        } else {
-            -1
-        };
-        let compare_text = args
-            .get(3)
-            .map(|value| compare_is_text(value, span))
-            .transpose()?
-            .unwrap_or(interpreter.option_compare == crate::OptionCompare::Text);
-        return Ok(Some(Value::Int64(instr_rev(
-            &text,
-            &find,
-            start,
-            compare_text,
-        ))));
-    }
-
-    if name.eq_ignore_ascii_case("Space") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::String(
-            " ".repeat(non_negative_len(name, &args[0], span)?),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("String") {
-        expect_arg_range(name, args, 2, 2, span)?;
-        let count = non_negative_len(name, &args[0], span)?;
-        let ch = string_char(&args[1], span)?;
-        return Ok(Some(Value::String(ch.to_string().repeat(count))));
-    }
-
-    if name.eq_ignore_ascii_case("StrReverse") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::String(
-            args[0].to_output_string().chars().rev().collect(),
-        )));
-    }
-
-    if name.eq_ignore_ascii_case("StrConv") {
-        expect_arg_range(name, args, 2, 3, span)?;
-        let text = args[0].to_output_string();
-        let conversion = value_to_i64(&args[1]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "StrConv conversion must be Integer",
-                Some(span),
-            )
-        })?;
-        let converted = if conversion & 3 == 3 {
-            proper_case(&text)
-        } else if conversion & 1 != 0 {
-            text.to_uppercase()
-        } else if conversion & 2 != 0 {
-            text.to_lowercase()
-        } else {
-            text
-        };
-        return Ok(Some(Value::String(converted)));
-    }
-
-    if name.eq_ignore_ascii_case("Chr") || name.eq_ignore_ascii_case("ChrW") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        let code = value_to_i64(&args[0]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "Chr code must be Integer",
-                Some(span),
-            )
-        })?;
-        let Some(ch) = char::from_u32(code as u32) else {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "Chr code is outside the supported Unicode scalar range",
-                Some(span),
-            ));
-        };
-        return Ok(Some(Value::String(ch.to_string())));
-    }
-
-    if name.eq_ignore_ascii_case("Asc") || name.eq_ignore_ascii_case("AscW") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        let text = args[0].to_output_string();
-        let Some(ch) = text.chars().next() else {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "Asc requires a non-empty string",
-                Some(span),
-            ));
-        };
-        return Ok(Some(Value::Int64(ch as i64)));
-    }
-
-    if name.eq_ignore_ascii_case("Val") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        return Ok(Some(Value::Double(val_number(&args[0].to_output_string()))));
-    }
-
-    if name.eq_ignore_ascii_case("Str") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        let text = args[0].to_output_string();
-        let prefix = if text.starts_with('-') { "" } else { " " };
-        return Ok(Some(Value::String(format!("{prefix}{text}"))));
-    }
-
-    if name.eq_ignore_ascii_case("Hex") || name.eq_ignore_ascii_case("Oct") {
-        expect_arg_range(name, args, 1, 1, span)?;
-        let value = value_to_i64(&args[0]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                format!("{name} argument must be Integer"),
-                Some(span),
-            )
-        })?;
-        let text = if name.eq_ignore_ascii_case("Hex") {
-            format!("{value:X}")
-        } else {
-            format!("{value:o}")
-        };
-        return Ok(Some(Value::String(text)));
-    }
-
-    if name.eq_ignore_ascii_case("StrComp") {
-        if args.len() < 2 || args.len() > 3 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "StrComp expects two strings and optional compare mode",
-                Some(span),
-            ));
-        }
-        let left = args[0].to_output_string();
-        let right = args[1].to_output_string();
-        let text_compare = if args.len() == 3 {
-            value_to_i64(&args[2]).ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                    "Compare mode must be Integer",
-                    Some(span),
-                )
-            })? == 1
-        } else {
-            interpreter.option_compare == crate::OptionCompare::Text
-        };
-        let (left, right) = if text_compare {
-            (left.to_lowercase(), right.to_lowercase())
-        } else {
-            (left, right)
-        };
-        let result = match left.cmp(&right) {
-            std::cmp::Ordering::Less => -1,
-            std::cmp::Ordering::Equal => 0,
-            std::cmp::Ordering::Greater => 1,
-        };
-        return Ok(Some(Value::Int64(result)));
-    }
-
-    if name.eq_ignore_ascii_case("Partition") {
-        expect_arg_range(name, args, 4, 4, span)?;
-        let number = value_to_i64(&args[0]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "Partition number must be Integer",
-                Some(span),
-            )
-        })?;
-        let start = value_to_i64(&args[1]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "Partition start must be Integer",
-                Some(span),
-            )
-        })?;
-        let stop = value_to_i64(&args[2]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "Partition stop must be Integer",
-                Some(span),
-            )
-        })?;
-        let interval = value_to_i64(&args[3]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "Partition interval must be Integer",
-                Some(span),
-            )
-        })?;
-        return Ok(Some(Value::String(partition(
-            number, start, stop, interval, span,
-        )?)));
-    }
-
-    Ok(None)
 }
 
+fn filter(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let array_value = &args[0];
+    let match_text = args[1].to_output_string();
+    let include = if args.len() >= 3 {
+        args[2].is_truthy()
+    } else {
+        true
+    };
+    let compare = if args.len() == 4 {
+        value_to_i64(&args[3]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "Compare mode must be Integer",
+                Some(span),
+            )
+        })? == 1
+    } else {
+        interpreter.option_compare == crate::OptionCompare::Text
+    };
+
+    let elements = super::super::arrays::array_values(array_value, span)?;
+    let mut filtered = Vec::new();
+    for val in elements {
+        let s = val.to_output_string();
+        let contains = if compare {
+            s.to_lowercase().contains(&match_text.to_lowercase())
+        } else {
+            s.contains(&match_text)
+        };
+        if contains == include {
+            filtered.push(val);
+        }
+    }
+    let len = filtered.len() as i64;
+    Ok(Value::Array(Rc::new(ArrayValue {
+        element_type: crate::runtime::TypeName::Variant,
+        elements: filtered,
+        bounds: vec![crate::runtime::ArrayBound {
+            lower: 0,
+            upper: len - 1,
+        }],
+        allocated: true,
+        dynamic: true,
+    })))
+}
+
+fn c_str(
+    _: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    Ok(Value::String(args[0].to_output_string()))
+}
+
+fn len(
+    _: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let s = args[0].to_output_string();
+    Ok(Value::Int64(s.chars().count() as i64))
+}
+
+fn len_b(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::Int64(args[0].to_output_string().len() as i64))
+}
+
+fn left(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 2, 2, span)?;
+    let text = args[0].to_output_string();
+    let count = non_negative_len(name, &args[1], span)?;
+    Ok(Value::String(text.chars().take(count).collect()))
+}
+
+fn right(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 2, 2, span)?;
+    let text = args[0].to_output_string();
+    let count = non_negative_len(name, &args[1], span)?;
+    let len = text.chars().count();
+    Ok(Value::String(
+        text.chars().skip(len.saturating_sub(count)).collect(),
+    ))
+}
+
+fn mid(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 2, 3, span)?;
+    let text = args[0].to_output_string();
+    let start = one_based_start(name, &args[1], span)?;
+    let chars = text.chars().skip(start.saturating_sub(1));
+    let result: String = if let Some(length) = args.get(2) {
+        chars.take(non_negative_len(name, length, span)?).collect()
+    } else {
+        chars.collect()
+    };
+    Ok(Value::String(result))
+}
+
+fn trim(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::String(args[0].to_output_string().trim().to_string()))
+}
+
+fn l_trim(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::String(
+        args[0].to_output_string().trim_start().to_string(),
+    ))
+}
+
+fn r_trim(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::String(
+        args[0].to_output_string().trim_end().to_string(),
+    ))
+}
+
+fn u_case(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::String(args[0].to_output_string().to_uppercase()))
+}
+
+fn l_case(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::String(args[0].to_output_string().to_lowercase()))
+}
+
+fn replace(
+    interpreter: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 3, 6, span)?;
+    let expression = args[0].to_output_string();
+    let find = args[1].to_output_string();
+    let replacement = args[2].to_output_string();
+    let start = if let Some(start) = args.get(3) {
+        one_based_start(name, start, span)?
+    } else {
+        1
+    };
+    let count = if let Some(count) = args.get(4) {
+        value_to_i64(count).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "Replace count must be Integer",
+                Some(span),
+            )
+        })?
+    } else {
+        -1
+    };
+    let compare_text = args
+        .get(5)
+        .map(|value| compare_is_text(value, span))
+        .transpose()?
+        .unwrap_or(interpreter.option_compare == crate::OptionCompare::Text);
+    let prefix: String = expression.chars().take(start.saturating_sub(1)).collect();
+    let tail: String = expression.chars().skip(start.saturating_sub(1)).collect();
+    let replaced = replace_limited(&tail, &find, &replacement, count, compare_text);
+    Ok(Value::String(format!("{prefix}{replaced}")))
+}
+
+fn format(
+    _: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 4 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "Format expects 1 to 4 arguments",
+            Some(span),
+        ));
+    }
+    let expression = &args[0];
+    let format = args.get(1).map(Value::to_output_string).unwrap_or_default();
+    Ok(Value::String(format_value(expression, &format)))
+}
+
+fn format_number(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 5 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            format!("{name} expects 1 to 5 arguments"),
+            Some(span),
+        ));
+    }
+    let value = crate::runtime::numeric::value_to_f64(&args[0]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            format!("{name} expression must be numeric"),
+            Some(span),
+        )
+    })?;
+    let digits = args
+        .get(1)
+        .and_then(value_to_i64)
+        .filter(|digits| *digits >= 0)
+        .unwrap_or(2) as usize;
+    let value = if name.eq_ignore_ascii_case("FormatPercent") {
+        value * 100.0
+    } else {
+        value
+    };
+    let mut text = format!("{value:.digits$}");
+    if name.eq_ignore_ascii_case("FormatCurrency") {
+        text = format!("${text}");
+    } else if name.eq_ignore_ascii_case("FormatPercent") {
+        text.push('%');
+    }
+    Ok(Value::String(text))
+}
+
+fn format_date_time(
+    _: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    if args.is_empty() || args.len() > 2 {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            "FormatDateTime expects 1 to 2 arguments",
+            Some(span),
+        ));
+    }
+    let named_format = args.get(1).and_then(value_to_i64).unwrap_or(0);
+    Ok(Value::String(format_datetime(
+        &args[0],
+        named_format,
+        span,
+    )?))
+}
+
+fn in_str(
+    interpreter: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 2, 4, span)?;
+    let (start, text, find, compare_arg) = match args.len() {
+        2 => (
+            1,
+            args[0].to_output_string(),
+            args[1].to_output_string(),
+            None,
+        ),
+        3 => (
+            one_based_start(name, &args[0], span)?,
+            args[1].to_output_string(),
+            args[2].to_output_string(),
+            None,
+        ),
+        _ => (
+            one_based_start(name, &args[0], span)?,
+            args[1].to_output_string(),
+            args[2].to_output_string(),
+            Some(&args[3]),
+        ),
+    };
+    let compare_text = compare_arg
+        .map(|value| compare_is_text(value, span))
+        .transpose()?
+        .unwrap_or(interpreter.option_compare == crate::OptionCompare::Text);
+    Ok(Value::Int64(
+        instr(&text, &find, start, compare_text).unwrap_or(0),
+    ))
+}
+
+fn in_str_rev(
+    interpreter: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 2, 4, span)?;
+    let text = args[0].to_output_string();
+    let find = args[1].to_output_string();
+    let start = if let Some(start) = args.get(2) {
+        value_to_i64(start).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "InStrRev start must be Integer",
+                Some(span),
+            )
+        })?
+    } else {
+        -1
+    };
+    let compare_text = args
+        .get(3)
+        .map(|value| compare_is_text(value, span))
+        .transpose()?
+        .unwrap_or(interpreter.option_compare == crate::OptionCompare::Text);
+    Ok(Value::Int64(instr_rev(&text, &find, start, compare_text)))
+}
+
+fn space(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::String(
+        " ".repeat(non_negative_len(name, &args[0], span)?),
+    ))
+}
+
+fn string(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 2, 2, span)?;
+    let count = non_negative_len(name, &args[0], span)?;
+    let ch = string_char(&args[1], span)?;
+    Ok(Value::String(ch.to_string().repeat(count)))
+}
+
+fn str_reverse(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::String(
+        args[0].to_output_string().chars().rev().collect(),
+    ))
+}
+
+fn str_conv(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 2, 3, span)?;
+    let text = args[0].to_output_string();
+    let conversion = value_to_i64(&args[1]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "StrConv conversion must be Integer",
+            Some(span),
+        )
+    })?;
+    let converted = if conversion & 3 == 3 {
+        proper_case(&text)
+    } else if conversion & 1 != 0 {
+        text.to_uppercase()
+    } else if conversion & 2 != 0 {
+        text.to_lowercase()
+    } else {
+        text
+    };
+    Ok(Value::String(converted))
+}
+
+fn chr(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    let code = value_to_i64(&args[0]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Chr code must be Integer",
+            Some(span),
+        )
+    })?;
+    let Some(ch) = char::from_u32(code as u32) else {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Chr code is outside the supported Unicode scalar range",
+            Some(span),
+        ));
+    };
+    Ok(Value::String(ch.to_string()))
+}
+
+fn asc(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    let text = args[0].to_output_string();
+    let Some(ch) = text.chars().next() else {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Asc requires a non-empty string",
+            Some(span),
+        ));
+    };
+    Ok(Value::Int64(ch as i64))
+}
+
+fn val(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    Ok(Value::Double(val_number(&args[0].to_output_string())))
+}
+
+fn str(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    let text = args[0].to_output_string();
+    let prefix = if text.starts_with('-') { "" } else { " " };
+    Ok(Value::String(format!("{prefix}{text}")))
+}
+
+fn hex(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 1, 1, span)?;
+    let value = value_to_i64(&args[0]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            format!("{name} argument must be Integer"),
+            Some(span),
+        )
+    })?;
+    let text = if name.eq_ignore_ascii_case("Hex") {
+        format!("{value:X}")
+    } else {
+        format!("{value:o}")
+    };
+    Ok(Value::String(text))
+}
+
+fn str_comp(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let left = args[0].to_output_string();
+    let right = args[1].to_output_string();
+    let text_compare = if args.len() == 3 {
+        value_to_i64(&args[2]).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "Compare mode must be Integer",
+                Some(span),
+            )
+        })? == 1
+    } else {
+        interpreter.option_compare == crate::OptionCompare::Text
+    };
+    let (left, right) = if text_compare {
+        (left.to_lowercase(), right.to_lowercase())
+    } else {
+        (left, right)
+    };
+    let result = match left.cmp(&right) {
+        std::cmp::Ordering::Less => -1,
+        std::cmp::Ordering::Equal => 0,
+        std::cmp::Ordering::Greater => 1,
+    };
+    Ok(Value::Int64(result))
+}
+
+fn partition(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    expect_arg_range(name, args, 4, 4, span)?;
+    let number = value_to_i64(&args[0]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Partition number must be Integer",
+            Some(span),
+        )
+    })?;
+    let start = value_to_i64(&args[1]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Partition start must be Integer",
+            Some(span),
+        )
+    })?;
+    let stop = value_to_i64(&args[2]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Partition stop must be Integer",
+            Some(span),
+        )
+    })?;
+    let interval = value_to_i64(&args[3]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Partition interval must be Integer",
+            Some(span),
+        )
+    })?;
+    Ok(Value::String(partition_bucket(
+        number, start, stop, interval, span,
+    )?))
+}
 fn expect_arg_range(
     name: &str,
     args: &[Value],
@@ -944,7 +1088,7 @@ fn proper_case(text: &str) -> String {
         .collect()
 }
 
-fn partition(
+fn partition_bucket(
     number: i64,
     start: i64,
     stop: i64,

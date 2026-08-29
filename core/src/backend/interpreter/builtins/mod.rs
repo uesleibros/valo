@@ -124,8 +124,11 @@ mod handler_tests {
     ///
     /// As modules are converted from name-comparison chains to tables they are
     /// added here, and the checks below start covering them.
-    const TABLES: &[(&str, &[(&str, ValueFn)])] =
-        &[("types", types::HANDLERS), ("math", math::HANDLERS)];
+    const TABLES: &[(&str, &[(&str, ValueFn)])] = &[
+        ("types", types::HANDLERS),
+        ("math", math::HANDLERS),
+        ("strings", strings::HANDLERS),
+    ];
 
     /// A handler table may only name builtins the registry declares.
     ///
