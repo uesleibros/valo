@@ -1639,7 +1639,7 @@ impl Interpreter {
                 Some(span),
             )
         })?;
-        let procedure = class.subs.get(&key(method)).cloned().ok_or_else(|| {
+        let procedure = class.subs.get(&key(method)).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Class '{}' has no method '{}'", class.name, method),
@@ -1768,7 +1768,7 @@ impl Interpreter {
                     Some(span),
                 )
             })?;
-        let procedure = class.subs.get(&key(method)).cloned().ok_or_else(|| {
+        let procedure = class.subs.get(&key(method)).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Class '{}' has no method '{}'", class.name, method),
@@ -1946,7 +1946,7 @@ impl Interpreter {
                             Some(span),
                         )
                     })?;
-                if let Some(function) = class.functions.get(&key(method)).cloned() {
+                if let Some(function) = class.functions.get(&key(method)) {
                     let mut frame = Frame::default();
                     frame.inherit_modules_from(caller_frame)?;
                     if let Some((module_key, _)) = key(&class.name).split_once('.') {

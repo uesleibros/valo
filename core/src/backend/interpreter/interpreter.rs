@@ -17,7 +17,12 @@ pub struct Interpreter {
     pub(crate) interfaces: HashMap<String, RuntimeInterface>,
     pub(crate) enums: HashMap<String, RuntimeEnum>,
     pub(crate) enum_members: HashMap<String, i64>,
-    pub(crate) classes: HashMap<String, RuntimeClass>,
+    /// Declared classes, shared rather than owned.
+    ///
+    /// A class carries the body of every method it declares, so cloning one is
+    /// expensive -- and resolution used to clone the whole class on every
+    /// method call and property read. Sharing makes that a refcount bump.
+    pub(crate) classes: HashMap<String, Rc<RuntimeClass>>,
     pub(crate) shared_class_fields: HashMap<String, HashMap<String, Value>>,
     pub(crate) procedures: HashMap<String, Procedure>,
     pub(crate) functions: HashMap<String, Function>,
@@ -164,7 +169,7 @@ impl Interpreter {
     fn add_builtin_classes(&mut self) {
         self.classes.insert(
             key("Error"),
-            RuntimeClass {
+            Rc::new(RuntimeClass {
                 name: "Error".to_string(),
                 type_params: Vec::new(),
                 inheritance: crate::ClassInheritance::Normal,
@@ -243,11 +248,11 @@ impl Interpreter {
                 operators: HashMap::new(),
                 enumerator_member: None,
                 default_member: None,
-            },
+            }),
         );
         self.classes.insert(
             key("Collection"),
-            RuntimeClass {
+            Rc::new(RuntimeClass {
                 name: "Collection".to_string(),
                 type_params: Vec::new(),
                 inheritance: crate::ClassInheritance::Normal,
@@ -265,7 +270,7 @@ impl Interpreter {
                 operators: HashMap::new(),
                 enumerator_member: None,
                 default_member: Some("Item".to_string()),
-            },
+            }),
         );
     }
 
@@ -351,8 +356,10 @@ impl Interpreter {
             );
         }
         for class_decl in &program.classes {
-            self.classes
-                .insert(key(&class_decl.name), RuntimeClass::from(class_decl));
+            self.classes.insert(
+                key(&class_decl.name),
+                Rc::new(RuntimeClass::from(class_decl)),
+            );
         }
         self.apply_class_inheritance(crate::runtime::Span::empty(
             crate::runtime::FileId::default(),
@@ -514,8 +521,10 @@ impl Interpreter {
             );
         }
         for class_decl in &program.classes {
-            self.classes
-                .insert(key(&class_decl.name), RuntimeClass::from(class_decl));
+            self.classes.insert(
+                key(&class_decl.name),
+                Rc::new(RuntimeClass::from(class_decl)),
+            );
         }
         self.initialize_shared_class_fields(crate::runtime::Span::empty(
             crate::runtime::FileId::default(),
@@ -785,11 +794,12 @@ impl Interpreter {
                 let qualified = qualified_symbol_key(&module_key, &class_decl.name);
                 let mut runtime_class = RuntimeClass::from(class_decl);
                 runtime_class.name = qualified_display_name(&module.name, &class_decl.name);
-                self.classes.insert(qualified.clone(), runtime_class);
+                self.classes
+                    .insert(qualified.clone(), Rc::new(runtime_class));
                 if module_key == entry_key {
                     self.classes.insert(
                         super::values::key(&class_decl.name),
-                        RuntimeClass::from(class_decl),
+                        Rc::new(RuntimeClass::from(class_decl)),
                     );
                 }
                 if module_key == entry_key || crate::modules::is_public(class_decl.visibility) {
@@ -1144,7 +1154,7 @@ impl Interpreter {
                 modules.insert(module);
                 merge_partial_runtime_class(&mut merged, RuntimeClass::from(&partial));
             }
-            self.classes.insert(class_key.clone(), merged);
+            self.classes.insert(class_key.clone(), Rc::new(merged));
             self.merged_partial_class_modules
                 .insert(class_key.clone(), modules);
             self.public_classes.insert(class_key);

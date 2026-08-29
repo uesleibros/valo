@@ -40,7 +40,7 @@ impl Interpreter {
         let accessor = structure
             .properties
             .get(&key(property))
-            .and_then(|property| property.get.clone())
+            .and_then(|property| property.get.as_ref())
             .ok_or_else(|| {
                 Diagnostic::new(
                     crate::runtime::DiagnosticCode::MEMBER_ACCESS,
@@ -269,7 +269,7 @@ impl Interpreter {
         let accessor = class
             .properties
             .get(&key(property))
-            .and_then(|property| property.get.clone())
+            .and_then(|property| property.get.as_ref())
             .ok_or_else(|| {
                 Diagnostic::new(
                     crate::runtime::DiagnosticCode::MEMBER_ACCESS,

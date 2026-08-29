@@ -92,7 +92,7 @@ impl Interpreter {
                 )
                 .with_help(format!("expected {}", base.generic_display_name())));
             }
-            let mut instance = base.clone();
+            let mut instance = (*base).clone();
             instance.name = display_name;
             instance.type_params.clear();
             for field in instance
@@ -145,7 +145,7 @@ impl Interpreter {
                 }
             }
             let instance_key = key(&instance.name);
-            self.classes.insert(instance_key.clone(), instance);
+            self.classes.insert(instance_key.clone(), Rc::new(instance));
             self.initialize_class_shared_fields(&instance_key, span)?;
             return Ok(());
         }
@@ -1579,7 +1579,7 @@ impl Interpreter {
             let mut visiting = Vec::new();
             let resolved =
                 self.resolve_inherited_runtime_class(&class_name, &mut visiting, span)?;
-            self.classes.insert(class_name, resolved);
+            self.classes.insert(class_name, Rc::new(resolved));
         }
         Ok(())
     }
@@ -1605,7 +1605,7 @@ impl Interpreter {
             )
         })?;
         let Some(base_ty) = class.base_class.clone() else {
-            return Ok(class);
+            return Ok((*class).clone());
         };
         let base_name = base_ty.display_name();
         let base_key = self.resolve_base_class_key(class_key, &base_name);
@@ -1629,7 +1629,7 @@ impl Interpreter {
         visiting.push(class_key.to_string());
         let mut merged = self.resolve_inherited_runtime_class(&base_key, visiting, span)?;
         visiting.pop();
-        let mut derived = class;
+        let mut derived = (*class).clone();
         for field in derived.fields.drain(..) {
             if let Some(existing) = merged
                 .fields

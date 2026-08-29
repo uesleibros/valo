@@ -243,7 +243,7 @@ fn enumerable_values_with_depth(
             )
         })?;
 
-    if let Some(iterator) = class.iterator {
+    if let Some(iterator) = class.iterator.clone() {
         let returned = interpreter.call_method_function_decl(value, iterator, frame, span)?;
         return enumerable_values_with_depth(interpreter, returned, frame, span, depth + 1)
             .map_err(|diagnostic| {
@@ -262,7 +262,7 @@ fn enumerable_values_with_depth(
             });
     }
 
-    if let Some(member) = class.enumerator_member {
+    if let Some(member) = class.enumerator_member.clone() {
         let returned = if class.functions.contains_key(&key(&member)) {
             interpreter.call_method_function(value, &member, &[], frame, span)?
         } else {
