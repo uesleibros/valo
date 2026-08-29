@@ -3,6 +3,7 @@ use crate::runtime::numeric::{
 };
 use crate::runtime::well_known;
 use crate::runtime::{Diagnostic, Span, TypeName, Value};
+use std::rc::Rc;
 
 pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Value, Diagnostic> {
     if matches!(value, Value::Missing) {
@@ -153,7 +154,7 @@ pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Valu
             let v = value_to_f64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             Ok(Value::Date(v))
         }
-        TypeName::String => Ok(Value::String(value.to_output_string())),
+        TypeName::String => Ok(Value::String(Rc::new(value.to_output_string()))),
         TypeName::Ptr => {
             let v =
                 value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;

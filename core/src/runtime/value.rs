@@ -25,7 +25,14 @@ pub struct RecordValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    String(String),
+    /// Shared rather than owned: a `Value` is copied constantly -- into a
+    /// variable, an argument, an array element -- and copying the text each
+    /// time was the single largest cost of moving a string around.
+    ///
+    /// `Rc<String>` rather than `Rc<str>` because building one is as common as
+    /// copying it: every concatenation and every `Format` produces a `String`,
+    /// and `Rc<str>` would copy the bytes again to store it.
+    String(Rc<String>),
     Byte(u8),
     Int16(i16),
     Int32(i32),
@@ -311,7 +318,7 @@ impl Value {
 
     pub fn to_output_string(&self) -> String {
         match self {
-            Value::String(value) => value.clone(),
+            Value::String(value) => value.to_string(),
             Value::Byte(value) => value.to_string(),
             Value::Int16(value) => value.to_string(),
             Value::Int32(value) => value.to_string(),

@@ -7,6 +7,7 @@ use crate::runtime::{Diagnostic, Span, Value};
 use crate::{AssignTarget, Expr, FileAccess, FileLock, OpenMode, PrintItem, PrintSeparator};
 
 use super::{Frame, Interpreter};
+use std::rc::Rc;
 
 #[derive(Debug, Default)]
 pub(crate) struct FileIoState {
@@ -265,7 +266,7 @@ impl Interpreter {
             }
             read_line(file, number, span)?
         };
-        self.assign_target(target, Value::String(line), frame, span)
+        self.assign_target(target, Value::String(Rc::new(line)), frame, span)
     }
 
     pub(crate) fn input_file(
@@ -754,7 +755,7 @@ fn parse_input_value(token: &str) -> Value {
     } else if let Ok(value) = token.parse::<f64>() {
         Value::Double(value)
     } else {
-        Value::String(token.to_string())
+        Value::String(Rc::new(token.to_string()))
     }
 }
 
@@ -938,7 +939,7 @@ fn deserialize_value(
             let text = String::from_utf8_lossy(bytes)
                 .trim_end_matches('\0')
                 .to_string();
-            Ok((Value::String(text), len))
+            Ok((Value::String(Rc::new(text)), len))
         }
         _ => Err(file_error(
             format!(

@@ -149,7 +149,7 @@ impl Interpreter {
                 }
             }
         }
-        Ok(Value::String(rendered))
+        Ok(Value::String(Rc::new(rendered)))
     }
 
     pub(crate) fn eval_expr(
@@ -158,7 +158,7 @@ impl Interpreter {
         frame: &mut Frame,
     ) -> Result<Value, Diagnostic> {
         match &expr.kind {
-            ExprKind::String(value) => Ok(Value::String(value.clone())),
+            ExprKind::String(value) => Ok(Value::String(Rc::new(value.clone()))),
             ExprKind::Query {
                 variable,
                 source,
@@ -204,9 +204,9 @@ impl Interpreter {
             }
             ExprKind::GetType(target) => {
                 let target = self.resolve_type_name(target, frame, expr.span)?;
-                Ok(Value::String(self.declared_type_name(&target)))
+                Ok(Value::String(Rc::new(self.declared_type_name(&target))))
             }
-            ExprKind::NameOf(name) => Ok(Value::String(name.clone())),
+            ExprKind::NameOf(name) => Ok(Value::String(Rc::new(name.clone()))),
             ExprKind::DateLiteral(value) => parse_date_literal(value, expr.span),
             ExprKind::Integer(value) => {
                 let val = *value;

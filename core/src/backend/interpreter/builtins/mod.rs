@@ -13,6 +13,7 @@ use crate::runtime::builtins::{
 use crate::runtime::well_known;
 use crate::runtime::{Diagnostic, Value};
 use crate::{Expr, ExprKind};
+use std::rc::Rc;
 
 const DEFAULT_DIALOG_TITLE: &str = "Valo";
 
@@ -462,9 +463,9 @@ fn str_ptr(
     let value = interpreter.eval_expr(arg, frame)?;
     let text = match value {
         Value::String(text) => text,
-        Value::Empty => String::new(),
+        Value::Empty => Rc::new(String::new()),
         Value::Null | Value::Nothing | Value::Missing => return Ok(Value::Ptr(0)),
-        other => other.to_output_string(),
+        other => other.to_output_string().into(),
     };
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     wide.push(0);
@@ -627,9 +628,9 @@ fn input_box(
     let _ = io::stdin().read_line(&mut input);
     let result = input.trim_end_matches(['\r', '\n']).to_string();
     if result.is_empty() && !default.is_empty() {
-        return Ok(Value::String(default));
+        return Ok(Value::String(Rc::new(default)));
     }
-    Ok(Value::String(result))
+    Ok(Value::String(Rc::new(result)))
 }
 
 fn command(
@@ -640,7 +641,7 @@ fn command(
     _: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     let command = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
-    Ok(Value::String(command))
+    Ok(Value::String(Rc::new(command)))
 }
 
 fn error(
@@ -662,7 +663,7 @@ fn error(
     } else {
         0
     };
-    Ok(Value::String(error_description(number)))
+    Ok(Value::String(Rc::new(error_description(number))))
 }
 
 fn input(
@@ -682,9 +683,9 @@ fn input(
         &interpreter.eval_expr(&args[1], frame)?,
         span,
     )?;
-    Ok(Value::String(
+    Ok(Value::String(Rc::from(
         interpreter.input_file_chars(number, count, span)?,
-    ))
+    )))
 }
 
 fn shell(
@@ -787,7 +788,11 @@ fn environ(
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     let value = interpreter.eval_expr(&args[0], frame)?;
-    Ok(Value::String(environ_value(effective_name, &value, span)?))
+    Ok(Value::String(Rc::new(environ_value(
+        effective_name,
+        &value,
+        span,
+    )?)))
 }
 
 fn get_setting(
@@ -812,7 +817,7 @@ fn get_setting(
     } else {
         String::new()
     };
-    Ok(Value::String(default))
+    Ok(Value::String(Rc::new(default)))
 }
 
 fn get_all_settings(
@@ -923,7 +928,7 @@ pub(crate) fn dispatch_function(
 
     if effective_name.eq_ignore_ascii_case("Console.ReadLine") {
         let result = console::exec_console("ReadLine", &[], span)?;
-        return Ok(Some(Value::String(result.unwrap_or_default())));
+        return Ok(Some(Value::String(Rc::new(result.unwrap_or_default()))));
     }
 
     if is_in_group(effective_name, BuiltinGroup::File) {
@@ -946,7 +951,12 @@ pub(crate) fn dispatch_function(
         let path = interpreter.eval_expr(&args[0], frame)?.to_output_string();
         let act = find_handler(FILE_SYSTEM_HANDLERS, effective_name)
             .expect("the FileSystem group and its handler table list the same builtins");
-        act(interpreter, effective_name, &[Value::String(path)], span)?;
+        act(
+            interpreter,
+            effective_name,
+            &[Value::String(Rc::new(path))],
+            span,
+        )?;
         return Ok(Some(Value::Empty));
     }
 
@@ -1148,7 +1158,7 @@ fn curdir(
             Some(span),
         )
     })?;
-    Ok(Value::String(cwd.display().to_string()))
+    Ok(Value::String(Rc::new(cwd.display().to_string())))
 }
 
 fn dir_builtin(
@@ -1157,7 +1167,7 @@ fn dir_builtin(
     args: &[Value],
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
-    Ok(Value::String(interpreter.dir(args, span)?))
+    Ok(Value::String(Rc::new(interpreter.dir(args, span)?)))
 }
 
 /// Builtins over dates and times.
@@ -1414,7 +1424,7 @@ fn monthname(
     }
     let month = integer_arg(name, &args[0], span)?;
     let abbreviate = args.get(1).is_some_and(Value::is_truthy);
-    Ok(Value::String(month_name(month, abbreviate, span)?))
+    Ok(Value::String(Rc::new(month_name(month, abbreviate, span)?)))
 }
 
 fn weekdayname(
@@ -1432,7 +1442,9 @@ fn weekdayname(
     }
     let weekday = integer_arg(name, &args[0], span)?;
     let abbreviate = args.get(1).is_some_and(Value::is_truthy);
-    Ok(Value::String(weekday_name(weekday, abbreviate, span)?))
+    Ok(Value::String(Rc::new(weekday_name(
+        weekday, abbreviate, span,
+    )?)))
 }
 
 fn environ_value(
@@ -1441,7 +1453,7 @@ fn environ_value(
     span: crate::runtime::Span,
 ) -> Result<String, Diagnostic> {
     match value {
-        Value::String(key) => Ok(std::env::var(key).unwrap_or_default()),
+        Value::String(key) => Ok(std::env::var(key.as_ref()).unwrap_or_default()),
         Value::Empty | Value::Missing => Ok(String::new()),
         _ => {
             let index = integer_arg(name, value, span)?;
@@ -1555,7 +1567,7 @@ fn spaces(
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     let count = integer_arg(name, &args[0], span)?.max(0) as usize;
-    Ok(Value::String(" ".repeat(count)))
+    Ok(Value::String(Rc::new(" ".repeat(count))))
 }
 
 fn color_component(

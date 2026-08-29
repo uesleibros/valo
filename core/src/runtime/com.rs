@@ -240,7 +240,7 @@ pub(crate) fn value_to_variant(value: &Value) -> windows::core::VARIANT {
         Value::UInt32(n) => VARIANT::from(*n as i64),
         Value::UInt64(n) => VARIANT::from(*n as i64),
         Value::Double(n) => VARIANT::from(*n),
-        Value::String(s) => VARIANT::from(BSTR::from(s.as_str())),
+        Value::String(s) => VARIANT::from(BSTR::from(s.as_ref())),
         Value::Boolean(b) => VARIANT::from(*b),
         Value::Date(d) => {
             let var = VARIANT::default();
@@ -321,9 +321,9 @@ pub(crate) fn variant_to_value(var: &windows::core::VARIANT) -> Value {
         VT_DATE => Value::Date(unsafe { var.as_raw().Anonymous.Anonymous.Anonymous.date }),
         VT_BSTR => {
             if let Ok(b) = BSTR::try_from(var) {
-                Value::String(b.to_string())
+                Value::String(Rc::new(b.to_string()))
             } else {
-                Value::String(String::new())
+                Value::String(Rc::new(String::new()))
             }
         }
         VT_DISPATCH => {
@@ -368,7 +368,7 @@ pub(crate) fn variant_to_value(var: &windows::core::VARIANT) -> Value {
         }
         _ => {
             if let Ok(b) = BSTR::try_from(var) {
-                Value::String(b.to_string())
+                Value::String(Rc::new(b.to_string()))
             } else if let Ok(d) = f64::try_from(var) {
                 Value::Double(d)
             } else if let Ok(i) = i32::try_from(var) {

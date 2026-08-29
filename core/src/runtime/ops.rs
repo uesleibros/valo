@@ -130,11 +130,9 @@ pub fn eval_binary(
         }
         RuntimeBinaryOp::ShiftLeft => shift(left, right, span, ShiftDirection::Left),
         RuntimeBinaryOp::ShiftRight => shift(left, right, span, ShiftDirection::Right),
-        RuntimeBinaryOp::Concat => Ok(Value::String(format!(
-            "{}{}",
-            left.to_output_string(),
-            right.to_output_string()
-        ))),
+        RuntimeBinaryOp::Concat => Ok(Value::String(
+            format!("{}{}", left.to_output_string(), right.to_output_string()).into(),
+        )),
         RuntimeBinaryOp::LogicalAnd => {
             logical_or_bitwise(left, right, span, |a, b| a && b, |a, b| a & b)
         }

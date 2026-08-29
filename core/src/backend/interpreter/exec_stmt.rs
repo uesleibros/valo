@@ -812,7 +812,7 @@ impl Interpreter {
                     }
                 };
 
-                self.assign_target(target, Value::String(new_str), frame, *span)?;
+                self.assign_target(target, Value::String(Rc::new(new_str)), frame, *span)?;
                 Ok(ControlFlow::Continue)
             }
             Stmt::Label { .. } => Ok(ControlFlow::Continue),
@@ -1246,23 +1246,35 @@ impl Interpreter {
         let mut fields = HashMap::new();
         if let Some(info) = &diagnostic.runtime_error {
             fields.insert(key("Number"), Value::Int64(info.number));
-            fields.insert(key("Message"), Value::String(info.description.clone()));
-            fields.insert(key("Description"), Value::String(info.description.clone()));
-            fields.insert(key("Source"), Value::String(info.source.clone()));
-            fields.insert(key("HelpFile"), Value::String(info.help_file.clone()));
+            fields.insert(
+                key("Message"),
+                Value::String(Rc::new(info.description.clone())),
+            );
+            fields.insert(
+                key("Description"),
+                Value::String(Rc::new(info.description.clone())),
+            );
+            fields.insert(key("Source"), Value::String(Rc::new(info.source.clone())));
+            fields.insert(
+                key("HelpFile"),
+                Value::String(Rc::new(info.help_file.clone())),
+            );
             fields.insert(key("HelpContext"), Value::Int64(info.help_context));
         } else {
             fields.insert(key("Number"), Value::Int64(1));
             fields.insert(
                 key("Message"),
-                Value::String(diagnostic.message.to_string()),
+                Value::String(Rc::new(diagnostic.message.to_string())),
             );
             fields.insert(
                 key("Description"),
-                Value::String(diagnostic.message.to_string()),
+                Value::String(Rc::new(diagnostic.message.to_string())),
             );
-            fields.insert(key("Source"), Value::String("Valo.Runtime".to_string()));
-            fields.insert(key("HelpFile"), Value::String(String::new()));
+            fields.insert(
+                key("Source"),
+                Value::String(Rc::new("Valo.Runtime".to_string())),
+            );
+            fields.insert(key("HelpFile"), Value::String(Rc::new(String::new())));
             fields.insert(key("HelpContext"), Value::Int64(0));
         }
 
@@ -1531,7 +1543,7 @@ impl Interpreter {
         message: &str,
     ) -> Result<String, Diagnostic> {
         match self.eval_expr(expr, frame)? {
-            Value::String(value) => Ok(value),
+            Value::String(value) => Ok(value.to_string()),
             _ => Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                 message,

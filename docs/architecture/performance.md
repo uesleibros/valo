@@ -110,3 +110,21 @@ Smaller wins that remain available in the current design:
 - make `Value::String` reference-counted, so passing strings around stops copying
   them
 - cache method and property lookups per call site
+
+## Strings are shared, not copied
+
+`Value::String` holds an `Rc<String>`. A `Value` is copied constantly -- into a
+variable, an argument, an array element -- and copying the text each time was
+the largest cost of moving a string around. Copying one is now a refcount bump:
+four million copies of a 62-character string went from 1460ms to 999ms.
+
+`Rc<str>` was tried first, and was worse. It is eight bytes smaller, but
+building one from a `String` copies the bytes again -- and building is as common
+as copying, since every concatenation and every `Format` produces a `String`
+first. It cost 15% on concatenation to save a further 15% on copies.
+
+Both were measured the same way, and the first attempt at measuring them was
+wrong: short runs alternating between two builds showed the change as 8% *slower*
+before longer runs showed it 32% faster. Process startup is 58ms here, so a
+benchmark has to run for seconds before the difference it is measuring is larger
+than the noise around it.

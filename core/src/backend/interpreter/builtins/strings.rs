@@ -111,7 +111,7 @@ fn c_str(
     args: &[Value],
     _: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
-    Ok(Value::String(args[0].to_output_string()))
+    Ok(Value::String(Rc::new(args[0].to_output_string())))
 }
 
 fn len(
@@ -143,7 +143,9 @@ fn left(
     expect_arg_range(name, args, 2, 2, span)?;
     let text = args[0].to_output_string();
     let count = non_negative_len(name, &args[1], span)?;
-    Ok(Value::String(text.chars().take(count).collect()))
+    Ok(Value::String(
+        text.chars().take(count).collect::<String>().into(),
+    ))
 }
 
 fn right(
@@ -157,7 +159,10 @@ fn right(
     let count = non_negative_len(name, &args[1], span)?;
     let len = text.chars().count();
     Ok(Value::String(
-        text.chars().skip(len.saturating_sub(count)).collect(),
+        text.chars()
+            .skip(len.saturating_sub(count))
+            .collect::<String>()
+            .into(),
     ))
 }
 
@@ -176,7 +181,7 @@ fn mid(
     } else {
         chars.collect()
     };
-    Ok(Value::String(result))
+    Ok(Value::String(Rc::new(result)))
 }
 
 fn trim(
@@ -186,7 +191,9 @@ fn trim(
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     expect_arg_range(name, args, 1, 1, span)?;
-    Ok(Value::String(args[0].to_output_string().trim().to_string()))
+    Ok(Value::String(Rc::new(
+        args[0].to_output_string().trim().to_string(),
+    )))
 }
 
 fn l_trim(
@@ -196,9 +203,9 @@ fn l_trim(
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     expect_arg_range(name, args, 1, 1, span)?;
-    Ok(Value::String(
+    Ok(Value::String(Rc::from(
         args[0].to_output_string().trim_start().to_string(),
-    ))
+    )))
 }
 
 fn r_trim(
@@ -208,9 +215,9 @@ fn r_trim(
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     expect_arg_range(name, args, 1, 1, span)?;
-    Ok(Value::String(
+    Ok(Value::String(Rc::from(
         args[0].to_output_string().trim_end().to_string(),
-    ))
+    )))
 }
 
 fn u_case(
@@ -220,7 +227,9 @@ fn u_case(
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     expect_arg_range(name, args, 1, 1, span)?;
-    Ok(Value::String(args[0].to_output_string().to_uppercase()))
+    Ok(Value::String(Rc::new(
+        args[0].to_output_string().to_uppercase(),
+    )))
 }
 
 fn l_case(
@@ -230,7 +239,9 @@ fn l_case(
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     expect_arg_range(name, args, 1, 1, span)?;
-    Ok(Value::String(args[0].to_output_string().to_lowercase()))
+    Ok(Value::String(Rc::new(
+        args[0].to_output_string().to_lowercase(),
+    )))
 }
 
 fn replace(
@@ -267,7 +278,7 @@ fn replace(
     let prefix: String = expression.chars().take(start.saturating_sub(1)).collect();
     let tail: String = expression.chars().skip(start.saturating_sub(1)).collect();
     let replaced = replace_limited(&tail, &find, &replacement, count, compare_text);
-    Ok(Value::String(format!("{prefix}{replaced}")))
+    Ok(Value::String(format!("{prefix}{replaced}").into()))
 }
 
 fn format(
@@ -285,7 +296,7 @@ fn format(
     }
     let expression = &args[0];
     let format = args.get(1).map(Value::to_output_string).unwrap_or_default();
-    Ok(Value::String(format_value(expression, &format)))
+    Ok(Value::String(Rc::new(format_value(expression, &format))))
 }
 
 fn format_number(
@@ -324,7 +335,7 @@ fn format_number(
     } else if name.eq_ignore_ascii_case("FormatPercent") {
         text.push('%');
     }
-    Ok(Value::String(text))
+    Ok(Value::String(Rc::new(text)))
 }
 
 fn format_date_time(
@@ -341,11 +352,11 @@ fn format_date_time(
         ));
     }
     let named_format = args.get(1).and_then(value_to_i64).unwrap_or(0);
-    Ok(Value::String(format_datetime(
+    Ok(Value::String(Rc::new(format_datetime(
         &args[0],
         named_format,
         span,
-    )?))
+    )?)))
 }
 
 fn in_str(
@@ -419,9 +430,9 @@ fn space(
     span: crate::runtime::Span,
 ) -> Result<Value, Diagnostic> {
     expect_arg_range(name, args, 1, 1, span)?;
-    Ok(Value::String(
+    Ok(Value::String(Rc::from(
         " ".repeat(non_negative_len(name, &args[0], span)?),
-    ))
+    )))
 }
 
 fn string(
@@ -433,7 +444,7 @@ fn string(
     expect_arg_range(name, args, 2, 2, span)?;
     let count = non_negative_len(name, &args[0], span)?;
     let ch = string_char(&args[1], span)?;
-    Ok(Value::String(ch.to_string().repeat(count)))
+    Ok(Value::String(Rc::new(ch.to_string().repeat(count))))
 }
 
 fn str_reverse(
@@ -444,7 +455,12 @@ fn str_reverse(
 ) -> Result<Value, Diagnostic> {
     expect_arg_range(name, args, 1, 1, span)?;
     Ok(Value::String(
-        args[0].to_output_string().chars().rev().collect(),
+        args[0]
+            .to_output_string()
+            .chars()
+            .rev()
+            .collect::<String>()
+            .into(),
     ))
 }
 
@@ -472,7 +488,7 @@ fn str_conv(
     } else {
         text
     };
-    Ok(Value::String(converted))
+    Ok(Value::String(Rc::new(converted)))
 }
 
 fn chr(
@@ -496,7 +512,7 @@ fn chr(
             Some(span),
         ));
     };
-    Ok(Value::String(ch.to_string()))
+    Ok(Value::String(Rc::new(ch.to_string())))
 }
 
 fn asc(
@@ -536,7 +552,7 @@ fn str(
     expect_arg_range(name, args, 1, 1, span)?;
     let text = args[0].to_output_string();
     let prefix = if text.starts_with('-') { "" } else { " " };
-    Ok(Value::String(format!("{prefix}{text}")))
+    Ok(Value::String(format!("{prefix}{text}").into()))
 }
 
 fn hex(
@@ -558,7 +574,7 @@ fn hex(
     } else {
         format!("{value:o}")
     };
-    Ok(Value::String(text))
+    Ok(Value::String(Rc::new(text)))
 }
 
 fn str_comp(
@@ -628,9 +644,9 @@ fn partition(
             Some(span),
         )
     })?;
-    Ok(Value::String(partition_bucket(
+    Ok(Value::String(Rc::new(partition_bucket(
         number, start, stop, interval, span,
-    )?))
+    )?)))
 }
 fn expect_arg_range(
     name: &str,

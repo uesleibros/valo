@@ -1,4 +1,5 @@
 use super::{TypeName, Value};
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VbaConstantValue {
@@ -23,7 +24,7 @@ impl VbaConstant {
     pub fn value(self) -> Value {
         match self.value {
             VbaConstantValue::Integer(value) => Value::Int64(value),
-            VbaConstantValue::String(value) => Value::String(value.to_string()),
+            VbaConstantValue::String(value) => Value::String(Rc::new(value.to_string())),
         }
     }
 }

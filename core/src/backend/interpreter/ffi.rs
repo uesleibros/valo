@@ -1232,7 +1232,7 @@ fn marshal_byval(
         Value::Single(v) => (ArgumentStorage::F32(Box::new(v)), FfiType::f32()),
         Value::Double(v) => (ArgumentStorage::F64(Box::new(v)), FfiType::f64()),
         Value::String(text) => {
-            let c_string = CString::new(text)
+            let c_string = CString::new(text.as_bytes())
                 .map_err(|_| unsupported("String contains an interior NUL byte", span))?;
             (ArgumentStorage::CString(c_string), FfiType::pointer())
         }

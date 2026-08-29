@@ -63,11 +63,11 @@ fn split(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value,
     // Splitting on an empty delimiter has no separator to find, so the whole
     // string is the single part.
     let parts: Vec<Value> = if delimiter.is_empty() {
-        vec![Value::String(expression)]
+        vec![Value::String(Rc::new(expression))]
     } else {
         expression
             .split(&delimiter)
-            .map(|part| Value::String(part.to_string()))
+            .map(|part| Value::String(Rc::new(part.to_string())))
             .collect()
     };
 
@@ -88,7 +88,7 @@ fn join(_: &mut Interpreter, _: &str, args: &[Value], span: Span) -> Result<Valu
         .iter()
         .map(|element| element.to_output_string())
         .collect();
-    Ok(Value::String(parts.join(&delimiter)))
+    Ok(Value::String(Rc::new(parts.join(&delimiter))))
 }
 
 /// Reads a separator argument, defaulting to a single space when it is absent

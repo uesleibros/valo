@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeName {
     String,
@@ -93,7 +95,7 @@ impl TypeName {
 
     pub fn builtin_default_value(&self) -> Option<crate::Value> {
         match self {
-            TypeName::String => Some(crate::Value::String(String::new())),
+            TypeName::String => Some(crate::Value::String(Rc::new(String::new()))),
             TypeName::Byte => Some(crate::Value::Byte(0)),
             TypeName::Integer => Some(crate::Value::Int16(0)),
             TypeName::Long => Some(crate::Value::Int32(0)),

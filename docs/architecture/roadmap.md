@@ -11,14 +11,15 @@ have. Items other items depend on come first.
 
 | | |
 |---|---|
-| Language surface against VB.NET | roughly 80% of what is commonly used |
+| Language surface against VB.NET | close to complete for what is commonly used |
 | Runtime | tree-walking interpreter; no VM |
 | Standard library | `Collection` plus the VBA runtime surface |
 | Tooling | CLI, REPL, diagnostics; no language server, formatter, or package manager |
 
 The language is well ahead of the ecosystem. Someone can write real VB.NET-shaped
-code today; nobody can distribute a library, edit with completion, or rely on
-VM-class performance.
+code today -- overloads, delegates, tuples, queries, generics with constraints,
+and `Option Strict` all work -- but nobody can distribute a library, edit with
+completion, or rely on VM-class performance.
 
 ## Phase 1: Foundations for a new execution engine
 
@@ -35,8 +36,11 @@ two are worth doing even if the VM never happens.
       computes scopes; it just does not record positions.
       *This is where `ProjectIndex` belongs.* It is built on every validation and
       the result is thrown away (`let _project_index = …` in `validate.rs`).
-- [ ] **Make `Value` cheap to copy.** `Value::String(String)` copies the text on
-      every clone. A VM moves values constantly; this wants to be `Rc<str>`.
+- [x] **Make `Value` cheap to copy.** `Value::String` is now `Rc<String>`, so
+      copying one is a refcount bump: 4 million string copies went from 1460ms
+      to 999ms. `Rc<str>` was tried first and was worse -- it saves eight bytes
+      but copies the text again on every concatenation, which cost 15% there
+      for 15% less on copies.
 - [ ] **Per-call-site method and property caches.** A method call costs about
       4.9µs against 1.2µs for a field read, most of it resolution.
 

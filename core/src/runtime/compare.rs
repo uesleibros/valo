@@ -122,8 +122,8 @@ pub fn like_values(
         ));
     };
     if compare == RuntimeOptionCompare::Text {
-        value = value.to_lowercase();
-        pattern = pattern.to_lowercase();
+        value = Rc::from(value.to_lowercase());
+        pattern = Rc::from(pattern.to_lowercase());
     }
     Ok(Value::Boolean(like_match(
         &value.chars().collect::<Vec<_>>(),

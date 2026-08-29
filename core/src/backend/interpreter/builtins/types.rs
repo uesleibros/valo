@@ -11,6 +11,7 @@
 use super::{ValueFn, find_handler};
 use crate::backend::interpreter::Interpreter;
 use crate::runtime::{Diagnostic, Span, TypeName, Value, coerce_assignment, well_known};
+use std::rc::Rc;
 
 /// The builtins this module implements.
 pub(super) const HANDLERS: &[(&str, ValueFn)] = &[
@@ -113,7 +114,7 @@ fn var_type(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Val
 }
 
 fn type_name(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
-    Ok(Value::String(match_value_type_name(&args[0])))
+    Ok(Value::String(Rc::new(match_value_type_name(&args[0]))))
 }
 
 fn c_var(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {

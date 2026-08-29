@@ -116,7 +116,12 @@ Implemented today:
 
 - lexer, recursive-descent parser, semantic validator, and tree-walking interpreter
 - classes, interfaces, inheritance, structures, properties, events, and lifecycle hooks
-- generics for classes, structures, functions, and methods, including nested generic type names
+- generics for classes, structures, functions, and methods, with constraints that
+  give a type parameter its bound's members
+- overloading for procedures, methods, constructors, and `Shared` members
+- delegates, tuples and tuple returns, anonymous types, and query syntax
+  (`From … Where … Order By … Select`)
+- `Option Strict`, which rejects silent narrowing and late binding
 - modules, imports, namespaces, and `Module ... End Module` blocks
 - string interpolation, compound assignment, shift operators, and `Continue`
 - `CType`, `DirectCast`, `TryCast`, `GetType`, and `NameOf`

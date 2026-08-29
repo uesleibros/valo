@@ -203,7 +203,7 @@ fn eval_const_default(
     span: Span,
 ) -> Result<Value, Diagnostic> {
     match &expr.kind {
-        ExprKind::String(value) => Ok(Value::String(value.clone())),
+        ExprKind::String(value) => Ok(Value::String(Rc::new(value.clone()))),
         ExprKind::Integer(value) => Ok(Value::Int64(*value)),
         ExprKind::Long(value) => Ok(Value::Int32(*value)),
         ExprKind::LongLong(value) => Ok(Value::Int64(*value)),

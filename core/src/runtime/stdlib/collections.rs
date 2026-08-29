@@ -93,7 +93,7 @@ impl TryFrom<&Value> for DictionaryKey {
 
     fn try_from(value: &Value) -> Result<Self, Self::Error> {
         match value {
-            Value::String(value) => Ok(Self::String(value.clone())),
+            Value::String(value) => Ok(Self::String(value.to_string())),
             Value::Byte(value) => Ok(Self::Integer(i64::from(*value))),
             Value::Int16(value) => Ok(Self::Integer(i64::from(*value))),
             Value::Int32(value) => Ok(Self::Integer(i64::from(*value))),
