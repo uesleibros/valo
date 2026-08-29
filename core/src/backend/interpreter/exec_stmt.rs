@@ -397,7 +397,7 @@ impl Interpreter {
                     },
                     _ => {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             "AddHandler requires AddressOf for the handler argument",
                             Some(handler.span),
                         ));
@@ -453,7 +453,7 @@ impl Interpreter {
                     },
                     _ => {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             "RemoveHandler requires AddressOf for the handler argument",
                             Some(handler.span),
                         ));

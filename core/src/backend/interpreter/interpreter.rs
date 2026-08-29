@@ -1250,7 +1250,7 @@ impl Interpreter {
                     BinaryOp::Divide => {
                         if right == 0 {
                             Err(Diagnostic::new(
-                                crate::runtime::DiagnosticCode::GENERIC,
+                                crate::runtime::DiagnosticCode::ARITHMETIC,
                                 "Division by zero",
                                 Some(expr.span),
                             ))

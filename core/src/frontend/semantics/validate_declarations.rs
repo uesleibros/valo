@@ -259,7 +259,7 @@ pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnosti
                     };
                     if op.params.len() != expected_params {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             format!(
                                 "Operator '{:?}' expects {} parameter(s)",
                                 op.kind, expected_params
@@ -1154,7 +1154,7 @@ pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnosti
                     };
                     if op.params.len() != expected_params {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             format!(
                                 "Operator '{:?}' expects {} parameter(s)",
                                 op.kind, expected_params
@@ -2208,7 +2208,7 @@ fn eval_enum_const_expr(
                 BinaryOp::Divide => {
                     if right == 0 {
                         Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARITHMETIC,
                             "Division by zero",
                             Some(expr.span),
                         ))

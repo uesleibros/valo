@@ -475,7 +475,7 @@ pub(super) fn validate_expr(
         ExprKind::Nothing | ExprKind::Empty | ExprKind::Null => Ok(TypeName::Variant),
         ExprKind::Missing => Ok(TypeName::Variant),
         ExprKind::NamedArg { .. } => Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             "Named arguments are only valid inside call argument lists",
             Some(expr.span),
         )),
@@ -1084,7 +1084,7 @@ pub(super) fn validate_expr(
             if name.eq_ignore_ascii_case("IsMissing") {
                 if args.len() != 1 {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                         "IsMissing expects exactly one argument",
                         Some(expr.span),
                     ));
@@ -1113,7 +1113,7 @@ pub(super) fn validate_expr(
             if name.eq_ignore_ascii_case("LBound") || name.eq_ignore_ascii_case("UBound") {
                 if args.is_empty() || args.len() > 2 {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                         format!("{} expects one array argument and optional dimension", name),
                         Some(expr.span),
                     ));
@@ -1744,19 +1744,7 @@ fn validate_builtin_function(
         return Ok(None);
     };
 
-    if !builtin.arity.accepts(args.len()) {
-        return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
-            format!(
-                "{} expects {}, found {}",
-                builtin.name,
-                builtin.arity.describe(),
-                args.len()
-            ),
-            Some(span),
-        )
-        .with_primary_label("wrong number of arguments"));
-    }
+    builtin.check_arity(args.len(), span)?;
 
     // A few builtins constrain an argument beyond simply counting it.
     match builtin.name {
@@ -1880,7 +1868,7 @@ pub(super) fn validate_arguments(
         }
         if saw_named {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Positional arguments cannot appear after named arguments",
                 Some(arg.span),
             ));
@@ -1891,7 +1879,7 @@ pub(super) fn validate_arguments(
             .or_else(|| callable.params.last().filter(|param| param.is_param_array))
         else {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 format!(
                     "{} '{}' expects {} argument(s), got {}",
                     kind,
@@ -1916,7 +1904,7 @@ pub(super) fn validate_arguments(
         .any(|(index, param)| !assigned[index] && !param.is_optional && !param.is_param_array);
     if missing_required || (!has_param_array && args.len() > callable.params.len()) {
         return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             format!(
                 "{} '{}' expects {} argument(s), got {}",
                 kind,
@@ -3932,7 +3920,7 @@ fn validate_err_raise_args(
 ) -> Result<(), Diagnostic> {
     if args.is_empty() || args.len() > 5 {
         return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             "Err.Raise expects 1 to 5 arguments",
             Some(span),
         ));

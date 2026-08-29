@@ -12,46 +12,38 @@ pub(crate) fn eval_math(
     span: crate::runtime::Span,
 ) -> Result<Option<Value>, Diagnostic> {
     if name.eq_ignore_ascii_case("Abs") {
-        expect_value_count(name, args, 1, span)?;
         let num = number_arg(name, &args[0], span)?;
         return Ok(Some(Value::Double(num.abs())));
     }
     if name.eq_ignore_ascii_case("Atn") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Double(
             number_arg(name, &args[0], span)?.atan(),
         )));
     }
     if name.eq_ignore_ascii_case("Cos") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.cos())));
     }
     if name.eq_ignore_ascii_case("Exp") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.exp())));
     }
     if name.eq_ignore_ascii_case("Log") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.ln())));
     }
     if name.eq_ignore_ascii_case("Sin") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.sin())));
     }
     if name.eq_ignore_ascii_case("Sqr") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Double(
             number_arg(name, &args[0], span)?.sqrt(),
         )));
     }
     if name.eq_ignore_ascii_case("Tan") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.tan())));
     }
     if name.eq_ignore_ascii_case("Round") {
         if args.is_empty() || args.len() > 2 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Round expects 1 to 2 arguments",
                 Some(span),
             ));
@@ -66,7 +58,6 @@ pub(crate) fn eval_math(
         return Ok(Some(Value::Double((value * factor).round() / factor)));
     }
     if name.eq_ignore_ascii_case("Sgn") {
-        expect_value_count(name, args, 1, span)?;
         let num = number_arg(name, &args[0], span)?;
         return Ok(Some(Value::Int16(if num > 0.0 {
             1
@@ -77,19 +68,17 @@ pub(crate) fn eval_math(
         })));
     }
     if name.eq_ignore_ascii_case("Int") {
-        expect_value_count(name, args, 1, span)?;
         let num = number_arg(name, &args[0], span)?;
         return Ok(Some(Value::Int64(num.floor() as i64)));
     }
     if name.eq_ignore_ascii_case("Fix") {
-        expect_value_count(name, args, 1, span)?;
         let num = number_arg(name, &args[0], span)?;
         return Ok(Some(Value::Int64(num.trunc() as i64)));
     }
     if name.eq_ignore_ascii_case("Randomize") {
         if args.len() > 1 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Randomize expects at most 1 argument",
                 Some(span),
             ));
@@ -111,7 +100,7 @@ pub(crate) fn eval_math(
     if name.eq_ignore_ascii_case("Rnd") {
         if args.len() > 1 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Rnd expects at most 1 argument",
                 Some(span),
             ));
@@ -151,7 +140,7 @@ fn eval_financial(
         "ddb" => {
             if args.len() < 4 || args.len() > 5 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "DDB expects 4 to 5 arguments",
                     Some(span),
                 ));
@@ -529,7 +518,7 @@ fn expect_value_count(
         Ok(())
     } else {
         Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             format!("{name} expects exactly {expected} argument(s)"),
             Some(span),
         ))

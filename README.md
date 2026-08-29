@@ -418,7 +418,11 @@ error[V1100]: Cannot assign String value to Integer variable
   |         ^^^^^^^^^ expected Integer
 ```
 
-They are designed to be actionable and stable enough to build tooling on.
+Codes are stable: once released, a code keeps its meaning and a retired one is
+never reused, so they are safe to search for, match on in tooling, and cite in a
+bug report. Every code is listed in
+[the diagnostics reference](docs/reference/diagnostics.md), which a test keeps in
+step with the compiler.
 
 ## VBA compatibility
 
@@ -460,6 +464,7 @@ Language:
 - [FFI](docs/language/ffi.md)
 - [VBA compatibility](docs/language/vba-compat.md)
 - [REPL](docs/repl.md)
+- [Diagnostic codes](docs/reference/diagnostics.md)
 - [Examples](examples/README.md)
 
 Architecture:

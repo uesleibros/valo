@@ -28,6 +28,10 @@ Learn how to write code in Valo.
 *   **[REPL](repl.md):** Interactive REPL documentation.
 *   **[Examples](../examples/README.md):** Runnable language and compatibility examples.
 
+## Reference
+
+*   **[Diagnostic Codes](reference/diagnostics.md):** Every code Valo can report, what it means, and the stability rules around it.
+
 ## Architecture
 
 Deep dive into how Valo works under the hood.

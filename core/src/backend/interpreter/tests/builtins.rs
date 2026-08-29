@@ -529,3 +529,56 @@ fn builtins_reject_argument_counts_their_arity_excludes() {
         let _ = min;
     }
 }
+
+/// Argument count is enforced before any builtin implementation runs.
+///
+/// The implementations rely on this: they index their arguments directly
+/// instead of re-checking the count, which is only sound if nothing reaches
+/// them with a count their registry entry disallows. Calling the dispatcher
+/// with too many arguments must therefore be rejected without evaluating
+/// anything, so this test can safely probe every builtin, including the ones
+/// that touch the file system or the host.
+#[test]
+fn argument_count_is_rejected_before_any_builtin_runs() {
+    use crate::backend::interpreter::builtins::dispatch_function;
+    use crate::backend::interpreter::{Frame, Interpreter};
+    use crate::runtime::builtins::{Arity, BUILTINS};
+    use crate::runtime::{DiagnosticCode, FileId, Span};
+    use crate::{Expr, ExprKind};
+
+    let span = Span::empty(FileId::default());
+    for builtin in BUILTINS {
+        let Arity::Range { max, .. } = builtin.arity else {
+            continue;
+        };
+        if max == usize::MAX {
+            continue;
+        }
+
+        let args: Vec<Expr> = (0..max + 1)
+            .map(|_| Expr {
+                kind: ExprKind::Integer(0),
+                span,
+            })
+            .collect();
+
+        let mut interpreter = Interpreter::new();
+        let mut frame = Frame::default();
+        let result = dispatch_function(&mut interpreter, builtin.name, &args, &mut frame, span);
+
+        let error = result.err().unwrap_or_else(|| {
+            panic!(
+                "builtin '{}' accepted {} arguments, one more than the {max} it declares",
+                builtin.name,
+                max + 1
+            )
+        });
+        assert_eq!(
+            error.code,
+            DiagnosticCode::ARGUMENT_COUNT,
+            "builtin '{}' rejected a bad argument count with the wrong diagnostic: {}",
+            builtin.name,
+            error.message
+        );
+    }
+}

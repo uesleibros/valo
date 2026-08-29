@@ -633,7 +633,7 @@ pub fn validate_statements(
 
                 if !matches!(event.kind, ExprKind::MemberAccess { .. }) {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                         "Event argument must be a member access (e.g. obj.EventName)",
                         Some(event.span),
                     ));

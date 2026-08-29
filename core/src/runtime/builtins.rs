@@ -140,6 +140,34 @@ pub struct Builtin {
     pub group: BuiltinGroup,
 }
 
+impl Builtin {
+    /// Checks a call's argument count against this builtin's declared arity.
+    ///
+    /// The analyzer and the interpreter both call this, so a program is
+    /// rejected for the same reason and with the same wording whether the
+    /// mistake is caught before running or while running.
+    pub fn check_arity(
+        &self,
+        count: usize,
+        span: crate::runtime::Span,
+    ) -> Result<(), crate::runtime::Diagnostic> {
+        if self.arity.accepts(count) {
+            return Ok(());
+        }
+        Err(crate::runtime::Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            format!(
+                "{} expects {}, found {}",
+                self.name,
+                self.arity.describe(),
+                count
+            ),
+            Some(span),
+        )
+        .with_primary_label(format!("expected {}", self.arity.describe())))
+    }
+}
+
 /// Declares a builtin that accepts between `min` and `max` arguments.
 const fn f(name: &'static str, min: usize, max: usize, returns: BuiltinReturn) -> Builtin {
     Builtin {

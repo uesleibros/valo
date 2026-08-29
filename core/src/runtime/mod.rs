@@ -22,8 +22,8 @@ pub mod well_known;
 
 pub use coerce::coerce_assignment;
 pub use diagnostic::{
-    Diagnostic, DiagnosticCode, DiagnosticLabel, FileId, LabelStyle, RuntimeErrorInfo, Severity,
-    SourceMap, SourcePos, Span, terminal_supports_color,
+    ALL_DIAGNOSTIC_CODES, Diagnostic, DiagnosticCode, DiagnosticLabel, FileId, LabelStyle,
+    RuntimeErrorInfo, Severity, SourceMap, SourcePos, Span, terminal_supports_color,
 };
 pub use naming::{fold, with_folded};
 pub use type_name::TypeName;

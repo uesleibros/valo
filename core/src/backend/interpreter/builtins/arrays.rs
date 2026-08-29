@@ -24,7 +24,7 @@ pub(crate) fn eval_arrays(
     if name.eq_ignore_ascii_case("LBound") || name.eq_ignore_ascii_case("UBound") {
         if args.is_empty() || args.len() > 2 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 format!("{} expects one array argument and optional dimension", name),
                 Some(span),
             ));
@@ -52,7 +52,7 @@ pub(crate) fn eval_arrays(
     if name.eq_ignore_ascii_case("Split") {
         if args.is_empty() || args.len() > 4 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Split expects 1 to 4 arguments",
                 Some(span),
             ));
@@ -89,7 +89,7 @@ pub(crate) fn eval_arrays(
     if name.eq_ignore_ascii_case("Join") {
         if args.is_empty() || args.len() > 2 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Join expects 1 to 2 arguments",
                 Some(span),
             ));

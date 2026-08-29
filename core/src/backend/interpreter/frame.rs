@@ -363,7 +363,7 @@ impl Frame {
 
         if !types_match {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 format!(
                     "ByRef argument type {} must match parameter type {}",
                     variable.ty.display_name(),

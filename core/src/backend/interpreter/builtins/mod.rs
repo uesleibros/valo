@@ -108,9 +108,15 @@ pub(crate) fn dispatch_function(
     // Handle VBA namespace fallback: VBA.Join(...) -> Join(...)
     let effective_name = strip_vba_namespace(name);
 
+    // Check the argument count once, against the registry, before anything is
+    // evaluated. Every implementation below can then rely on having a count its
+    // own entry allows, instead of restating the check.
+    if let Some(builtin) = crate::runtime::builtins::lookup(effective_name) {
+        builtin.check_arity(args.len(), span)?;
+    }
+
     // Special forms that require lazy evaluation or direct Expr access
     if effective_name.eq_ignore_ascii_case("IIf") {
-        expect_arg_count(effective_name, args, 3, span)?;
         let condition = interpreter.eval_expr(&args[0], frame)?.is_truthy();
         let value_expr = if condition { &args[1] } else { &args[2] };
         return Ok(Some(interpreter.eval_expr(value_expr, frame)?));
@@ -119,7 +125,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("Choose") {
         if args.len() < 2 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Choose expects an index and at least one choice",
                 Some(span),
             ));
@@ -138,7 +144,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("Switch") {
         if args.is_empty() || !args.len().is_multiple_of(2) {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Switch expects expression/value pairs",
                 Some(span),
             ));
@@ -156,12 +162,10 @@ pub(crate) fn dispatch_function(
     }
 
     if effective_name.eq_ignore_ascii_case("VarPtr") {
-        expect_arg_count(effective_name, args, 1, span)?;
         return Ok(Some(Value::Ptr(interpreter.varptr_expr(&args[0], frame)?)));
     }
 
     if effective_name.eq_ignore_ascii_case("StrPtr") {
-        expect_arg_count(effective_name, args, 1, span)?;
         let arg = &args[0];
         let value = interpreter.eval_expr(arg, frame)?;
         let text = match value {
@@ -182,7 +186,6 @@ pub(crate) fn dispatch_function(
     }
 
     if effective_name.eq_ignore_ascii_case("ObjPtr") {
-        expect_arg_count(effective_name, args, 1, span)?;
         let value = interpreter.eval_expr(&args[0], frame)?;
         match value {
             Value::Object(obj) => {
@@ -230,7 +233,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("MsgBox") {
         if args.is_empty() || args.len() > 5 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "MsgBox expects 1 to 5 arguments",
                 Some(span),
             ));
@@ -282,7 +285,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("InputBox") {
         if args.is_empty() || args.len() > 7 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "InputBox expects 1 to 7 arguments",
                 Some(span),
             ));
@@ -317,7 +320,6 @@ pub(crate) fn dispatch_function(
     }
 
     if effective_name.eq_ignore_ascii_case("Command") {
-        expect_arg_count(effective_name, args, 0, span)?;
         let command = std::env::args().skip(1).collect::<Vec<_>>().join(" ");
         return Ok(Some(Value::String(command)));
     }
@@ -325,7 +327,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("Error") {
         if args.len() > 1 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Error expects 0 to 1 arguments",
                 Some(span),
             ));
@@ -339,7 +341,6 @@ pub(crate) fn dispatch_function(
     }
 
     if effective_name.eq_ignore_ascii_case("Input") {
-        expect_arg_count(effective_name, args, 2, span)?;
         let count = integer_arg(
             effective_name,
             &interpreter.eval_expr(&args[0], frame)?,
@@ -358,7 +359,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("Shell") {
         if args.is_empty() || args.len() > 2 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Shell expects 1 to 2 arguments",
                 Some(span),
             ));
@@ -404,7 +405,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("CreateObject") {
         if args.is_empty() || args.len() > 2 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "CreateObject expects 1 to 2 arguments",
                 Some(span),
             ));
@@ -429,7 +430,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("GetObject") {
         if args.is_empty() || args.len() > 2 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "GetObject expects 1 to 2 arguments",
                 Some(span),
             ));
@@ -460,7 +461,6 @@ pub(crate) fn dispatch_function(
     }
 
     if effective_name.eq_ignore_ascii_case("Environ") {
-        expect_arg_count(effective_name, args, 1, span)?;
         let value = interpreter.eval_expr(&args[0], frame)?;
         return Ok(Some(Value::String(environ_value(
             effective_name,
@@ -472,7 +472,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("GetSetting") {
         if args.len() < 3 || args.len() > 4 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "GetSetting expects 3 to 4 arguments",
                 Some(span),
             ));
@@ -489,7 +489,6 @@ pub(crate) fn dispatch_function(
     }
 
     if effective_name.eq_ignore_ascii_case("GetAllSettings") {
-        expect_arg_count(effective_name, args, 2, span)?;
         for arg in args {
             let _ = interpreter.eval_expr(arg, frame)?;
         }
@@ -497,12 +496,10 @@ pub(crate) fn dispatch_function(
     }
 
     if effective_name.eq_ignore_ascii_case("IMEStatus") {
-        expect_arg_count(effective_name, args, 0, span)?;
         return Ok(Some(Value::Int64(0)));
     }
 
     if effective_name.eq_ignore_ascii_case("MacID") {
-        expect_arg_count(effective_name, args, 1, span)?;
         let text = interpreter.eval_expr(&args[0], frame)?.to_output_string();
         let mut bytes = [b' '; 4];
         for (slot, byte) in bytes.iter_mut().zip(text.bytes()) {
@@ -515,7 +512,6 @@ pub(crate) fn dispatch_function(
     }
 
     if effective_name.eq_ignore_ascii_case("MacScript") {
-        expect_arg_count(effective_name, args, 1, span)?;
         let _ = interpreter.eval_expr(&args[0], frame)?;
         return Err(Diagnostic::new(
             crate::runtime::DiagnosticCode::GENERIC,
@@ -559,7 +555,7 @@ pub(crate) fn dispatch_function(
     if effective_name.eq_ignore_ascii_case("IsMissing") {
         if values.len() != 1 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "IsMissing expects exactly 1 argument",
                 Some(span),
             ));
@@ -596,7 +592,7 @@ fn dispatch_file_function(
         "freefile" => {
             if !args.is_empty() {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "FreeFile expects no arguments",
                     Some(span),
                 ));
@@ -672,7 +668,7 @@ fn dispatch_file_function(
         "curdir" => {
             if args.len() > 1 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "CurDir expects 0 to 1 arguments",
                     Some(span),
                 ));
@@ -754,7 +750,7 @@ fn dispatch_datetime_function(
         "datediff" => {
             if args.len() < 3 || args.len() > 5 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "DateDiff expects 3 to 5 arguments",
                     Some(span),
                 ));
@@ -767,7 +763,7 @@ fn dispatch_datetime_function(
         "datepart" => {
             if args.len() < 2 || args.len() > 4 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "DatePart expects 2 to 4 arguments",
                     Some(span),
                 ));
@@ -803,7 +799,7 @@ fn dispatch_datetime_function(
         "weekday" => {
             if args.is_empty() || args.len() > 2 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "Weekday expects 1 to 2 arguments",
                     Some(span),
                 ));
@@ -818,7 +814,7 @@ fn dispatch_datetime_function(
         "monthname" => {
             if args.is_empty() || args.len() > 2 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "MonthName expects 1 to 2 arguments",
                     Some(span),
                 ));
@@ -830,7 +826,7 @@ fn dispatch_datetime_function(
         "weekdayname" => {
             if args.is_empty() || args.len() > 3 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "WeekdayName expects 1 to 3 arguments",
                     Some(span),
                 ));
@@ -1308,7 +1304,7 @@ fn dispatch_callbyname(
     if name.eq_ignore_ascii_case("CallByName") {
         if args.len() < 3 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "CallByName expects at least 3 arguments",
                 Some(span),
             ));
@@ -1346,7 +1342,7 @@ fn dispatch_callbyname(
                 // VbLet (4) or VbSet (8)
                 if remaining_args.len() != 1 {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                         "CallByName for Let/Set expects exactly one value argument",
                         Some(span),
                     ));
@@ -1385,7 +1381,7 @@ pub(crate) fn expect_arg_count(
         Ok(())
     } else {
         Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             format!("{name} expects exactly {expected} argument(s)"),
             Some(span),
         ))

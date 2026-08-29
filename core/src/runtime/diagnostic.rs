@@ -538,34 +538,55 @@ impl fmt::Display for Severity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DiagnosticCode(pub &'static str);
 
-impl DiagnosticCode {
-    pub const GENERIC: Self = Self("V0001");
-    pub const PARSE: Self = Self("V0100");
-    pub const OPTION: Self = Self("V0101");
-    pub const PREPROCESSOR: Self = Self("V0102");
-    pub const UNKNOWN_NAME: Self = Self("V1001");
-    pub const DUPLICATE_DECLARATION: Self = Self("V1002");
-    pub const MEMBER_IS_PRIVATE: Self = Self("V1003");
-    pub const TYPE_MISMATCH: Self = Self("V1100");
-    pub const INVALID_ASSIGNMENT: Self = Self("V1101");
-    pub const ARGUMENT_NOT_OPTIONAL: Self = Self("V1102");
-    pub const ARRAY: Self = Self("V1200");
-    pub const CONTROL_FLOW: Self = Self("V1300");
-    pub const MEMBER_ACCESS: Self = Self("V1400");
-    pub const SELECT_CASE: Self = Self("V1500");
-    pub const MODULE_NOT_FOUND: Self = Self("V1600");
-    pub const DUPLICATE_IMPORT: Self = Self("V1601");
-    pub const IMPORT_CYCLE: Self = Self("V1602");
-    pub const AMBIGUOUS_IMPORT: Self = Self("V1603");
-    pub const CASE_COLLISION: Self = Self("V1604");
-    pub const UNKNOWN_QUALIFIED_SYMBOL: Self = Self("V1605");
-    pub const INVALID_QUALIFIED_ACCESS: Self = Self("V1606");
-    pub const FFI_LIBRARY_NOT_FOUND: Self = Self("V3001");
-    pub const FFI_SYMBOL_NOT_FOUND: Self = Self("V3002");
-    pub const FFI_UNSUPPORTED_MARSHALING: Self = Self("V3003");
-    pub const FFI_CALL: Self = Self("V3004");
-    pub const RUNTIME: Self = Self("V9000");
-    pub const RUNTIME_ERROR: Self = Self("V9001");
+/// Declares every diagnostic code once.
+///
+/// The macro produces both the constants the compiler refers to and a table the
+/// documentation and tests read, so a code cannot exist without a summary and
+/// the two cannot fall out of step. Codes are permanent: a released code keeps
+/// its meaning, and a retired one is not reused.
+macro_rules! diagnostic_codes {
+    ($($name:ident = $code:literal, $summary:literal;)*) => {
+        impl DiagnosticCode {
+            $(pub const $name: Self = Self($code);)*
+        }
+
+        /// Every diagnostic code, with the constant that names it and a summary.
+        pub const ALL_DIAGNOSTIC_CODES: &[(DiagnosticCode, &str, &str)] = &[
+            $((DiagnosticCode($code), stringify!($name), $summary),)*
+        ];
+    };
+}
+
+diagnostic_codes! {
+    GENERIC = "V0001", "An error that has not been given a more specific code yet.";
+    PARSE = "V0100", "The source does not form a valid program.";
+    OPTION = "V0101", "An `Option` directive is misplaced, repeated, or unrecognized.";
+    PREPROCESSOR = "V0102", "A conditional-compilation directive is malformed.";
+    UNKNOWN_NAME = "V1001", "A name is used but never declared.";
+    DUPLICATE_DECLARATION = "V1002", "A name is declared twice in the same scope.";
+    MEMBER_IS_PRIVATE = "V1003", "A member exists but is not visible from here.";
+    TYPE_MISMATCH = "V1100", "A value cannot be used where that type is required.";
+    INVALID_ASSIGNMENT = "V1101", "The target of an assignment cannot be assigned to.";
+    ARGUMENT_NOT_OPTIONAL = "V1102", "A required argument was omitted.";
+    ARGUMENT_COUNT = "V1103", "A call passes a number of arguments the callee does not accept.";
+    ARITHMETIC = "V1104", "An arithmetic operation has no defined result, such as division by zero.";
+    ARRAY = "V1200", "An array is indexed, sized, or used incorrectly.";
+    CONTROL_FLOW = "V1300", "A control-flow statement appears where it cannot apply.";
+    MEMBER_ACCESS = "V1400", "A type does not have the member being accessed.";
+    SELECT_CASE = "V1500", "A `Select Case` arm is malformed.";
+    MODULE_NOT_FOUND = "V1600", "An imported module could not be located.";
+    DUPLICATE_IMPORT = "V1601", "The same import alias is bound twice.";
+    IMPORT_CYCLE = "V1602", "Modules import each other in a cycle.";
+    AMBIGUOUS_IMPORT = "V1603", "A name is provided by more than one import.";
+    CASE_COLLISION = "V1604", "Two names differ only by case, which cannot be told apart.";
+    UNKNOWN_QUALIFIED_SYMBOL = "V1605", "A qualified name does not exist in that module.";
+    INVALID_QUALIFIED_ACCESS = "V1606", "A qualified name exists but cannot be used this way.";
+    FFI_LIBRARY_NOT_FOUND = "V3001", "A `Declare` names a library that could not be loaded.";
+    FFI_SYMBOL_NOT_FOUND = "V3002", "A `Declare` names a symbol the library does not export.";
+    FFI_UNSUPPORTED_MARSHALING = "V3003", "A `Declare` uses a type Valo cannot pass to native code.";
+    FFI_CALL = "V3004", "A native call failed.";
+    RUNTIME = "V9000", "A runtime failure with no more specific code.";
+    RUNTIME_ERROR = "V9001", "An error raised by the program itself, through `Err.Raise` or `Throw`.";
 }
 
 impl fmt::Display for DiagnosticCode {
@@ -644,6 +665,61 @@ fn char_width(ch: char, offset: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+    /// A code is an identity, so two diagnostics must never share one.
+    ///
+    /// They are hand-assigned strings, and a duplicate would be invisible:
+    /// both diagnostics would report the same code and neither would be
+    /// distinguishable by tooling.
+    #[test]
+    fn every_diagnostic_code_is_unique() {
+        let mut seen = std::collections::HashMap::new();
+        for (code, name, _) in ALL_DIAGNOSTIC_CODES {
+            if let Some(previous) = seen.insert(code.0, *name) {
+                panic!("code {} is used by both {previous} and {name}", code.0);
+            }
+        }
+    }
+
+    #[test]
+    fn every_diagnostic_code_is_well_formed_and_described() {
+        for (code, name, summary) in ALL_DIAGNOSTIC_CODES {
+            assert!(
+                code.0.starts_with('V')
+                    && code.0.len() == 5
+                    && code.0[1..].chars().all(|c| c.is_ascii_digit()),
+                "{name} has a malformed code: {}",
+                code.0
+            );
+            assert!(!summary.is_empty(), "{name} has no summary");
+            assert!(
+                summary.ends_with('.'),
+                "{name}'s summary should read as a sentence: {summary}"
+            );
+        }
+    }
+
+    /// The published reference must list every code the compiler can emit.
+    ///
+    /// Documentation that silently falls behind is worse than none: a reader
+    /// who cannot find a code assumes it does not exist.
+    #[test]
+    fn the_diagnostics_reference_lists_every_code() {
+        const REFERENCE: &str = include_str!("../../../docs/reference/diagnostics.md");
+
+        for (code, name, summary) in ALL_DIAGNOSTIC_CODES {
+            assert!(
+                REFERENCE.contains(code.0),
+                "docs/reference/diagnostics.md does not list {} ({name})",
+                code.0
+            );
+            assert!(
+                REFERENCE.contains(summary),
+                "docs/reference/diagnostics.md does not carry the summary for {} ({name})",
+                code.0
+            );
+        }
+    }
+
     use super::*;
 
     #[test]

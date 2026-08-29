@@ -12,7 +12,7 @@ pub(crate) fn eval_strings(
     if name.eq_ignore_ascii_case("Filter") {
         if args.len() < 2 || args.len() > 4 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Filter expects 2 to 4 arguments",
                 Some(span),
             ));
@@ -65,7 +65,7 @@ pub(crate) fn eval_strings(
     if name.eq_ignore_ascii_case("CStr") {
         if args.len() != 1 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "CStr expects exactly 1 argument",
                 Some(span),
             ));
@@ -76,7 +76,7 @@ pub(crate) fn eval_strings(
     if name.eq_ignore_ascii_case("Len") {
         if args.len() != 1 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Len expects exactly 1 argument",
                 Some(span),
             ));
@@ -190,7 +190,7 @@ pub(crate) fn eval_strings(
     if name.eq_ignore_ascii_case("Format") {
         if args.is_empty() || args.len() > 4 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Format expects 1 to 4 arguments",
                 Some(span),
             ));
@@ -206,7 +206,7 @@ pub(crate) fn eval_strings(
     {
         if args.is_empty() || args.len() > 5 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 format!("{name} expects 1 to 5 arguments"),
                 Some(span),
             ));
@@ -240,7 +240,7 @@ pub(crate) fn eval_strings(
     if name.eq_ignore_ascii_case("FormatDateTime") {
         if args.is_empty() || args.len() > 2 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "FormatDateTime expects 1 to 2 arguments",
                 Some(span),
             ));
@@ -419,7 +419,7 @@ pub(crate) fn eval_strings(
     if name.eq_ignore_ascii_case("StrComp") {
         if args.len() < 2 || args.len() > 3 {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "StrComp expects two strings and optional compare mode",
                 Some(span),
             ));
@@ -499,13 +499,13 @@ fn expect_arg_range(
         Ok(())
     } else if min == max {
         Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             format!("{name} expects exactly {min} argument(s)"),
             Some(span),
         ))
     } else {
         Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             format!("{name} expects {min} to {max} arguments"),
             Some(span),
         ))

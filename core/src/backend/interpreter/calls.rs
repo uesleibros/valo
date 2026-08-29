@@ -1695,7 +1695,7 @@ impl Interpreter {
                 "add" => {
                     if args.is_empty() || args.len() > 4 {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             "Collection.Add expects 1 to 4 arguments",
                             Some(span),
                         ));
@@ -1727,7 +1727,7 @@ impl Interpreter {
                 "remove" => {
                     if args.len() != 1 {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             "Collection.Remove expects exactly 1 argument",
                             Some(span),
                         ));
@@ -1824,7 +1824,7 @@ impl Interpreter {
                 "add" => {
                     if args.is_empty() || args.len() > 4 {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             "Collection.Add expects 1 to 4 arguments",
                             Some(span),
                         ));
@@ -1856,7 +1856,7 @@ impl Interpreter {
                 "count" => {
                     if !args.is_empty() {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             "Collection.Count expects no arguments",
                             Some(span),
                         ));
@@ -1866,7 +1866,7 @@ impl Interpreter {
                 "item" => {
                     if args.len() != 1 {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             "Collection.Item expects exactly 1 argument",
                             Some(span),
                         ));
@@ -1879,7 +1879,7 @@ impl Interpreter {
                 "remove" => {
                     if args.len() != 1 {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                             "Collection.Remove expects exactly 1 argument",
                             Some(span),
                         ));
@@ -2370,7 +2370,7 @@ impl Interpreter {
             }
             if saw_named {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "Positional arguments cannot appear after named arguments",
                     Some(arg.span),
                 ));

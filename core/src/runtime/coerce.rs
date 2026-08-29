@@ -7,7 +7,7 @@ use crate::runtime::{Diagnostic, Span, TypeName, Value};
 pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Value, Diagnostic> {
     if matches!(value, Value::Missing) {
         return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             "Optional argument was omitted here and cannot be forwarded into a required value",
             Some(span),
         ));

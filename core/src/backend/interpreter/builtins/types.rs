@@ -6,30 +6,24 @@ pub(crate) fn eval_types(
     span: crate::runtime::Span,
 ) -> Result<Option<Value>, Diagnostic> {
     if name.eq_ignore_ascii_case("IsObject") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Boolean(matches!(
             args[0],
             Value::Object(_) | Value::ComObject(_) | Value::Nothing
         ))));
     }
     if name.eq_ignore_ascii_case("IsArray") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Boolean(matches!(args[0], Value::Array(_)))));
     }
     if name.eq_ignore_ascii_case("IsNull") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Boolean(matches!(args[0], Value::Null))));
     }
     if name.eq_ignore_ascii_case("IsEmpty") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Boolean(matches!(args[0], Value::Empty))));
     }
     if name.eq_ignore_ascii_case("IsError") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Boolean(matches!(args[0], Value::Error(_)))));
     }
     if name.eq_ignore_ascii_case("IsNumeric") {
-        expect_value_count(name, args, 1, span)?;
         let val = match &args[0] {
             Value::Byte(_)
             | Value::Int16(_)
@@ -50,7 +44,6 @@ pub(crate) fn eval_types(
         return Ok(Some(Value::Boolean(val)));
     }
     if name.eq_ignore_ascii_case("IsDate") {
-        expect_value_count(name, args, 1, span)?;
         let val = match &args[0] {
             Value::Date(_) => true,
             Value::String(s) => {
@@ -61,19 +54,15 @@ pub(crate) fn eval_types(
         return Ok(Some(Value::Boolean(val)));
     }
     if name.eq_ignore_ascii_case("VarType") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::Int64(vartype(&args[0]))));
     }
     if name.eq_ignore_ascii_case("TypeName") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(Value::String(match_value_type_name(&args[0]))));
     }
     if name.eq_ignore_ascii_case("CVar") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(args[0].clone()));
     }
     if name.eq_ignore_ascii_case("CVErr") {
-        expect_value_count(name, args, 1, span)?;
         let code = crate::runtime::numeric::value_to_i64(&args[0]).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::TYPE_MISMATCH,
@@ -84,7 +73,6 @@ pub(crate) fn eval_types(
         return Ok(Some(Value::Error(code as i32)));
     }
     if name.eq_ignore_ascii_case("CByte") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Byte,
             args[0].clone(),
@@ -92,7 +80,6 @@ pub(crate) fn eval_types(
         )?));
     }
     if name.eq_ignore_ascii_case("CInt") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Integer,
             args[0].clone(),
@@ -100,7 +87,6 @@ pub(crate) fn eval_types(
         )?));
     }
     if name.eq_ignore_ascii_case("CLng") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Long,
             args[0].clone(),
@@ -119,7 +105,6 @@ pub(crate) fn eval_types(
         )?));
     }
     if name.eq_ignore_ascii_case("CSng") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Single,
             args[0].clone(),
@@ -127,7 +112,6 @@ pub(crate) fn eval_types(
         )?));
     }
     if name.eq_ignore_ascii_case("CDbl") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Double,
             args[0].clone(),
@@ -135,7 +119,6 @@ pub(crate) fn eval_types(
         )?));
     }
     if name.eq_ignore_ascii_case("CDec") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Decimal,
             args[0].clone(),
@@ -143,7 +126,6 @@ pub(crate) fn eval_types(
         )?));
     }
     if name.eq_ignore_ascii_case("CCur") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Currency,
             args[0].clone(),
@@ -151,7 +133,6 @@ pub(crate) fn eval_types(
         )?));
     }
     if name.eq_ignore_ascii_case("CDate") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Date,
             args[0].clone(),
@@ -159,7 +140,6 @@ pub(crate) fn eval_types(
         )?));
     }
     if name.eq_ignore_ascii_case("CBool") {
-        expect_value_count(name, args, 1, span)?;
         return Ok(Some(coerce_assignment(
             &TypeName::Boolean,
             args[0].clone(),
@@ -180,7 +160,7 @@ fn expect_value_count(
         Ok(())
     } else {
         Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
             format!("{name} expects exactly {expected} argument(s)"),
             Some(span),
         ))

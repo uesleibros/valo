@@ -1177,7 +1177,7 @@ impl Parser {
                     saw_named = true;
                 } else if saw_named {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                         "Positional arguments cannot appear after named arguments",
                         Some(arg.span),
                     ));

@@ -81,7 +81,10 @@ End Sub
         platform_libc()
     ));
 
-    assert_eq!(diagnostic.code.0, "V0001");
+    assert_eq!(
+        diagnostic.code,
+        crate::runtime::DiagnosticCode::ARGUMENT_COUNT
+    );
     assert!(diagnostic.message.contains("Function 'strlen' expects"));
 }
 

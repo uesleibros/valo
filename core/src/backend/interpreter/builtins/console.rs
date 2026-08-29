@@ -10,7 +10,7 @@ pub(crate) fn exec_console(
         for value in args {
             if matches!(value, Value::Missing) {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                     "Optional argument was omitted here and cannot be printed as a value",
                     None,
                 ));

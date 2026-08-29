@@ -99,7 +99,7 @@ pub fn eval_binary(
             let (a, b) = expect_numbers(left, right, span)?;
             if b == 0.0 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARITHMETIC,
                     "Division by zero",
                     Some(span),
                 ));
@@ -110,7 +110,7 @@ pub fn eval_binary(
             let (a, b) = expect_integers(left, right, span)?;
             if b == 0 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARITHMETIC,
                     "Division by zero",
                     Some(span),
                 ));
@@ -121,7 +121,7 @@ pub fn eval_binary(
             let (a, b) = expect_integers(left, right, span)?;
             if b == 0 {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::ARITHMETIC,
                     "Modulo by zero",
                     Some(span),
                 ));

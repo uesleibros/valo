@@ -196,7 +196,7 @@ impl Interpreter {
             ExprKind::Null => Ok(Value::Null),
             ExprKind::Missing => Ok(Value::Missing),
             ExprKind::NamedArg { .. } => Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                 "Named arguments are only valid inside call argument lists",
                 Some(expr.span),
             )),
@@ -708,7 +708,7 @@ impl Interpreter {
                 let left_value = self.eval_expr(left, frame)?;
                 if matches!(left_value, Value::Missing) {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                         "Optional argument was omitted here and cannot be used in this expression",
                         Some(left.span),
                     ));
@@ -725,7 +725,7 @@ impl Interpreter {
                 let right_value = self.eval_expr(right, frame)?;
                 if matches!(right_value, Value::Missing) {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                         "Optional argument was omitted here and cannot be used in this expression",
                         Some(right.span),
                     ));
@@ -824,7 +824,7 @@ impl Interpreter {
             Value::Collection(ref collection) => {
                 if args.len() != 1 {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
                         "Collection indexing requires exactly one argument",
                         Some(span),
                     ));
