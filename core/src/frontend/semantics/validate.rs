@@ -28,7 +28,8 @@ mod validate_statements;
 use validate_classes::{validate_class, validate_structure};
 use validate_declarations::{
     add_module_symbols, add_parameters, collect_module_symbols, collect_signatures, collect_types,
-    ensure_const_expr, params_to_sigs, validate_function, validate_procedure,
+    collect_types_in_scope, ensure_const_expr, params_to_sigs, validate_function,
+    validate_procedure,
 };
 use validate_expressions::*;
 pub(super) use validate_statements::{LoopContext, StmtValidation, validate_statements};
@@ -121,10 +122,15 @@ fn validate_module(
     imports: &[crate::modules::ResolvedImport],
     project: &crate::modules::Project,
 ) -> Result<(), Diagnostic> {
-    let mut types = collect_types(program)?;
-    let mut signatures = collect_signatures(program, &types)?;
-    merge_imported_scope(imports, project, &mut types, &mut signatures)?;
+    // Imported types are in scope while this module's own declarations are
+    // checked, since a member declared `As Thing` may well name an import.
+    let mut imported = TypeRegistry::default();
+    merge_imported_types(imports, project, &mut imported)?;
+    let mut types = collect_types_in_scope(program, &imported)?;
+    merge_imported_types(imports, project, &mut types)?;
     merge_project_partial_classes(program, project, &mut types)?;
+    let mut signatures = collect_signatures(program, &types)?;
+    merge_imported_callables(imports, project, &types, &mut signatures)?;
     let mut module_symbols = collect_module_symbols(program, &types, &signatures)?;
     for import in imports {
         module_symbols.insert(
@@ -168,18 +174,16 @@ fn validate_module(
 /// Each module is validated on its own, so without this an imported class or an
 /// `<Extension()>` method declared elsewhere looks undefined. Locally declared
 /// names win, since a module's own declarations shadow anything it imports.
-fn merge_imported_scope(
+fn merge_imported_types(
     imports: &[crate::modules::ResolvedImport],
     project: &crate::modules::Project,
     types: &mut TypeRegistry,
-    signatures: &mut Signatures,
 ) -> Result<(), Diagnostic> {
     for import in imports {
         let Some(imported) = project.modules.get(import.module) else {
             continue;
         };
         let imported_types = collect_types(&imported.program)?;
-        let imported_signatures = collect_signatures(&imported.program, &imported_types)?;
 
         // Imported types are reachable both bare and through the import
         // qualifier, so register `PersonRecord` and `Models.PersonRecord`.
@@ -208,6 +212,27 @@ fn merge_imported_scope(
             merge_class(types.classes.entry(qualified), sig.clone());
             merge_class(types.classes.entry(bare), sig);
         }
+    }
+    Ok(())
+}
+
+/// Brings the callables of imported modules into scope.
+///
+/// Split from the type half because signatures can only be collected once the
+/// types they mention are known.
+fn merge_imported_callables(
+    imports: &[crate::modules::ResolvedImport],
+    project: &crate::modules::Project,
+    types: &TypeRegistry,
+    signatures: &mut Signatures,
+) -> Result<(), Diagnostic> {
+    for import in imports {
+        let Some(imported) = project.modules.get(import.module) else {
+            continue;
+        };
+        let qualifier = key(&import.qualifier);
+        let imported_signatures = collect_signatures(&imported.program, types)?;
+
         for (type_key, methods) in imported_signatures.extension_methods {
             signatures
                 .extension_methods

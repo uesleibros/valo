@@ -1301,3 +1301,46 @@ fn import_cycle_is_reported() {
             .any(|help| help.contains("move shared declarations"))
     );
 }
+
+#[test]
+fn an_imported_type_can_be_named_without_a_qualifier() {
+    let dir = temp_project();
+    write(
+        &dir,
+        "Shapes.valo",
+        r#"
+Public Class Thing
+    Public N As Long
+End Class
+"#,
+    );
+    write(
+        &dir,
+        "main.valo",
+        r#"
+Imports Shapes
+
+Interface IHolds
+    Function Held() As Thing
+End Interface
+
+Class Holder Implements IHolds
+    Public Item As Thing
+
+    Public Function Held() As Thing Implements IHolds.Held
+        Return Item
+    End Function
+End Class
+
+Sub Main()
+    Dim holder As New Holder()
+    Set holder.Item = New Thing()
+    holder.Item.N = 7
+    Console.WriteLine(holder.Held().N)
+End Sub
+"#,
+    );
+
+    assert_eq!(run_file(dir.join("main.valo")).unwrap(), vec!["7"]);
+    fs::remove_dir_all(dir).unwrap();
+}

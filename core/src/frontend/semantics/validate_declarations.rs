@@ -5,6 +5,19 @@ use crate::runtime::well_known;
 use crate::{OperatorKind, TypeKind};
 
 pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnostic> {
+    collect_types_in_scope(program, &TypeRegistry::default())
+}
+
+/// Collects a program's types, checking them against `outer` as well as itself.
+///
+/// `outer` carries the types an enclosing scope already provides -- in practice
+/// the ones an `Imports` brings in. A member declared `As Thing` cannot be
+/// checked without them, since `Thing` may well be imported rather than
+/// declared here.
+pub(super) fn collect_types_in_scope(
+    program: &Program,
+    outer: &TypeRegistry,
+) -> Result<TypeRegistry, Diagnostic> {
     let mut types = HashMap::new();
     let mut enums = HashMap::new();
     let mut interfaces = HashMap::new();
@@ -1231,6 +1244,27 @@ pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnosti
         generic_params,
     };
     apply_class_sig_inheritance(&mut registry)?;
+
+    // Checking below resolves against this module's types and the ones already
+    // in scope; the registry returned to the caller holds only this module's,
+    // so an import does not silently become a local declaration.
+    let mut in_scope = registry.clone();
+    for (name, sig) in &outer.types {
+        in_scope.types.entry(name.clone()).or_insert(sig.clone());
+    }
+    for (name, sig) in &outer.enums {
+        in_scope.enums.entry(name.clone()).or_insert(sig.clone());
+    }
+    for (name, sig) in &outer.interfaces {
+        in_scope
+            .interfaces
+            .entry(name.clone())
+            .or_insert(sig.clone());
+    }
+    for (name, sig) in &outer.classes {
+        in_scope.classes.entry(name.clone()).or_insert(sig.clone());
+    }
+    let registry = in_scope;
 
     validate_oop_semantics(program, &registry)?;
     for type_decl in &program.types {

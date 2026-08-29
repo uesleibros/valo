@@ -33,7 +33,7 @@ pub(super) struct TypeSig {
     pub(super) default_property: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Default, Clone)]
 pub(super) struct TypeRegistry {
     pub(super) types: HashMap<String, TypeSig>,
     pub(super) enums: HashMap<String, EnumSig>,
