@@ -771,12 +771,27 @@ impl Parser {
                 }
             }
             TokenKind::LeftParen => {
-                let expr = self.parse_expression()?;
-                self.expect_simple(TokenKind::RightParen, "Expected ')' after expression")?;
-                // Fall through rather than returning, so a member access can
-                // continue from here: `(a + b).Describe()` reads the same as
-                // any other receiver.
-                expr
+                // `(x)` groups; `(x, y)` builds a tuple. Only the comma tells
+                // them apart, so the first element is parsed either way and the
+                // decision is made when it is done.
+                let first = self.parse_tuple_element()?;
+                if matches!(self.peek_kind(), TokenKind::Comma) {
+                    let mut elements = vec![first];
+                    while self.match_simple(&TokenKind::Comma) {
+                        elements.push(self.parse_tuple_element()?);
+                    }
+                    self.expect_simple(TokenKind::RightParen, "Expected ')' after tuple")?;
+                    Expr {
+                        kind: ExprKind::TupleLiteral(elements),
+                        span: Span::new(self.file_id, span.start, self.previous().span.end),
+                    }
+                } else {
+                    self.expect_simple(TokenKind::RightParen, "Expected ')' after expression")?;
+                    // Fall through rather than returning, so a member access can
+                    // continue from here: `(a + b).Describe()` reads the same as
+                    // any other receiver.
+                    first.value
+                }
             }
             _ => {
                 return Err(Diagnostic::new(
@@ -946,6 +961,31 @@ impl Parser {
         }
         self.expect_simple(TokenKind::RightParen, "Expected ')' after arguments")?;
         Ok(args)
+    }
+
+    /// Parses one element of a tuple literal: `1`, or `X := 1`.
+    ///
+    /// A name is optional and is only there so the element can be read back as
+    /// `point.X` instead of `point.Item1`. It uses the same `:=` as a named
+    /// argument, which is how VB.NET spells it.
+    fn parse_tuple_element(&mut self) -> Result<TupleElementExpr, Diagnostic> {
+        if matches!(self.peek_next_kind(), Some(TokenKind::Colon))
+            && matches!(self.peek_kind_at(2), Some(TokenKind::Equal))
+            && contextual_identifier_name(self.peek_kind()).is_some()
+        {
+            let name_token = self.advance();
+            let name = contextual_identifier_name(&name_token.kind).expect("peek checked");
+            self.expect_simple(TokenKind::Colon, "Expected ':' in named tuple element")?;
+            self.expect_simple(TokenKind::Equal, "Expected '=' in named tuple element")?;
+            return Ok(TupleElementExpr {
+                name: Some(name),
+                value: self.parse_expression()?,
+            });
+        }
+        Ok(TupleElementExpr {
+            name: None,
+            value: self.parse_expression()?,
+        })
     }
 
     pub(super) fn parse_argument(&mut self) -> Result<Expr, Diagnostic> {
@@ -1194,7 +1234,7 @@ fn source_name_of(expr: &Expr) -> Option<String> {
     }
 }
 
-fn contextual_identifier_name(kind: &TokenKind) -> Option<String> {
+pub(super) fn contextual_identifier_name(kind: &TokenKind) -> Option<String> {
     Some(match kind {
         TokenKind::Identifier(name, _) => name.clone(),
         TokenKind::Version => "VERSION".to_string(),

@@ -89,6 +89,55 @@ pub fn validate_statements(
             ));
         }
         match stmt {
+            Stmt::DimTuple {
+                names,
+                initializer,
+                span,
+            } => {
+                let source = validate_expr(
+                    initializer,
+                    symbols,
+                    types,
+                    signatures,
+                    context,
+                    option_explicit,
+                )?;
+                let TypeName::Tuple(elements) = &source else {
+                    return Err(Diagnostic::new(
+                        crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                        format!(
+                            "Naming elements needs a tuple, and this is {}",
+                            source.display_name()
+                        ),
+                        Some(initializer.span),
+                    ));
+                };
+                if elements.len() != names.len() {
+                    return Err(Diagnostic::new(
+                        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+                        format!(
+                            "{} names for a tuple of {} elements",
+                            names.len(),
+                            elements.len()
+                        ),
+                        Some(*span),
+                    ));
+                }
+                for (name, element) in names.iter().zip(elements) {
+                    let name_key = key(name);
+                    if symbols.contains_key(&name_key) {
+                        return Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+                            format!("Variable '{}' is already declared", name),
+                            Some(*span),
+                        ));
+                    }
+                    symbols.insert(
+                        name_key,
+                        VarType::Scalar(Visibility::Public, element.ty.clone()),
+                    );
+                }
+            }
             Stmt::Dim {
                 name,
                 ty,
@@ -1744,6 +1793,7 @@ fn get_redim_target_array_info(
 fn stmt_span(stmt: &Stmt, _context: &Context<'_>) -> crate::runtime::Span {
     match stmt {
         Stmt::Dim { span, .. }
+        | Stmt::DimTuple { span, .. }
         | Stmt::DimMany { span, .. }
         | Stmt::Static { span, .. }
         | Stmt::StaticMany { span, .. }
@@ -1798,6 +1848,7 @@ fn stmt_span(stmt: &Stmt, _context: &Context<'_>) -> crate::runtime::Span {
 fn stmt_uses_with_target(stmt: &Stmt, _context: &Context<'_>) -> bool {
     match stmt {
         Stmt::End { .. } | Stmt::Throw { .. } => false,
+        Stmt::DimTuple { initializer, .. } => expr_uses_with_target(initializer, _context),
         Stmt::Const { value, .. } | Stmt::Return { expr: value, .. } => {
             expr_uses_with_target(value, _context)
         }
@@ -2101,6 +2152,9 @@ fn do_condition_uses_with_target(condition: &DoLoopCondition, _context: &Context
 fn expr_uses_with_target(expr: &Expr, _context: &Context<'_>) -> bool {
     match &expr.kind {
         ExprKind::WithTarget => true,
+        ExprKind::TupleLiteral(elements) => elements
+            .iter()
+            .any(|element| expr_uses_with_target(&element.value, _context)),
         ExprKind::Convert { expr, .. } => expr_uses_with_target(expr, _context),
         ExprKind::GetType(_) | ExprKind::NameOf(_) => false,
         ExprKind::Interpolated(parts) => parts.iter().any(|part| match part {

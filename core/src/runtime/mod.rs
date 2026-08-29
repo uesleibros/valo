@@ -27,7 +27,7 @@ pub use diagnostic::{
     RuntimeErrorInfo, Severity, SourceMap, SourcePos, Span, terminal_supports_color,
 };
 pub use naming::{fold, with_folded};
-pub use type_name::TypeName;
+pub use type_name::{TupleElement, TypeName};
 pub use value::{
     ArrayValue, CapturedVariable, CollectionItem, CollectionValue, ComObjectValue, EventBinding,
     LambdaValue, ObjectValue, RecordValue, Value,

@@ -53,6 +53,34 @@ pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Valu
         return Ok(value);
     }
 
+    // A tuple converts element by element, the way a single value does. The
+    // elements are held under both their position and their name, so both are
+    // rewritten; which names a tuple carries comes from the place it is going,
+    // since that is what the reader will use to get at them.
+    if let TypeName::Tuple(elements) = ty
+        && let Value::Record(record) = &value
+    {
+        let mut fields = std::collections::HashMap::with_capacity(elements.len() * 2);
+        for (index, element) in elements.iter().enumerate() {
+            let positional = crate::runtime::TupleElement::positional_name(index);
+            let held = record
+                .fields
+                .get(&crate::runtime::fold(&positional))
+                .ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let converted = coerce_assignment(&element.ty, held.clone(), span)?;
+            fields.insert(crate::runtime::fold(&positional), converted.clone());
+            if let Some(name) = &element.name {
+                fields.insert(crate::runtime::fold(name), converted);
+            }
+        }
+        return Ok(Value::Record(std::rc::Rc::new(
+            crate::runtime::RecordValue {
+                type_name: ty.display_name(),
+                fields,
+            },
+        )));
+    }
+
     match ty {
         TypeName::Byte => {
             let v =

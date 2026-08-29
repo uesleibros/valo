@@ -1979,7 +1979,57 @@ impl Parser {
         }
     }
 
+    /// Parses a tuple type: `(Long, String)` or `(X As Long, Y As String)`.
+    ///
+    /// Elements may be named or not, and the names do not have to be all or
+    /// nothing -- naming is for reading the elements back, not for identity.
+    fn parse_tuple_type(&mut self) -> Result<TypeName, Diagnostic> {
+        let start = self
+            .expect_simple(TokenKind::LeftParen, "Expected '(' in tuple type")?
+            .span;
+        let mut elements = Vec::new();
+        loop {
+            // `X As Long` names the element; a bare type does not. Only the
+            // `As` after an identifier tells the two apart, since a type is
+            // itself spelled with an identifier.
+            let name = if matches!(self.peek_next_kind(), Some(TokenKind::As))
+                && super::expressions::contextual_identifier_name(self.peek_kind()).is_some()
+            {
+                let name_token = self.advance();
+                let name = super::expressions::contextual_identifier_name(&name_token.kind)
+                    .expect("peek checked");
+                self.expect_simple(TokenKind::As, "Expected 'As' in named tuple element")?;
+                Some(name)
+            } else {
+                None
+            };
+            elements.push(crate::runtime::TupleElement {
+                name,
+                ty: self.parse_type_name()?,
+            });
+            if !self.match_simple(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect_simple(TokenKind::RightParen, "Expected ')' after tuple type")?;
+        if elements.len() < 2 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::PARSE,
+                "A tuple type needs at least two elements",
+                Some(Span::new(
+                    self.file_id,
+                    start.start,
+                    self.previous().span.end,
+                )),
+            ));
+        }
+        Ok(TypeName::Tuple(elements))
+    }
+
     pub(super) fn parse_type_name(&mut self) -> Result<TypeName, Diagnostic> {
+        if matches!(self.peek_kind(), TokenKind::LeftParen) {
+            return self.parse_tuple_type();
+        }
         let token = self.advance();
         let ty = match token.kind {
             TokenKind::StringType => {

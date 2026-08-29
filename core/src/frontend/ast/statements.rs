@@ -15,6 +15,15 @@ pub enum Stmt {
         member_initializer: Option<Vec<MemberInit>>,
         span: Span,
     },
+    /// `Dim (a, b) = pair` -- one declaration per tuple element.
+    ///
+    /// Each name takes the type of the element in its position, so the tuple
+    /// can be read without going through `Item1` and `Item2`.
+    DimTuple {
+        names: Vec<String>,
+        initializer: Expr,
+        span: Span,
+    },
     DimMany {
         decls: Vec<VariableDecl>,
         span: Span,

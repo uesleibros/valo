@@ -2537,6 +2537,10 @@ pub(super) fn ensure_const_expr(
     match &expr.kind {
         // NameOf and GetType resolve entirely at compile time.
         ExprKind::NameOf(_) | ExprKind::GetType(_) => Ok(()),
+        // A tuple is constant when every element is.
+        ExprKind::TupleLiteral(elements) => elements
+            .iter()
+            .try_for_each(|element| ensure_const_expr(&element.value, symbols, types)),
         // An interpolated string evaluates its holes at run time, so it can
         // never stand in for a constant.
         ExprKind::Interpolated(_) | ExprKind::Convert { .. } => Err(Diagnostic::new(

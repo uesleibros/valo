@@ -85,8 +85,8 @@ None of this blocks the VM, and the VM blocks none of it.
 - [x] **`Delegate Sub` / `Delegate Function`** — named callable types, checked
       at the call. `AddressOf` values are now callable from Valo, not only
       passable to native code.
-- [ ] **Tuples and tuple returns** — `(a, b)` literals, `As (X As Long, …)`
-      types, and destructuring.
+- [x] **Tuples and tuple returns** — `(a, b)` literals, `As (X As Long, …)`
+      types, and `Dim (a, b) = …` to name the elements.
 - [ ] **Anonymous types** — `New With { Key .X = 1 }`. The object-initializer
       machinery exists; what is missing is a synthesized type.
 - [ ] **LINQ query syntax** — `From … Where … Select`. Now viable: it desugars to

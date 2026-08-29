@@ -186,3 +186,116 @@ End Sub
         ]
     );
 }
+
+#[test]
+fn a_tuple_holds_values_by_position_and_by_name() {
+    let output = crate::backend::interpreter::tests::helpers::run_source(
+        r#"
+Sub Main()
+    Dim pair = (1, "two")
+    Console.WriteLine(pair.Item1)
+    Console.WriteLine(pair.Item2)
+
+    ' A name is another way to reach the same element, not a different one.
+    Dim point = (X := 3, Y := 4)
+    Console.WriteLine(point.X)
+    Console.WriteLine(point.Y)
+    Console.WriteLine(point.Item1)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["1", "two", "3", "4", "3"]);
+}
+
+#[test]
+fn a_function_can_declare_and_return_a_tuple() {
+    let output = crate::backend::interpreter::tests::helpers::run_source(
+        r#"
+Function Divide(ByVal a As Long, ByVal b As Long) As (Quotient As Long, Remainder As Long)
+    Return (Quotient := a \ b, Remainder := a Mod b)
+End Function
+
+Sub Main()
+    Dim result As (Quotient As Long, Remainder As Long)
+    result = Divide(17, 5)
+    Console.WriteLine(result.Quotient)
+    Console.WriteLine(result.Remainder)
+
+    ' Elements convert on the way in, the way any other value does.
+    Dim widened As (Double, Double)
+    widened = (1, 2)
+    Console.WriteLine(widened.Item1)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["3", "2", "1"]);
+}
+
+#[test]
+fn dim_with_parentheses_names_a_tuples_elements() {
+    let output = crate::backend::interpreter::tests::helpers::run_source(
+        r#"
+Function Divide(ByVal a As Long, ByVal b As Long) As (Quotient As Long, Remainder As Long)
+    Return (Quotient := a \ b, Remainder := a Mod b)
+End Function
+
+Sub Main()
+    Dim (q, r) = Divide(17, 5)
+    Console.WriteLine(q & " remainder " & r)
+
+    Dim (a, b) = (1, "two")
+    Console.WriteLine(a & "/" & b)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["3 remainder 2", "1/two"]);
+}
+
+#[test]
+fn a_tuple_reports_an_element_it_does_not_have() {
+    let diagnostic = crate::backend::interpreter::tests::helpers::source_diagnostic(
+        r#"
+Sub Main()
+    Dim point As (X As Long, Y As Long)
+    Console.WriteLine(point.Z)
+End Sub
+"#,
+    );
+
+    assert!(diagnostic.message.contains("A tuple has no element 'Z'"));
+    assert!(
+        diagnostic
+            .notes
+            .iter()
+            .any(|note| note.contains("X") && note.contains("Y"))
+    );
+}
+
+#[test]
+fn naming_the_wrong_number_of_elements_is_reported() {
+    let error = crate::backend::interpreter::tests::helpers::source_error(
+        r#"
+Sub Main()
+    Dim (a, b, c) = (1, 2)
+End Sub
+"#,
+    );
+
+    assert!(error.contains("3 names for a tuple of 2 elements"));
+}
+
+#[test]
+fn a_parenthesised_expression_is_still_just_an_expression() {
+    let output = crate::backend::interpreter::tests::helpers::run_source(
+        r#"
+Sub Main()
+    Console.WriteLine((1 + 2) * 3)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["9"]);
+}

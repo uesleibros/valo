@@ -158,6 +158,34 @@ impl Interpreter {
     ) -> Result<Value, Diagnostic> {
         match &expr.kind {
             ExprKind::String(value) => Ok(Value::String(value.clone())),
+            // A tuple is a record with no declaration behind it. Building one
+            // that way is not a shortcut: a tuple is copied on assignment and
+            // read through its members, which is exactly what a record is.
+            ExprKind::TupleLiteral(elements) => {
+                let mut fields = std::collections::HashMap::with_capacity(elements.len() * 2);
+                let mut types = Vec::with_capacity(elements.len());
+                for (index, element) in elements.iter().enumerate() {
+                    let value = self.eval_expr(&element.value, frame)?;
+                    // Every element answers to its position; a named one also
+                    // answers to its name.
+                    fields.insert(
+                        super::values::key(&crate::runtime::TupleElement::positional_name(index)),
+                        value.clone(),
+                    );
+                    if let Some(name) = &element.name {
+                        fields.insert(super::values::key(name), value.clone());
+                    }
+                    types.push(crate::runtime::TupleElement {
+                        name: element.name.clone(),
+                        ty: value.type_name(),
+                    });
+                }
+                let type_name = crate::runtime::TypeName::Tuple(types);
+                Ok(Value::Record(Rc::new(crate::runtime::RecordValue {
+                    type_name: type_name.display_name(),
+                    fields,
+                })))
+            }
             ExprKind::Interpolated(parts) => self.eval_interpolation(parts, frame),
             ExprKind::Convert {
                 expr: value_expr,

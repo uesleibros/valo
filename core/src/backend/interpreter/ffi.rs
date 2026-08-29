@@ -1071,7 +1071,8 @@ fn callback_ffi_type(ty: &TypeName, span: Span) -> Result<FfiType, Diagnostic> {
         | TypeName::Enum(_)
         | TypeName::GenericInstance { .. }
         | TypeName::Array(_)
-        | TypeName::Nullable(_) => Err(unsupported(
+        | TypeName::Nullable(_)
+        | TypeName::Tuple(_) => Err(unsupported(
             format!(
                 "callback parameter type '{}' is not supported by AddressOf marshaling",
                 ty.display_name()
@@ -1141,7 +1142,8 @@ unsafe fn read_callback_value(slot: *const c_void, ty: &TypeName) -> ExprKind {
         | TypeName::Enum(_)
         | TypeName::GenericInstance { .. }
         | TypeName::Array(_)
-        | TypeName::Nullable(_) => ExprKind::Empty,
+        | TypeName::Nullable(_)
+        | TypeName::Tuple(_) => ExprKind::Empty,
     }
 }
 
@@ -1173,7 +1175,8 @@ fn write_callback_default(result: &mut c_void, return_type: &TypeName, is_sub: b
             | TypeName::Enum(_)
             | TypeName::GenericInstance { .. }
             | TypeName::Array(_)
-            | TypeName::Nullable(_) => {}
+            | TypeName::Nullable(_)
+            | TypeName::Tuple(_) => {}
         }
     }
 }
@@ -2170,7 +2173,8 @@ fn return_ffi_type(ty: &TypeName, is_sub: bool, span: Span) -> Result<FfiType, D
         | TypeName::Enum(_)
         | TypeName::GenericInstance { .. }
         | TypeName::Array(_)
-        | TypeName::Nullable(_) => {
+        | TypeName::Nullable(_)
+        | TypeName::Tuple(_) => {
             return Err(unsupported(
                 format!(
                     "return type '{}' is not supported by native marshaling",
@@ -2258,7 +2262,8 @@ fn call_return_value(
         | TypeName::Enum(_)
         | TypeName::GenericInstance { .. }
         | TypeName::Array(_)
-        | TypeName::Nullable(_) => {
+        | TypeName::Nullable(_)
+        | TypeName::Tuple(_) => {
             return Err(unsupported(
                 format!(
                     "return type '{}' is not supported by native marshaling",

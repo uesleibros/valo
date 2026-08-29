@@ -20,6 +20,26 @@ pub(crate) fn default_value(
         return Ok(value);
     }
 
+    // A tuple has no declaration to look up: its default is built straight from
+    // its elements', the same way a tuple literal is built from its values.
+    if let TypeName::Tuple(elements) = ty {
+        let mut fields = HashMap::with_capacity(elements.len() * 2);
+        for (index, element) in elements.iter().enumerate() {
+            let value = default_value(&element.ty, interpreter, span)?;
+            fields.insert(
+                key(&crate::runtime::TupleElement::positional_name(index)),
+                value.clone(),
+            );
+            if let Some(name) = &element.name {
+                fields.insert(key(name), value);
+            }
+        }
+        return Ok(Value::Record(Rc::new(RecordValue {
+            type_name: ty.display_name(),
+            fields,
+        })));
+    }
+
     let (name, display_name, bindings) = match ty {
         TypeName::User(name) => (name.clone(), name.clone(), Vec::new()),
         TypeName::GenericInstance { name, args } => {

@@ -166,8 +166,43 @@ impl Parser {
         }
     }
 
+    /// Parses `Dim (a, b) = expr`, which names a tuple's elements.
+    fn parse_dim_tuple(&mut self, start: Span) -> Result<Stmt, Diagnostic> {
+        self.expect_simple(TokenKind::LeftParen, "Expected '(' after Dim")?;
+        let mut names = Vec::new();
+        loop {
+            names.push(self.expect_identifier("Expected a variable name")?);
+            if !self.match_simple(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect_simple(TokenKind::RightParen, "Expected ')' after the names")?;
+        if names.len() < 2 {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::PARSE,
+                "Dim with parentheses names the elements of a tuple, so it needs at least two",
+                Some(Span::new(
+                    self.file_id,
+                    start.start,
+                    self.previous().span.end,
+                )),
+            ));
+        }
+        self.expect_simple(TokenKind::Equal, "Expected '=' after the names")?;
+        let initializer = self.parse_expression()?;
+        let end = initializer.span;
+        Ok(Stmt::DimTuple {
+            names,
+            initializer,
+            span: Span::new(self.file_id, start.start, end.end),
+        })
+    }
+
     fn parse_dim(&mut self) -> Result<Stmt, Diagnostic> {
         let start = self.advance().span;
+        if matches!(self.peek_kind(), TokenKind::LeftParen) {
+            return self.parse_dim_tuple(start);
+        }
         let decls = self.parse_variable_declarators("Dim")?;
         let end = decls.last().map(|decl| decl.span).unwrap_or(start);
         if decls.len() == 1 {

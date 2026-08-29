@@ -18,9 +18,33 @@ pub enum TypeName {
     FuncPtr,
     User(String),
     Enum(String),
-    GenericInstance { name: String, args: Vec<TypeName> },
+    GenericInstance {
+        name: String,
+        args: Vec<TypeName>,
+    },
     Array(Box<TypeName>),
     Nullable(Box<TypeName>),
+    /// `(X As Long, Y As String)` -- a fixed group of values in one place.
+    ///
+    /// Tuples are structural: two of them are the same type when their
+    /// elements are, whatever the elements happen to be called. Element names
+    /// are there to read `point.X` instead of `point.Item1`, not to make one
+    /// tuple type different from another.
+    Tuple(Vec<TupleElement>),
+}
+
+/// One element of a tuple type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TupleElement {
+    pub name: Option<String>,
+    pub ty: TypeName,
+}
+
+impl TupleElement {
+    /// The name this element answers to when none was given: `Item1`, `Item2`.
+    pub fn positional_name(index: usize) -> String {
+        format!("Item{}", index + 1)
+    }
 }
 
 impl TypeName {
@@ -44,6 +68,15 @@ impl TypeName {
             TypeName::Nullable(inner) => {
                 TypeName::Nullable(Box::new(inner.substitute_generics(bindings)))
             }
+            TypeName::Tuple(elements) => TypeName::Tuple(
+                elements
+                    .iter()
+                    .map(|element| TupleElement {
+                        name: element.name.clone(),
+                        ty: element.ty.substitute_generics(bindings),
+                    })
+                    .collect(),
+            ),
             _ => self.clone(),
         }
     }
@@ -89,6 +122,9 @@ impl TypeName {
                 },
             ))),
             TypeName::Nullable(_) => Some(crate::Value::Nothing),
+            // A tuple's default is built from its elements' defaults, which
+            // needs the whole set rather than one answer per type.
+            TypeName::Tuple(_) => None,
         }
     }
 
@@ -135,6 +171,13 @@ impl TypeName {
             }
             (TypeName::Array(left), TypeName::Array(right)) => left.same_type(right),
             (TypeName::Nullable(left), TypeName::Nullable(right)) => left.same_type(right),
+            (TypeName::Tuple(left), TypeName::Tuple(right)) => {
+                left.len() == right.len()
+                    && left
+                        .iter()
+                        .zip(right)
+                        .all(|(left, right)| left.ty.same_type(&right.ty))
+            }
             _ => self == other,
         }
     }
@@ -169,6 +212,17 @@ impl TypeName {
             ),
             TypeName::Array(inner) => format!("{}()", inner.display_name()),
             TypeName::Nullable(inner) => format!("{}?", inner.display_name()),
+            TypeName::Tuple(elements) => format!(
+                "({})",
+                elements
+                    .iter()
+                    .map(|element| match &element.name {
+                        Some(name) => format!("{} As {}", name, element.ty.display_name()),
+                        None => element.ty.display_name(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 

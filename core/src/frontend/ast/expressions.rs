@@ -6,6 +6,16 @@ pub struct Expr {
     pub span: Span,
 }
 
+/// One element of a tuple literal.
+///
+/// The name is optional and exists so the element can be read back as
+/// `point.X` rather than `point.Item1`; it does not change the tuple's type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TupleElementExpr {
+    pub name: Option<String>,
+    pub value: Expr,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     String(String),
@@ -39,6 +49,8 @@ pub enum ExprKind {
     WithTarget,
     Missing,
     Variable(String),
+    /// `(1, 2)` or `(X := 1, Y := 2)` -- a fixed group of values in one place.
+    TupleLiteral(Vec<TupleElementExpr>),
     NamedArg {
         name: String,
         expr: Box<Expr>,

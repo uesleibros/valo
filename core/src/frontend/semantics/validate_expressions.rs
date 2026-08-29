@@ -414,6 +414,41 @@ pub(super) fn validate_expr(
 
     match &expr.kind {
         ExprKind::String(_) => Ok(TypeName::String),
+        ExprKind::TupleLiteral(elements) => {
+            if elements.len() < 2 {
+                return Err(Diagnostic::new(
+                    crate::runtime::DiagnosticCode::PARSE,
+                    "A tuple needs at least two elements",
+                    Some(expr.span),
+                ));
+            }
+            let mut seen: Vec<&str> = Vec::new();
+            let mut tuple = Vec::with_capacity(elements.len());
+            for element in elements {
+                if let Some(name) = &element.name {
+                    if seen.iter().any(|other| other.eq_ignore_ascii_case(name)) {
+                        return Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+                            format!("Tuple element '{name}' is named twice"),
+                            Some(element.value.span),
+                        ));
+                    }
+                    seen.push(name);
+                }
+                tuple.push(crate::runtime::TupleElement {
+                    name: element.name.clone(),
+                    ty: validate_expr(
+                        &element.value,
+                        symbols,
+                        types,
+                        signatures,
+                        context,
+                        option_explicit,
+                    )?,
+                });
+            }
+            Ok(TypeName::Tuple(tuple))
+        }
         ExprKind::Interpolated(parts) => {
             for part in parts {
                 if let crate::InterpolationPart::Value { expr, .. } = part {
@@ -3062,6 +3097,9 @@ pub(super) fn member_read_type(
     {
         return Ok(TypeName::Variant);
     }
+    if let TypeName::Tuple(elements) = object_type {
+        return tuple_member_type(elements, member, span);
+    }
     let (type_name, bindings) = generic_bindings_for_type(object_type, types);
     if !matches!(
         object_type,
@@ -3320,6 +3358,43 @@ fn ensure_visible(
     }
 }
 
+/// The type of `tuple.Member`.
+///
+/// Every element answers to its position -- `Item1`, `Item2` -- and a named one
+/// also answers to its name.
+fn tuple_member_type(
+    elements: &[crate::runtime::TupleElement],
+    member: &str,
+    span: crate::runtime::Span,
+) -> Result<TypeName, Diagnostic> {
+    for (index, element) in elements.iter().enumerate() {
+        let positional = crate::runtime::TupleElement::positional_name(index);
+        let answers_to = positional.eq_ignore_ascii_case(member)
+            || element
+                .name
+                .as_deref()
+                .is_some_and(|name| name.eq_ignore_ascii_case(member));
+        if answers_to {
+            return Ok(element.ty.clone());
+        }
+    }
+
+    let names: Vec<String> = elements
+        .iter()
+        .enumerate()
+        .map(|(index, element)| match &element.name {
+            Some(name) => name.clone(),
+            None => crate::runtime::TupleElement::positional_name(index),
+        })
+        .collect();
+    Err(Diagnostic::new(
+        crate::runtime::DiagnosticCode::MEMBER_ACCESS,
+        format!("A tuple has no element '{member}'"),
+        Some(span),
+    )
+    .with_available_items("its elements are", names.iter().map(String::as_str)))
+}
+
 pub(super) fn ensure_known_type(
     ty: &TypeName,
     types: &TypeRegistry,
@@ -3342,6 +3417,12 @@ pub(super) fn ensure_known_type(
         | TypeName::Variant
         | TypeName::Ptr
         | TypeName::FuncPtr => Ok(()),
+        TypeName::Tuple(elements) => {
+            for element in elements {
+                ensure_known_type(&element.ty, types, span)?;
+            }
+            Ok(())
+        }
         TypeName::User(name) => {
             if types.generic_params.contains(&key(name))
                 || name.eq_ignore_ascii_case(well_known::OBJECT)
@@ -3601,6 +3682,8 @@ fn is_value_type(ty: &TypeName, types: &TypeRegistry) -> bool {
             types.get(name).is_some_and(|sig| sig.is_structure)
         }
         TypeName::String | TypeName::Variant | TypeName::Array(_) => false,
+        // A tuple is copied when it is assigned, the way a Structure is.
+        TypeName::Tuple(_) => true,
         TypeName::Nullable(inner) => is_value_type(inner, types),
     }
 }
@@ -4062,6 +4145,27 @@ pub(super) fn is_numeric_type(ty: &TypeName) -> bool {
     }
 }
 
+/// Whether one tuple fits another, element by element.
+///
+/// Elements convert the way anything else does, so `(1, 2)` fits
+/// `(Long, Double)`. Names do not take part: they are how an element is read
+/// back, not what makes one tuple type different from another.
+fn fits_tuple(
+    target: &TypeName,
+    source: &TypeName,
+    types: &TypeRegistry,
+    span: crate::runtime::Span,
+) -> bool {
+    let (TypeName::Tuple(target), TypeName::Tuple(source)) = (target, source) else {
+        return false;
+    };
+    target.len() == source.len()
+        && target
+            .iter()
+            .zip(source)
+            .all(|(target, source)| ensure_assignable(&target.ty, &source.ty, types, span).is_ok())
+}
+
 /// Whether a callable value fits a delegate-typed place.
 ///
 /// A delegate names a shape, and what actually flows into one is a lambda or
@@ -4085,6 +4189,7 @@ pub(super) fn ensure_assignable(
     span: crate::runtime::Span,
 ) -> Result<(), Diagnostic> {
     if fits_delegate(target, source, types)
+        || fits_tuple(target, source, types, span)
         || target.same_type(&TypeName::Variant)
         || source.same_type(&TypeName::Variant)
         || target.same_type(source)

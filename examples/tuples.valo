@@ -1,0 +1,63 @@
+' Tuples: a fixed group of values in one place.
+'
+' A tuple needs no declaration. Its type is written out where it is used, and
+' two tuples are the same type when their elements are -- element names are for
+' reading, not for identity.
+
+' A tuple return says what a function produces without inventing a Structure
+' for it.
+Function Divide(ByVal a As Long, ByVal b As Long) As (Quotient As Long, Remainder As Long)
+    Return (Quotient := a \ b, Remainder := a Mod b)
+End Function
+
+Function MinMax(ByVal values As Collection) As (Low As Double, High As Double)
+    Dim low As Double
+    Dim high As Double
+    Dim first As Boolean = True
+
+    Dim item As Variant
+    For Each item In values
+        If first Then
+            low = item
+            high = item
+            first = False
+        ElseIf item < low Then
+            low = item
+        ElseIf item > high Then
+            high = item
+        End If
+    Next item
+
+    Return (Low := low, High := high)
+End Function
+
+Sub Main()
+    ' Positional elements are reached as Item1, Item2, and so on.
+    Dim pair = (1, "two")
+    Console.WriteLine(pair.Item1 & " and " & pair.Item2)
+
+    ' Naming an element gives it a second way in; Item1 still works.
+    Dim point = (X := 3, Y := 4)
+    Console.WriteLine($"({point.X}, {point.Y}) is also ({point.Item1}, {point.Item2})")
+
+    ' A tuple return, read through its names.
+    Dim result As (Quotient As Long, Remainder As Long)
+    result = Divide(17, 5)
+    Console.WriteLine($"17 \ 5 = {result.Quotient} remainder {result.Remainder}")
+
+    ' Or unpacked into names of your own, which usually reads better.
+    Dim (q, r) = Divide(22, 7)
+    Console.WriteLine($"22 \ 7 = {q} remainder {r}")
+
+    Dim numbers As New Collection()
+    numbers.Add(4)
+    numbers.Add(-2)
+    numbers.Add(9)
+    Dim (low, high) = MinMax(numbers)
+    Console.WriteLine($"between {low} and {high}")
+
+    ' Elements convert on the way in, the way any other value does.
+    Dim widened As (Double, Double)
+    widened = (1, 2)
+    Console.WriteLine(widened.Item1 / 2)
+End Sub

@@ -83,6 +83,7 @@ COM examples require Windows and the relevant COM server. They are skipped by th
 - [Lambdas](lambdas.valo) (single-expression and multi-line `Function` / `Sub`)
 - [Overloads](overloads.valo) (several procedures sharing one name)
 - [Delegates](delegates.valo) (named callable types)
+- [Tuples](tuples.valo) (grouped values, tuple returns, and naming their elements)
 - [Null-Conditional Access](null_conditional.valo) (`obj?.Member`)
 
 ## Generics, Advanced Syntax, and Modern Features

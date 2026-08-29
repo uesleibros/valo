@@ -202,3 +202,48 @@ rename.
 
 - [Expressions and operators](expressions.md)
 - [Example: conversions and reflection](../../examples/conversions.valo)
+
+## Tuples
+
+A tuple groups a fixed number of values without declaring a type for them:
+
+```vb
+Dim pair = (1, "two")
+Console.WriteLine(pair.Item1)      ' 1
+Console.WriteLine(pair.Item2)      ' two
+```
+
+Elements can be named, which gives each a second way in; the positional name
+still works:
+
+```vb
+Dim point = (X := 3, Y := 4)
+Console.WriteLine(point.X)         ' 3
+Console.WriteLine(point.Item1)     ' 3
+```
+
+The type is written out where it is used, including as a return type:
+
+```vb
+Function Divide(ByVal a As Long, ByVal b As Long) As (Quotient As Long, Remainder As Long)
+    Return (Quotient := a \ b, Remainder := a Mod b)
+End Function
+```
+
+`Dim` with parentheses names the elements of a tuple as separate variables,
+which usually reads better than reaching through the tuple:
+
+```vb
+Dim (q, r) = Divide(17, 5)
+Console.WriteLine(q & " remainder " & r)
+```
+
+Tuples are structural: two tuple types are the same when their elements are,
+whatever the elements are called. Elements convert the way any other value
+does, so `(1, 2)` fits `(Double, Double)`. A tuple is copied when it is
+assigned, as a `Structure` is, and it cannot cross the native boundary --
+pass its elements instead.
+
+## Related
+
+- [Example: tuples](../../examples/tuples.valo)

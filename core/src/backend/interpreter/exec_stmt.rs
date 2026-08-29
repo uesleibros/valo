@@ -101,6 +101,40 @@ impl Interpreter {
             return Ok(ControlFlow::Terminate);
         }
         match stmt {
+            Stmt::DimTuple {
+                names,
+                initializer,
+                span,
+            } => {
+                let value = self.eval_expr(initializer, frame)?;
+                let Value::Record(record) = value else {
+                    return Err(Diagnostic::new(
+                        crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                        "Naming elements needs a tuple",
+                        Some(*span),
+                    ));
+                };
+                for (index, name) in names.iter().enumerate() {
+                    let positional = crate::runtime::TupleElement::positional_name(index);
+                    let element = record.fields.get(&key(&positional)).ok_or_else(|| {
+                        Diagnostic::new(
+                            crate::runtime::DiagnosticCode::MEMBER_ACCESS,
+                            format!("The tuple has no element {positional}"),
+                            Some(*span),
+                        )
+                    })?;
+                    frame.declare(
+                        name,
+                        element.type_name(),
+                        None,
+                        self.option_base,
+                        *span,
+                        self,
+                    )?;
+                    let _ = frame.assign(name, element.clone(), *span)?;
+                }
+                Ok(ControlFlow::Continue)
+            }
             Stmt::Dim {
                 name,
                 ty,
@@ -1510,6 +1544,7 @@ impl Interpreter {
 fn stmt_span(stmt: &Stmt) -> crate::runtime::Span {
     match stmt {
         Stmt::Dim { span, .. }
+        | Stmt::DimTuple { span, .. }
         | Stmt::DimMany { span, .. }
         | Stmt::Static { span, .. }
         | Stmt::StaticMany { span, .. }
