@@ -147,3 +147,16 @@ than one candidate. Building that list walks the arguments and folds their
 names, which for a name with one procedure behind it was work with nothing to
 decide: doing it lazily took 18% off a benchmark that passes a string to a
 function 600,000 times.
+
+## What could not be measured
+
+A call formats two strings for the stack trace and the scope name, on every
+call, whether or not anything reads them. Removing both and measuring showed
+the build with *less* work in it running slower, on repeated interleaved runs.
+That is not a result about the change; it is the noise floor of the machine
+doing the measuring, which on the day was wider than the effect.
+
+Recorded because the alternative is to keep rediscovering it. An optimisation
+worth roughly one allocation per call needs a quieter machine or a harness that
+measures the interpreter rather than the process, and until then it is not worth
+the change it would take to land.
