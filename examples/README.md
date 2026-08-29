@@ -128,3 +128,18 @@ COM examples require Windows and the relevant COM server. They are skipped by th
 - [COM Dictionary](com_dictionary.valo)
 - [COM FileSystemObject](com_filesystem.valo)
 - [COM PowerPoint](com_powerpoint.valo)
+
+## Transcripts
+
+Every example's output is recorded in [`golden/`](golden/) and compared on each
+test run, so a change to what one prints has to be one someone meant to make.
+Run the suite with `VALO_BLESS=1` to record a new example or accept a change.
+
+An example whose output depends on where it runs -- the working directory, the
+platform, what is installed -- says so in a comment near the top:
+
+```vb
+' transcript: environment-dependent - prints the working directory.
+```
+
+It still runs, so a crash in it is still caught; only the comparison is skipped.

@@ -1,3 +1,5 @@
+' transcript: environment-dependent - depends on PowerPoint being installed,
+' and reports its absence in the host's language.
 ' Valo COM Example: PowerPoint Automation
 ' This example demonstrates automating PowerPoint via COM.
 ' Requires Windows and Microsoft PowerPoint installed.

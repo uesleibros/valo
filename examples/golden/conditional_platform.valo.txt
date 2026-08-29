@@ -1,4 +1,0 @@
-Runtime: Valo
-Platform: Windows
-Arch: x64
-Build: Debug

@@ -1,3 +1,4 @@
+' transcript: environment-dependent - prints the working directory.
 ' Valo COM Example: FileSystemObject
 ' This example demonstrates using Scripting.FileSystemObject to list files and folders.
 ' Requires Windows.

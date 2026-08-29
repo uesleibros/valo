@@ -23,7 +23,7 @@ fn test_official_examples() {
         count += 1;
         match valo_core::run_file(&path) {
             Ok(output) => {
-                if !has_environment_dependent_output(file_name)
+                if !has_environment_dependent_output(&path)
                     && let Err(mismatch) = check_transcript(&golden_dir, &path, &output, bless)
                 {
                     failures.push(mismatch);
@@ -110,23 +110,25 @@ fn has_sub_main(path: &Path) -> bool {
     })
 }
 
-/// Examples whose output depends on the machine they run on.
+/// The marker an example carries when its output depends on where it runs.
 ///
-/// These are still run, so a crash in one is still caught; only the comparison
-/// is skipped, because there is no output that would be correct everywhere.
+/// Such an example is still run, so a crash in it is still caught; only the
+/// comparison against a transcript is skipped, because no one output would be
+/// correct everywhere.
 ///
-/// Determinism and environment-independence are not the same property. Every
-/// example here prints the same thing twice in a row on one machine, which is
-/// what made the distinction easy to miss.
-fn has_environment_dependent_output(file_name: Option<&str>) -> bool {
-    matches!(
-        file_name,
-        // Print the working directory, which differs per checkout.
-        Some("com_filesystem.valo" | "vba_file_attributes.valo")
-        // Depends on whether PowerPoint is installed, and reports the failure
-        // in the host's language when it is not.
-            | Some("com_powerpoint.valo")
-    )
+/// The marker lives in the example rather than in a list here because a list
+/// here is a list of the cases someone thought of. Determinism and
+/// independence from the environment are not the same property, and an example
+/// that prints the same thing twice on one machine looks fine until it runs on
+/// another -- which is exactly when a central list turns out to be short.
+const ENVIRONMENT_DEPENDENT: &str = "transcript: environment-dependent";
+
+fn has_environment_dependent_output(path: &Path) -> bool {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .take(20)
+        .any(|line| line.contains(ENVIRONMENT_DEPENDENT))
 }
 
 /// Setting this records the transcripts instead of comparing against them.

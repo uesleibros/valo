@@ -1,3 +1,4 @@
+' transcript: environment-dependent - prints the working directory.
 Sub Main()
     MkDir "valo-attrs-demo"
 

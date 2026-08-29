@@ -1,3 +1,5 @@
+' transcript: environment-dependent - the point of the example is that it
+' prints something different on each platform.
 #If VALO Then
 Sub Main()
     Console.WriteLine("Runtime: Valo")
