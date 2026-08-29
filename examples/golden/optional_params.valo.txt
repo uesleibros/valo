@@ -1,0 +1,7 @@
+hello Valo
+hello Runtime
+3
+30
+a
+2
+True

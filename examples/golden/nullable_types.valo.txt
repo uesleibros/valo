@@ -1,0 +1,6 @@
+x is null
+x is now: 42
+y is: 42
+s is nothing? True
+10 + Nothing is nothing? True
+10 + 20 = 30

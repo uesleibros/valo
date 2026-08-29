@@ -1,0 +1,25 @@
+--- Basic Wildcards ---
+'abc' Like 'a?c':     True
+'abc' Like 'a*':      True
+'a1c' Like 'a#c':     True
+--- Ranges ---
+'abc' Like 'a[a-z]c':  True
+'a5c' Like 'a[0-9]c':  True
+'aBc' Like 'a[A-Z]c':  True
+--- Multiple Ranges ---
+'a5c' Like 'a[a-z0-9]c':True
+'azc' Like 'a[a-z0-9]c':True
+--- Negation ---
+'abc' Like 'a[!0-9]c': True
+'a1c' Like 'a[!0-9]c': False
+--- Escaping ---
+'a*c' Like 'a[*]c':    True
+'a?c' Like 'a[?]c':    True
+'a#c' Like 'a[#]c':    True
+'a[c' Like 'a[[]c':    True
+--- Literal Dash/Brackets ---
+'a-c' Like 'a[-bc]c':  True
+'abc' Like 'a[bc-]c':  True
+'a]c' Like 'a[]]c':    True
+--- Case Sensitivity ---
+'abc' Like 'A*':       False

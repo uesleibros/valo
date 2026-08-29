@@ -1,0 +1,4 @@
+bare sub call
+call statement
+name Valo
+done

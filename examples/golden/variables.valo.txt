@@ -1,0 +1,4 @@
+Name: Valo
+Count: 42
+Active: True
+Variant: runtime

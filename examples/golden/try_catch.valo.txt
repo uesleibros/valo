@@ -1,0 +1,12 @@
+--- Try/Catch/Finally Demo ---
+Performing safe operation...
+Cleanup 1
+Performing dangerous operation...
+Caught error 100: Something went wrong
+Source: DemoSource
+Cleanup 2
+Testing propagation...
+Deterministic finally in TestPropagation
+Caught propagated error in Main
+Debug message	42	True
+Parenthesized debug message

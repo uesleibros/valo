@@ -1,0 +1,8 @@
+Original length: 10
+LSet with shorter text: 'Hello     '
+Length after LSet: 10
+RSet with shorter text: '     World'
+Length after RSet: 10
+LSet with longer text:  'Super'
+RSet with longer text:  'Super'
+LSet in Array:          'Array   '

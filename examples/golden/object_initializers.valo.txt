@@ -1,0 +1,5 @@
+origin: (0, 0)
+corner: (1920, 1080)
+KEYBOARD costs 49.90 (12 in stock)
+MONITOR     219.50
+CABLE         7.25

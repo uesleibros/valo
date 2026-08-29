@@ -1,0 +1,11 @@
+Count after Add: 3
+Item 1: Apple
+Item 2: Banana
+Item 'yellow': Banana
+Item 'red':    Cherry
+--- Iteration ---
+Fruit: Apple
+Fruit: Banana
+Fruit: Cherry
+Count after Remove: 2
+New Item 2: Cherry

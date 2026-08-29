@@ -1,0 +1,3 @@
+VBA
+_NewEnum
+works

@@ -1,0 +1,12 @@
+Original count: 5
+Evens count: 2
+Doubled: 4
+Doubled: 8
+Contains 5: True
+Sum:     15
+Average: 3
+Min:     1
+Max:     5
+Subset count: 2
+Subset item: 3
+Subset item: 4

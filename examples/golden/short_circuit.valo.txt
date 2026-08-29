@@ -1,0 +1,4 @@
+True OrElse ... worked
+False AndAlso ... worked
+OrElse with Nullable worked
+AndAlso with Nullable worked

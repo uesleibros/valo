@@ -1,0 +1,3 @@
+Valo
+1
+True

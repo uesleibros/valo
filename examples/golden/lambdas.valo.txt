@@ -1,0 +1,11 @@
+twice(21) = 42
+ -5 is negative
+  0 is zero
+  7 is positive
+----
+DONE
+----
+sum of squares 1..5 = 55
+scale(5) with factor 3 = 15
+scale(5) after factor = 10 = 50
+addFive(1) = 106

@@ -1,0 +1,3 @@
+Result: Hello (EXTENDED)
+String printed via extension: Hello
+Explicit: World (EXTENDED)

@@ -1,0 +1,4 @@
+Product without a name
+42
+0
+1.0.0

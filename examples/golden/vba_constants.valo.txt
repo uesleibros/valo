@@ -1,0 +1,5 @@
+0
+A\r\nB
+	tabbed
+-1
+True

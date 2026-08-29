@@ -1,0 +1,15 @@
+--- Type Checks ---
+IsNumeric(123):      True
+IsNumeric("45.6"):    True
+IsNumeric("abc"):     False
+IsNumeric(True):     True
+IsDate("2026-05-27"): True
+IsDate("12:30:00"):   True
+IsDate("abc"):        False
+--- Array Functions ---
+Split result count:  4
+First fruit:         Apple
+Joined with ' | ':   Apple | Banana | Cherry | Date
+--- Metadata ---
+TypeName(fruits):    Array
+VarType(fruits):     8192

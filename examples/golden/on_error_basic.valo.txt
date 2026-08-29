@@ -1,0 +1,5 @@
+number 1
+description Division by zero
+cleared 0
+nothing suppressed
+done

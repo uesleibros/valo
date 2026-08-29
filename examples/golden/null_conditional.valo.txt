@@ -1,0 +1,6 @@
+London
+Ada lives in London
+Grace has no address on file
+London, UK
+unknown has a label: False
+missing city is Nothing: True

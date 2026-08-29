@@ -1,0 +1,10 @@
+Valo 20
+Double Boolean
+UInt64 Date
+Long Double
+two 3.5
+Integer Long typed
+Single Double Currency
+276
+Valo Modern
+Array Array

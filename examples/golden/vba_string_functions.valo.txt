@@ -1,0 +1,10 @@
+4
+ab
+def
+bcd
+text
+x-b-x
+3
+VALO basic
+A 65
+FF 10

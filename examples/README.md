@@ -14,11 +14,27 @@ From source, use:
 cargo run -p valo_cli -- run examples/hello.valo
 ```
 
-The integration test discovers examples with `Sub Main` and runs the supported set:
+The integration test discovers examples with `Sub Main`, runs the supported set,
+and compares what each one prints against a recorded transcript in
+[`golden/`](golden):
 
 ```sh
 cargo test -p valo_core --test examples -- --nocapture
 ```
+
+Running an example only proves it does not crash. The transcripts make the
+current behaviour explicit, so an example that quietly changed what it prints
+fails instead of passing -- which is what makes them a safety net for work on the
+interpreter.
+
+After adding an example, or when a change to its output is intended, record it:
+
+```sh
+VALO_BLESS=1 cargo test -p valo_core --test examples
+```
+
+Then read the diff before committing. A transcript is only worth having if
+someone looked at what changed.
 
 COM examples require Windows and the relevant COM server. They are skipped by the example integration test on non-Windows hosts.
 

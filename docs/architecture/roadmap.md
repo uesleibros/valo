@@ -43,10 +43,10 @@ program — [the Breakout demo](../../game/README.md) — rather than by reading
 Nothing here is a VM. All of it is what a VM needs to exist first, and the first
 two are worth doing even if the VM never happens.
 
-- [ ] **Pin the semantics with golden outputs.** The examples test runs all 117
-      programs but only checks the output of `hello.valo`. Until every example's
-      output is recorded, a new engine cannot be told apart from a broken one.
-      Cheap, and the safety net for everything below.
+- [x] **Pin the semantics with golden outputs.** Every example's output is now
+      recorded in `examples/golden/` and compared on each run, so a new engine
+      can be told apart from a broken one. `VALO_BLESS=1` records or updates
+      them.
 - [ ] **Resolve identifiers to slot indices.** Every variable read hashes a
       string today. A VM's locals are indices, so this is a hard prerequisite —
       and it speeds up the current interpreter immediately. The analyzer already

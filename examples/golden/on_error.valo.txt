@@ -1,0 +1,4 @@
+handled 1
+Dynamic array is unallocated
+42
+done 0

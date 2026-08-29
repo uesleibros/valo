@@ -1,0 +1,8 @@
+open demo
+inside using
+dispose demo
+terminate	demo
+open error
+dispose error
+terminate	error
+caught: failure

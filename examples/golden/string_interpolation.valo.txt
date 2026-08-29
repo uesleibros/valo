@@ -1,0 +1,9 @@
+Hello, Ada! You have 3 items.
+Upper: ADA, initial: A
+Next year you will have 4.
+Literal braces: {not a hole}
+She said "hello", Ada.
+Product          Price   Stock
+Keyboard         49.90      12
+Monitor         219.50       4
+Cable             7.25     130

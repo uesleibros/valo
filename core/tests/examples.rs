@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 #[test]
 fn test_official_examples() {
     let examples_dir = examples_dir();
+    let golden_dir = examples_dir.join("golden");
+    let bless = std::env::var_os(BLESS_VARIABLE).is_some();
     let entries = runnable_examples(&examples_dir);
 
     let mut failures = Vec::new();
@@ -21,11 +23,8 @@ fn test_official_examples() {
         count += 1;
         match valo_core::run_file(&path) {
             Ok(output) => {
-                if is_hello_example(file_name) && output != vec!["Hello, Valo"] {
-                    failures.push(format!(
-                        "Example {:?} produced incorrect output: expected [\"Hello, Valo\"], got {:?}",
-                        path, output
-                    ));
+                if let Err(mismatch) = check_transcript(&golden_dir, &path, &output, bless) {
+                    failures.push(mismatch);
                 }
             }
             Err(diag) => {
@@ -109,8 +108,77 @@ fn has_sub_main(path: &Path) -> bool {
     })
 }
 
-fn is_hello_example(file_name: Option<&str>) -> bool {
-    matches!(file_name, Some("hello.valo" | "hello.bas"))
+/// Setting this records the transcripts instead of comparing against them.
+const BLESS_VARIABLE: &str = "VALO_BLESS";
+
+/// Compares an example's output against its recorded transcript.
+///
+/// Running an example only proves it does not crash. An example that quietly
+/// changed what it prints would still pass, which is no use as a safety net for
+/// work on the interpreter: the transcripts make the current behaviour explicit,
+/// so a change to it has to be one someone meant to make.
+///
+/// Run the suite with `VALO_BLESS=1` to record a new example or accept an
+/// intended change.
+fn check_transcript(
+    golden_dir: &Path,
+    example: &Path,
+    output: &[String],
+    bless: bool,
+) -> Result<(), String> {
+    let name = example
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("example paths are valid UTF-8");
+    let transcript_path = golden_dir.join(format!("{name}.txt"));
+    let actual = transcript(output);
+
+    if bless {
+        fs::create_dir_all(golden_dir)
+            .map_err(|err| format!("could not create {golden_dir:?}: {err}"))?;
+        fs::write(&transcript_path, &actual)
+            .map_err(|err| format!("could not write {transcript_path:?}: {err}"))?;
+        return Ok(());
+    }
+
+    let Ok(expected) = fs::read_to_string(&transcript_path) else {
+        return Err(format!(
+            "{example:?} has no recorded transcript. Run the suite with {BLESS_VARIABLE}=1 to record one."
+        ));
+    };
+
+    // Transcripts are compared as text so a mismatch reads as a diff rather
+    // than as two debug-printed vectors.
+    let expected = expected.replace("\r\n", "\n");
+    if expected == actual {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{example:?} no longer prints what was recorded.\n\
+         --- recorded ---\n{expected}\
+         --- actual ---\n{actual}\
+         Run the suite with {BLESS_VARIABLE}=1 if this change was intended."
+    ))
+}
+
+/// Renders output as one escaped line per printed line.
+///
+/// Escaping matters: some examples print the VBA carriage-return constants, so
+/// a transcript can contain a CR that is *data*. Written raw it would be
+/// indistinguishable from a line ending, and any normalisation of line endings
+/// -- which a checkout may perform -- would silently corrupt it.
+fn transcript(output: &[String]) -> String {
+    let mut text = String::new();
+    for line in output {
+        let escaped = line
+            .replace('\\', "\\\\")
+            .replace('\r', "\\r")
+            .replace('\n', "\\n");
+        text.push_str(&escaped);
+        text.push('\n');
+    }
+    text
 }
 
 fn should_skip_example(file_name: Option<&str>) -> bool {

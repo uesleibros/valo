@@ -1,0 +1,13 @@
+=== Valo Ultimate Complexity Demo ===
+Readings > 20C (in F):
+ - 72.5
+ - 95.36
+ - 77
+Lifted operator correctly produced Nothing.
+Analysis starting...
+[EVENT] ALERT Level 2: Threshold exceeded!
+Summary: Pipeline has 4 items. Total Global: 4
+Entering async context...
+Exiting async context.
+Final Status: Success
+=== End of Demo ===

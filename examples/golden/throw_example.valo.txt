@@ -1,0 +1,2 @@
+10
+Balance cannot be negative.

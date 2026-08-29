@@ -1,0 +1,6 @@
+starts with A
+True
+True
+True
+True
+True

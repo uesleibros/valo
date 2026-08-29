@@ -1,0 +1,14 @@
+--- Array Builtins Demo ---
+Array element 1: Valo
+Colors:
+- red
+- green
+- blue
+Joined: red | green | blue
+Fruits with 'a':
+- apple
+- banana
+- date
+Matrix bounds:
+Dim 1: 1 To 5
+Dim 2: 0 To 10

@@ -1,0 +1,9 @@
+advanced start
+resume next 513
+Example.Advanced
+raised under Resume Next
+valo-help.txt
+7
+handler 900
+erl 30
+advanced done

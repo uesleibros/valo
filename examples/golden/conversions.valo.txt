@@ -1,0 +1,8 @@
+43
+7!
+type:  Dog
+name:  total
+Rex the collie
+plain is not a Dog
+recovered: Rex the collie
+machine is an Animal: False

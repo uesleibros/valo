@@ -1,0 +1,5 @@
+Count: 3
+Fruit: Apple
+Fruit: Banana
+Fruit: Orange
+Mixed count: 4
