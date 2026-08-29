@@ -1,1 +1,4 @@
 *.valo linguist-language=VB.NET
+
+# Recorded example output is compared byte for byte; keep it as written.
+examples/golden/*.txt -text
