@@ -1,114 +1,113 @@
+//! Builtins that build or measure arrays.
+//!
+//! Argument counts are checked against the registry before dispatch, so these
+//! functions index the arguments their registry entry guarantees.
+
+use super::super::Interpreter;
+use super::{ValueFn, find_handler};
 use crate::runtime::numeric::value_to_i64;
-use crate::runtime::{ArrayValue, Diagnostic, Value};
+use crate::runtime::{ArrayValue, Diagnostic, Span, TypeName, Value};
 use std::rc::Rc;
 
+/// The builtins this module implements.
+pub(super) const HANDLERS: &[(&str, ValueFn)] = &[
+    ("Array", array),
+    ("LBound", bound),
+    ("UBound", bound),
+    ("Split", split),
+    ("Join", join),
+];
+
 pub(crate) fn eval_arrays(
+    interpreter: &mut Interpreter,
     name: &str,
     args: &[Value],
-    span: crate::runtime::Span,
+    span: Span,
 ) -> Result<Option<Value>, Diagnostic> {
-    if name.eq_ignore_ascii_case("Array") {
-        let len = args.len() as i64;
-        return Ok(Some(Value::Array(Rc::new(ArrayValue {
-            element_type: crate::runtime::TypeName::Variant,
-            elements: args.to_vec(),
-            bounds: vec![crate::runtime::ArrayBound {
-                lower: 0,
-                upper: len - 1,
-            }],
-            allocated: true,
-            dynamic: true,
-        }))));
+    match find_handler(HANDLERS, name) {
+        Some(handler) => handler(interpreter, name, args, span).map(Some),
+        None => Ok(None),
     }
+}
 
-    if name.eq_ignore_ascii_case("LBound") || name.eq_ignore_ascii_case("UBound") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                format!("{} expects one array argument and optional dimension", name),
-                Some(span),
-            ));
-        }
-        let dimension = if args.len() == 2 {
-            value_to_i64(&args[1]).ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                    "Array dimension must be Integer",
-                    Some(span),
-                )
-            })? as usize
-        } else {
-            1
-        };
-        let value = &args[0];
-        let bound = if name.eq_ignore_ascii_case("LBound") {
-            super::super::arrays::lbound(value, dimension, span)?
-        } else {
-            super::super::arrays::ubound(value, dimension, span)?
-        };
-        return Ok(Some(Value::Int64(bound)));
-    }
+/// Builds a zero-based `Variant` array from the arguments.
+fn array(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(one_dimensional(TypeName::Variant, args.to_vec()))
+}
 
-    if name.eq_ignore_ascii_case("Split") {
-        if args.is_empty() || args.len() > 4 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Split expects 1 to 4 arguments",
-                Some(span),
-            ));
-        }
-        let expression = args[0].to_output_string();
-        let delimiter = if args.len() >= 2 && !matches!(args[1], Value::Missing) {
-            args[1].to_output_string()
-        } else {
-            " ".to_string()
-        };
-
-        let parts: Vec<Value> = if delimiter.is_empty() {
-            vec![Value::String(expression)]
-        } else {
-            expression
-                .split(&delimiter)
-                .map(|s| Value::String(s.to_string()))
-                .collect()
-        };
-
-        let len = parts.len() as i64;
-        return Ok(Some(Value::Array(Rc::new(ArrayValue {
-            element_type: crate::runtime::TypeName::String,
-            elements: parts,
-            bounds: vec![crate::runtime::ArrayBound {
-                lower: 0,
-                upper: len - 1,
-            }],
-            allocated: true,
-            dynamic: true,
-        }))));
-    }
-
-    if name.eq_ignore_ascii_case("Join") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Join expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        let Value::Array(arr) = &args[0] else {
-            return Err(Diagnostic::new(
+/// Backs both `LBound` and `UBound`, which differ only in which end they read.
+fn bound(_: &mut Interpreter, name: &str, args: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    let dimension = match args.get(1) {
+        None => 1,
+        Some(value) => value_to_i64(value).ok_or_else(|| {
+            Diagnostic::new(
                 crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "Join requires an array",
+                "Array dimension must be Integer",
                 Some(span),
-            ));
-        };
-        let delimiter = if args.len() == 2 && !matches!(args[1], Value::Missing) {
-            args[1].to_output_string()
-        } else {
-            " ".to_string()
-        };
-        let strings: Vec<String> = arr.elements.iter().map(|v| v.to_output_string()).collect();
-        return Ok(Some(Value::String(strings.join(&delimiter))));
-    }
+            )
+        })? as usize,
+    };
 
-    Ok(None)
+    let bound = if name.eq_ignore_ascii_case("LBound") {
+        super::super::arrays::lbound(&args[0], dimension, span)?
+    } else {
+        super::super::arrays::ubound(&args[0], dimension, span)?
+    };
+    Ok(Value::Int64(bound))
+}
+
+fn split(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    let expression = args[0].to_output_string();
+    let delimiter = optional_delimiter(args.get(1));
+
+    // Splitting on an empty delimiter has no separator to find, so the whole
+    // string is the single part.
+    let parts: Vec<Value> = if delimiter.is_empty() {
+        vec![Value::String(expression)]
+    } else {
+        expression
+            .split(&delimiter)
+            .map(|part| Value::String(part.to_string()))
+            .collect()
+    };
+
+    Ok(one_dimensional(TypeName::String, parts))
+}
+
+fn join(_: &mut Interpreter, _: &str, args: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    let Value::Array(array) = &args[0] else {
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "Join requires an array",
+            Some(span),
+        ));
+    };
+    let delimiter = optional_delimiter(args.get(1));
+    let parts: Vec<String> = array
+        .elements
+        .iter()
+        .map(|element| element.to_output_string())
+        .collect();
+    Ok(Value::String(parts.join(&delimiter)))
+}
+
+/// Reads a separator argument, defaulting to a single space when it is absent
+/// or was left out at the call site.
+fn optional_delimiter(argument: Option<&Value>) -> String {
+    match argument {
+        Some(value) if !matches!(value, Value::Missing) => value.to_output_string(),
+        _ => " ".to_string(),
+    }
+}
+
+/// Wraps elements in a zero-based, dynamically sized array.
+fn one_dimensional(element_type: TypeName, elements: Vec<Value>) -> Value {
+    let upper = elements.len() as i64 - 1;
+    Value::Array(Rc::new(ArrayValue {
+        element_type,
+        elements,
+        bounds: vec![crate::runtime::ArrayBound { lower: 0, upper }],
+        allocated: true,
+        dynamic: true,
+    }))
 }

@@ -128,6 +128,9 @@ mod handler_tests {
         ("types", types::HANDLERS),
         ("math", math::HANDLERS),
         ("strings", strings::HANDLERS),
+        ("arrays", arrays::HANDLERS),
+        ("misc", MISC_HANDLERS),
+        ("file system", FILE_SYSTEM_HANDLERS),
     ];
 
     /// The lazy table and the value tables must not claim the same builtin.
@@ -173,6 +176,25 @@ mod handler_tests {
         );
     }
 
+    /// A group routed to a table must list exactly the same builtins.
+    ///
+    /// Dispatch selects the table by group and then expects to find a handler,
+    /// so a disagreement would be a panic at run time rather than a diagnostic.
+    #[test]
+    fn the_file_system_group_and_its_table_agree() {
+        use crate::runtime::builtins::{BUILTINS, BuiltinGroup};
+
+        for builtin in BUILTINS {
+            let in_group = builtin.group == BuiltinGroup::FileSystem;
+            let in_table = find_handler(FILE_SYSTEM_HANDLERS, builtin.name).is_some();
+            assert_eq!(
+                in_group, in_table,
+                "'{}' is in the FileSystem group ({in_group}) but its handler table says {in_table}",
+                builtin.name
+            );
+        }
+    }
+
     /// An exemption must name a builtin that really has no table entry.
     ///
     /// Without this, converting a module would leave stale exemptions behind,
@@ -209,10 +231,6 @@ mod handler_tests {
         "FileLen",
         "FileDateTime",
         "CurDir",
-        "Kill",
-        "MkDir",
-        "RmDir",
-        "ChDir",
         "Timer",
         "Now",
         "Date",
@@ -233,17 +251,6 @@ mod handler_tests {
         "Weekday",
         "MonthName",
         "WeekdayName",
-        // Implemented by the arrays module, which still uses a name chain.
-        "Array",
-        "LBound",
-        "UBound",
-        "Split",
-        "Join",
-        // Implemented by the miscellaneous value dispatcher.
-        "RGB",
-        "QBColor",
-        "Spc",
-        "Tab",
     ];
 
     /// A handler table may only name builtins the registry declares.
@@ -952,15 +959,10 @@ pub(crate) fn dispatch_function(
     }
 
     if is_in_group(effective_name, BuiltinGroup::FileSystem) {
-        expect_arg_count(effective_name, args, 1, span)?;
         let path = interpreter.eval_expr(&args[0], frame)?.to_output_string();
-        match effective_name.to_ascii_lowercase().as_str() {
-            "kill" => interpreter.kill_path(&path, span)?,
-            "mkdir" => interpreter.mkdir_path(&path, span)?,
-            "rmdir" => interpreter.rmdir_path(&path, span)?,
-            "chdir" => interpreter.chdir_path(&path, span)?,
-            _ => unreachable!(),
-        }
+        let act = find_handler(FILE_SYSTEM_HANDLERS, effective_name)
+            .expect("the FileSystem group and its handler table list the same builtins");
+        act(interpreter, effective_name, &[Value::String(path)], span)?;
         return Ok(Some(Value::Empty));
     }
 
@@ -977,7 +979,7 @@ pub(crate) fn dispatch_function(
     if let Some(val) = types::eval_types(interpreter, effective_name, &values, span)? {
         return Ok(Some(val));
     }
-    if let Some(val) = arrays::eval_arrays(effective_name, &values, span)? {
+    if let Some(val) = arrays::eval_arrays(interpreter, effective_name, &values, span)? {
         return Ok(Some(val));
     }
     if let Some(val) = strings::eval_strings(interpreter, effective_name, &values, span)? {
@@ -986,7 +988,7 @@ pub(crate) fn dispatch_function(
     if let Some(val) = math::eval_math(interpreter, effective_name, &values, span)? {
         return Ok(Some(val));
     }
-    if let Some(val) = eval_misc_value_function(effective_name, &values, span)? {
+    if let Some(val) = eval_misc_value_function(interpreter, effective_name, &values, span)? {
         return Ok(Some(val));
     }
 
@@ -1273,42 +1275,106 @@ fn environ_value(
     }
 }
 
+/// Statements that create or remove a file or directory.
+///
+/// Each takes the single path argument the dispatcher has already evaluated.
+pub(super) const FILE_SYSTEM_HANDLERS: &[(&str, ValueFn)] = &[
+    ("Kill", kill_path),
+    ("MkDir", make_directory),
+    ("RmDir", remove_directory),
+    ("ChDir", change_directory),
+];
+
+/// Defines a file-system statement that acts on one path.
+macro_rules! path_statements {
+    ($($fn_name:ident => $method:ident,)*) => {
+        $(
+            fn $fn_name(
+                interpreter: &mut Interpreter,
+                _: &str,
+                args: &[Value],
+                span: crate::runtime::Span,
+            ) -> Result<Value, Diagnostic> {
+                interpreter.$method(&args[0].to_output_string(), span)?;
+                Ok(Value::Empty)
+            }
+        )*
+    };
+}
+
+path_statements! {
+    kill_path => kill_path,
+    make_directory => mkdir_path,
+    remove_directory => rmdir_path,
+    change_directory => chdir_path,
+}
+
+/// Colour and layout builtins that do not belong to a larger area.
+pub(super) const MISC_HANDLERS: &[(&str, ValueFn)] = &[
+    ("RGB", rgb),
+    ("QBColor", qb_color),
+    ("Spc", spaces),
+    ("Tab", spaces),
+];
+
 fn eval_misc_value_function(
+    interpreter: &mut Interpreter,
     name: &str,
     args: &[Value],
     span: crate::runtime::Span,
 ) -> Result<Option<Value>, Diagnostic> {
-    match name.to_ascii_lowercase().as_str() {
-        "rgb" => {
-            expect_value_count(name, args, 3, span)?;
-            let red = color_component(name, &args[0], span)?;
-            let green = color_component(name, &args[1], span)?;
-            let blue = color_component(name, &args[2], span)?;
-            Ok(Some(Value::Int64(red | (green << 8) | (blue << 16))))
-        }
-        "qbcolor" => {
-            expect_value_count(name, args, 1, span)?;
-            let color = integer_arg(name, &args[0], span)?;
-            const COLORS: [i64; 16] = [
-                0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080, 0x008080, 0xC0C0C0,
-                0x808080, 0xFF0000, 0x00FF00, 0xFFFF00, 0x0000FF, 0xFF00FF, 0x00FFFF, 0xFFFFFF,
-            ];
-            let Some(value) = COLORS.get(color as usize) else {
-                return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                    "QBColor color must be between 0 and 15",
-                    Some(span),
-                ));
-            };
-            Ok(Some(Value::Int64(*value)))
-        }
-        "spc" | "tab" => {
-            expect_value_count(name, args, 1, span)?;
-            let count = integer_arg(name, &args[0], span)?.max(0) as usize;
-            Ok(Some(Value::String(" ".repeat(count))))
-        }
-        _ => Ok(None),
+    match find_handler(MISC_HANDLERS, name) {
+        Some(handler) => handler(interpreter, name, args, span).map(Some),
+        None => Ok(None),
     }
+}
+
+/// Packs three components into the little-endian order VBA colours use.
+fn rgb(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let red = color_component(name, &args[0], span)?;
+    let green = color_component(name, &args[1], span)?;
+    let blue = color_component(name, &args[2], span)?;
+    Ok(Value::Int64(red | (green << 8) | (blue << 16)))
+}
+
+/// The sixteen colours of the original QuickBASIC palette.
+fn qb_color(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    const COLORS: [i64; 16] = [
+        0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080, 0x008080, 0xC0C0C0, 0x808080,
+        0xFF0000, 0x00FF00, 0xFFFF00, 0x0000FF, 0xFF00FF, 0x00FFFF, 0xFFFFFF,
+    ];
+    let index = integer_arg(name, &args[0], span)?;
+    COLORS
+        .get(index as usize)
+        .map(|color| Value::Int64(*color))
+        .ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "QBColor color must be between 0 and 15",
+                Some(span),
+            )
+        })
+}
+
+/// Backs both `Spc` and `Tab`, which both produce runs of spaces.
+fn spaces(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let count = integer_arg(name, &args[0], span)?.max(0) as usize;
+    Ok(Value::String(" ".repeat(count)))
 }
 
 fn color_component(
