@@ -1,0 +1,72 @@
+' Queries: filtering, sorting, and projecting in one expression.
+'
+' A query starts with `From`, names a range variable, and walks anything
+' `For Each` can walk -- an array, a Collection, or a class with an iterator.
+' The clauses apply in the order they are written, so `Take 3` after an
+' `Order By` means the first three of the sorted values.
+
+Class Person
+    Public Name_ As String
+    Public Age As Long
+    Public City As String
+End Class
+
+Function Make(ByVal name As String, ByVal age As Long, ByVal city As String) As Person
+    Dim person As New Person()
+    person.Name_ = name
+    person.Age = age
+    person.City = city
+    Return person
+End Function
+
+Sub Main()
+    Dim people As New Collection()
+    people.Add(Make("Ada", 36, "London"))
+    people.Add(Make("Bob", 24, "Lisbon"))
+    people.Add(Make("Cy", 41, "London"))
+    people.Add(Make("Dee", 29, "Lisbon"))
+
+    Dim item As Variant
+
+    ' Filter and project. A query is an expression, so it can go straight into
+    ' a `For Each`.
+    Console.WriteLine("-- over thirty, oldest first")
+    For Each item In From p In people
+                     Where p.Age > 30
+                     Order By p.Age Descending
+                     Select p.Name_
+        Console.WriteLine(item)
+    Next item
+
+    ' Or be held in a variable and walked later. `Distinct` reshapes what came
+    ' before it without reading the range variable, so it can follow a Select;
+    ' `Order By` reads it, so it goes first.
+    Dim cities = From p In people Order By p.City Select p.City Distinct
+    Console.WriteLine("-- cities")
+    For Each item In cities
+        Console.WriteLine(item)
+    Next item
+
+    ' A projection can build a tuple, which keeps the pieces together without
+    ' declaring a type for them.
+    Console.WriteLine("-- two youngest")
+    For Each item In From p In people
+                     Order By p.Age
+                     Take 2
+                     Select (Who := p.Name_, Age := p.Age)
+        Console.WriteLine($"{item.Who} ({item.Age})")
+    Next item
+
+    ' Arrays work the same way, and a query with no Select yields what it walked.
+    Dim numbers(4) As Long
+    numbers(0) = 5
+    numbers(1) = 2
+    numbers(2) = 9
+    numbers(3) = 2
+    numbers(4) = 7
+
+    Console.WriteLine("-- distinct, sorted, without the smallest")
+    For Each item In From n In numbers Distinct Order By n Skip 1
+        Console.WriteLine(item)
+    Next item
+End Sub

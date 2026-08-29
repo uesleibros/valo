@@ -84,6 +84,7 @@ COM examples require Windows and the relevant COM server. They are skipped by th
 - [Overloads](overloads.valo) (several procedures sharing one name)
 - [Delegates](delegates.valo) (named callable types)
 - [Tuples](tuples.valo) (grouped values, tuple returns, and naming their elements)
+- [Queries](queries.valo) (`From … Where … Order By … Select`)
 - [Null-Conditional Access](null_conditional.valo) (`obj?.Member`)
 
 ## Generics, Advanced Syntax, and Modern Features

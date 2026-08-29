@@ -6,6 +6,21 @@ pub struct Expr {
     pub span: Span,
 }
 
+/// One step of a query, in the order it was written.
+///
+/// Steps apply in that order: a `Where` after an `Order By` filters what the
+/// sort produced. `Select` may only come last, since after a projection the
+/// range variable no longer holds what the query started from.
+#[derive(Debug, Clone, PartialEq)]
+pub enum QueryClause {
+    Where(Expr),
+    OrderBy { key: Expr, descending: bool },
+    Distinct,
+    Take(Expr),
+    Skip(Expr),
+    Select(Expr),
+}
+
 /// One element of a tuple literal.
 ///
 /// The name is optional and exists so the element can be read back as
@@ -51,6 +66,12 @@ pub enum ExprKind {
     Variable(String),
     /// `(1, 2)` or `(X := 1, Y := 2)` -- a fixed group of values in one place.
     TupleLiteral(Vec<TupleElementExpr>),
+    /// `From n In numbers Where n > 2 Select n * 2`.
+    Query {
+        variable: String,
+        source: Box<Expr>,
+        clauses: Vec<QueryClause>,
+    },
     NamedArg {
         name: String,
         expr: Box<Expr>,

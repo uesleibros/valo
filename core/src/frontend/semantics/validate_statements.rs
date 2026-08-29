@@ -1061,7 +1061,7 @@ pub fn validate_statements(
                         Some(*span),
                     ));
                 };
-                let array_type = validate_for_each_iterable_expr(
+                let array_type = enumerable_element_type(
                     iterable,
                     symbols,
                     types,
@@ -2064,7 +2064,11 @@ fn stmt_uses_with_target(stmt: &Stmt, _context: &Context<'_>) -> bool {
     }
 }
 
-fn validate_for_each_iterable_expr(
+/// The type of the values walking through something yields.
+///
+/// `For Each` and a query both need this, and they have to agree: what one can
+/// walk, the other can.
+pub(super) fn enumerable_element_type(
     expr: &Expr,
     symbols: &HashMap<String, VarType>,
     types: &TypeRegistry,
@@ -2155,6 +2159,7 @@ fn expr_uses_with_target(expr: &Expr, _context: &Context<'_>) -> bool {
         ExprKind::TupleLiteral(elements) => elements
             .iter()
             .any(|element| expr_uses_with_target(&element.value, _context)),
+        ExprKind::Query { source, .. } => expr_uses_with_target(source, _context),
         ExprKind::Convert { expr, .. } => expr_uses_with_target(expr, _context),
         ExprKind::GetType(_) | ExprKind::NameOf(_) => false,
         ExprKind::Interpolated(parts) => parts.iter().any(|part| match part {

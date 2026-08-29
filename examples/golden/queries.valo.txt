@@ -1,0 +1,13 @@
+-- over thirty, oldest first
+Cy
+Ada
+-- cities
+Lisbon
+London
+-- two youngest
+Bob (24)
+Dee (29)
+-- distinct, sorted, without the smallest
+5
+7
+9

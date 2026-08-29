@@ -387,6 +387,12 @@ impl Parser {
     }
 
     pub(super) fn parse_primary(&mut self) -> Result<Expr, Diagnostic> {
+        // A query has to be recognised before the first token is taken: it is
+        // `From` plus what follows that makes one, and `From` on its own is an
+        // ordinary name.
+        if self.at_query_start() {
+            return self.parse_query();
+        }
         let token = self.advance();
         let span = token.span;
         let expr = match token.kind {
@@ -983,6 +989,120 @@ impl Parser {
         Ok(args)
     }
 
+    /// Whether a query starts here: `From <name> In ...`.
+    ///
+    /// `From` already ends a `Get`/`Put` statement, so seeing it is not enough
+    /// on its own; three tokens tell a query from any other use of the word.
+    pub(super) fn at_query_start(&self) -> bool {
+        matches!(self.peek_kind(), TokenKind::From)
+            && self
+                .peek_next_kind()
+                .is_some_and(|kind| contextual_identifier_name(kind).is_some())
+            && matches!(self.peek_kind_at(2), Some(TokenKind::In))
+    }
+
+    /// Parses `From n In source` followed by its clauses.
+    fn parse_query(&mut self) -> Result<Expr, Diagnostic> {
+        let start = self.advance().span;
+        let variable = self.expect_identifier("Expected a range variable after 'From'")?;
+        self.expect_simple(TokenKind::In, "Expected 'In' after the range variable")?;
+        let source = self.parse_expression()?;
+
+        let mut clauses = Vec::new();
+        let mut selected = false;
+        while let Some(keyword) = self.peek_query_clause() {
+            // After a projection the range variable no longer holds what the
+            // query started from, so a clause that reads it has nothing to
+            // read. The ones that only reshape the sequence -- Distinct, Take,
+            // Skip -- are fine either side of it, and `Select x Distinct` is
+            // how that is usually written.
+            if selected && keyword.reads_the_range_variable() {
+                return Err(self.error_here(
+                    "this clause reads the range variable, which Select has replaced; put it before the Select",
+                ));
+            }
+            // A clause may sit on its own line, which is how queries are
+            // usually written. The newlines are only consumed once a clause is
+            // known to follow, so a query at the end of a line still ends there.
+            self.skip_newlines();
+            match keyword {
+                QueryKeyword::Where => {
+                    self.advance();
+                    clauses.push(QueryClause::Where(self.parse_expression()?));
+                }
+                QueryKeyword::OrderBy => {
+                    self.advance();
+                    self.expect_identifier_named("By", "Expected 'By' after 'Order'")?;
+                    let key = self.parse_expression()?;
+                    let descending = if self.match_identifier("Descending") {
+                        true
+                    } else {
+                        self.match_identifier("Ascending");
+                        false
+                    };
+                    clauses.push(QueryClause::OrderBy { key, descending });
+                }
+                QueryKeyword::Distinct => {
+                    self.advance();
+                    clauses.push(QueryClause::Distinct);
+                }
+                QueryKeyword::Take => {
+                    self.advance();
+                    clauses.push(QueryClause::Take(self.parse_expression()?));
+                }
+                QueryKeyword::Skip => {
+                    self.advance();
+                    clauses.push(QueryClause::Skip(self.parse_expression()?));
+                }
+                QueryKeyword::Select => {
+                    self.advance();
+                    clauses.push(QueryClause::Select(self.parse_expression()?));
+                    selected = true;
+                }
+            }
+        }
+
+        Ok(Expr {
+            kind: ExprKind::Query {
+                variable,
+                source: Box::new(source),
+                clauses,
+            },
+            span: Span::new(self.file_id, start.start, self.previous().span.end),
+        })
+    }
+
+    /// The clause that comes next, looking past any newlines before it.
+    fn peek_query_clause(&self) -> Option<QueryKeyword> {
+        let mut offset = 0;
+        while matches!(self.peek_kind_at(offset), Some(TokenKind::Newline)) {
+            offset += 1;
+        }
+        let kind = self.peek_kind_at(offset)?;
+        if matches!(kind, TokenKind::Select) {
+            return Some(QueryKeyword::Select);
+        }
+        let TokenKind::Identifier(name, _) = kind else {
+            return None;
+        };
+        match name.to_ascii_lowercase().as_str() {
+            "where" => Some(QueryKeyword::Where),
+            "order" => Some(QueryKeyword::OrderBy),
+            "distinct" => Some(QueryKeyword::Distinct),
+            "take" => Some(QueryKeyword::Take),
+            "skip" => Some(QueryKeyword::Skip),
+            _ => None,
+        }
+    }
+
+    fn expect_identifier_named(&mut self, expected: &str, message: &str) -> Result<(), Diagnostic> {
+        if self.match_identifier(expected) {
+            Ok(())
+        } else {
+            Err(self.error_here(message))
+        }
+    }
+
     /// Parses one element of a tuple literal: `1`, or `X := 1`.
     ///
     /// A name is optional and is only there so the element can be read back as
@@ -1268,6 +1388,27 @@ fn source_name_of(expr: &Expr) -> Option<String> {
         ExprKind::MemberCall { method, .. } => Some(method.clone()),
         ExprKind::Me => Some("Me".to_string()),
         _ => None,
+    }
+}
+
+/// A clause keyword, once one has been recognised at a clause boundary.
+#[derive(Debug, Clone, Copy)]
+enum QueryKeyword {
+    Where,
+    OrderBy,
+    Distinct,
+    Take,
+    Skip,
+    Select,
+}
+
+impl QueryKeyword {
+    /// Whether the clause evaluates something against the range variable.
+    fn reads_the_range_variable(self) -> bool {
+        matches!(
+            self,
+            QueryKeyword::Where | QueryKeyword::OrderBy | QueryKeyword::Select
+        )
     }
 }
 

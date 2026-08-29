@@ -1,8 +1,9 @@
 use crate::runtime::well_known;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::runtime::numeric::{unary_negate, unary_positive};
-use crate::runtime::{Diagnostic, LambdaValue, Value};
+use crate::runtime::{CollectionValue, Diagnostic, DiagnosticCode, LambdaValue, Span, Value};
 use crate::{Expr, ExprKind, UnaryOp};
 
 use super::{Frame, Interpreter};
@@ -158,6 +159,11 @@ impl Interpreter {
     ) -> Result<Value, Diagnostic> {
         match &expr.kind {
             ExprKind::String(value) => Ok(Value::String(value.clone())),
+            ExprKind::Query {
+                variable,
+                source,
+                clauses,
+            } => self.eval_query(variable, source, clauses, frame, expr.span),
             // A tuple is a record with no declaration behind it. Building one
             // that way is not a shortcut: a tuple is copied on assignment and
             // read through its members, which is exactly what a record is.
@@ -1039,4 +1045,165 @@ fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     let doy = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day as i64 - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     era * 146_097 + doe - 719_468
+}
+
+impl Interpreter {
+    /// Runs a query and collects what it produces.
+    ///
+    /// The clauses apply in the order they were written, each to what the one
+    /// before it produced. That is what makes `Take 3` after an `Order By`
+    /// mean the first three of the sorted values rather than of the original
+    /// ones, and it is how the query reads.
+    fn eval_query(
+        &mut self,
+        variable: &str,
+        source: &Expr,
+        clauses: &[crate::QueryClause],
+        frame: &mut Frame,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let iterable = self.eval_expr(source, frame)?;
+        let mut values = super::arrays::enumerable_values(self, iterable, frame, span)?;
+
+        // The range variable lives only for the query, so it is declared in a
+        // frame of its own rather than leaking into the enclosing one.
+        let mut scope = Frame::default();
+        scope.inherit_modules_from(frame)?;
+        scope.declare(
+            variable,
+            crate::runtime::TypeName::Variant,
+            None,
+            self.option_base,
+            span,
+            self,
+        )?;
+
+        for clause in clauses {
+            match clause {
+                crate::QueryClause::Where(condition) => {
+                    let mut kept = Vec::with_capacity(values.len());
+                    for value in values {
+                        if self
+                            .query_value(&mut scope, variable, &value, condition, span)?
+                            .is_truthy()
+                        {
+                            kept.push(value);
+                        }
+                    }
+                    values = kept;
+                }
+                crate::QueryClause::OrderBy { key, descending } => {
+                    let compare = match self.option_compare {
+                        crate::OptionCompare::Binary => RuntimeOptionCompare::Binary,
+                        crate::OptionCompare::Text => RuntimeOptionCompare::Text,
+                    };
+                    let mut keyed = Vec::with_capacity(values.len());
+                    for value in values {
+                        let sort_key = self.query_value(&mut scope, variable, &value, key, span)?;
+                        keyed.push((sort_key, value));
+                    }
+                    // A sort has to compare pairs, and comparing two values can
+                    // fail, so the ordering is worked out first and only then
+                    // used -- a comparator cannot report an error mid-sort.
+                    let mut failure = None;
+                    keyed.sort_by(|left, right| {
+                        match compare_for_order(&left.0, &right.0, compare, span) {
+                            Ok(ordering) => ordering,
+                            Err(err) => {
+                                failure.get_or_insert(err);
+                                std::cmp::Ordering::Equal
+                            }
+                        }
+                    });
+                    if let Some(err) = failure {
+                        return Err(err);
+                    }
+                    if *descending {
+                        keyed.reverse();
+                    }
+                    values = keyed.into_iter().map(|(_, value)| value).collect();
+                }
+                crate::QueryClause::Distinct => {
+                    let mut seen: Vec<Value> = Vec::new();
+                    values.retain(|value| {
+                        if seen.iter().any(|other| other == value) {
+                            false
+                        } else {
+                            seen.push(value.clone());
+                            true
+                        }
+                    });
+                }
+                crate::QueryClause::Take(count) => {
+                    let count = self.eval_integer_expr(count, frame, "Take needs a number")?;
+                    values.truncate(count.max(0) as usize);
+                }
+                crate::QueryClause::Skip(count) => {
+                    let count = self.eval_integer_expr(count, frame, "Skip needs a number")?;
+                    let count = (count.max(0) as usize).min(values.len());
+                    values.drain(..count);
+                }
+                crate::QueryClause::Select(projection) => {
+                    let mut projected = Vec::with_capacity(values.len());
+                    for value in &values {
+                        projected
+                            .push(self.query_value(&mut scope, variable, value, projection, span)?);
+                    }
+                    values = projected;
+                }
+            }
+        }
+
+        let mut collection = CollectionValue::default();
+        for value in values {
+            collection
+                .add(value, None, None, None)
+                .map_err(|err| Diagnostic::new(DiagnosticCode::RUNTIME, err, Some(span)))?;
+        }
+        Ok(Value::Collection(Rc::new(RefCell::new(collection))))
+    }
+
+    /// Evaluates one clause expression with the range variable bound.
+    fn query_value(
+        &mut self,
+        scope: &mut Frame,
+        variable: &str,
+        value: &Value,
+        expr: &Expr,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let _ = scope.assign(variable, value.clone(), span)?;
+        self.eval_expr(expr, scope)
+    }
+}
+
+/// Orders two sort keys, reporting values that cannot be compared at all.
+fn compare_for_order(
+    left: &Value,
+    right: &Value,
+    compare: RuntimeOptionCompare,
+    span: Span,
+) -> Result<std::cmp::Ordering, Diagnostic> {
+    let less = crate::runtime::compare::compare_values(
+        left.clone(),
+        right.clone(),
+        compare,
+        span,
+        |ordering| ordering == std::cmp::Ordering::Less,
+    )?;
+    if less.is_truthy() {
+        return Ok(std::cmp::Ordering::Less);
+    }
+    let greater = crate::runtime::compare::compare_values(
+        left.clone(),
+        right.clone(),
+        compare,
+        span,
+        |ordering| ordering == std::cmp::Ordering::Greater,
+    )?;
+    Ok(if greater.is_truthy() {
+        std::cmp::Ordering::Greater
+    } else {
+        std::cmp::Ordering::Equal
+    })
 }

@@ -414,6 +414,43 @@ pub(super) fn validate_expr(
 
     match &expr.kind {
         ExprKind::String(_) => Ok(TypeName::String),
+        ExprKind::Query {
+            variable,
+            source,
+            clauses,
+        } => {
+            let element_type = super::validate_statements::enumerable_element_type(
+                source,
+                symbols,
+                types,
+                signatures,
+                context,
+                option_explicit,
+            )?;
+
+            // The range variable is in scope for the clauses and nowhere else,
+            // so it goes into a copy of the symbols rather than the caller's.
+            let mut scoped = symbols.clone();
+            scoped.insert(
+                key(variable),
+                VarType::Scalar(Visibility::Public, element_type),
+            );
+            for clause in clauses {
+                let inner = match clause {
+                    crate::QueryClause::Where(condition) => Some(condition),
+                    crate::QueryClause::OrderBy { key: sort_key, .. } => Some(sort_key),
+                    crate::QueryClause::Take(count) | crate::QueryClause::Skip(count) => {
+                        Some(count)
+                    }
+                    crate::QueryClause::Select(projection) => Some(projection),
+                    crate::QueryClause::Distinct => None,
+                };
+                if let Some(inner) = inner {
+                    validate_expr(inner, &scoped, types, signatures, context, option_explicit)?;
+                }
+            }
+            Ok(TypeName::User(well_known::COLLECTION.to_string()))
+        }
         ExprKind::TupleLiteral(elements) => {
             if elements.len() < 2 {
                 return Err(Diagnostic::new(

@@ -146,3 +146,49 @@ Shifts bind tighter than comparison and looser than concatenation, so
 `1 << 1 + 1` shifts by `2`, not by `1`.
 
 Non-numeric unary operands are rejected with a type mismatch diagnostic.
+
+## Queries
+
+A query filters, sorts, and projects in one expression. It starts with `From`,
+names a range variable, and walks anything `For Each` can walk -- an array, a
+`Collection`, or a class with an iterator:
+
+```vb
+Dim names = From p In people
+            Where p.Age > 30
+            Order By p.Age Descending
+            Select p.Name
+```
+
+The result is a `Collection`, so it can be held in a variable or walked
+straight away. A query with no `Select` yields what it walked.
+
+| Clause | Does |
+|---|---|
+| `Where cond` | keeps the values the condition holds for |
+| `Order By key [Ascending\|Descending]` | sorts by the key; ascending unless said otherwise |
+| `Select expr` | replaces each value with the expression |
+| `Distinct` | drops repeats |
+| `Take n` / `Skip n` | keeps the first n, or drops them |
+
+Clauses apply in the order they are written, each to what the one before it
+produced: `Take 3` after an `Order By` means the first three of the sorted
+values, not of the original ones.
+
+The range variable belongs to the query and is not in scope outside it. After a
+`Select` it no longer holds what the query started from, so `Where` and
+`Order By` cannot follow one -- `Distinct`, `Take`, and `Skip` can, since they
+only reshape the sequence.
+
+A projection can build a tuple, which keeps several pieces together without
+declaring a type for them:
+
+```vb
+For Each entry In From p In people Order By p.Age Select (Who := p.Name, Age := p.Age)
+    Console.WriteLine($"{entry.Who} ({entry.Age})")
+Next entry
+```
+
+## Related
+
+- [Example: queries](../../examples/queries.valo)

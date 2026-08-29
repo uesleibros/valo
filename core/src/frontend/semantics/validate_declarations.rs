@@ -2541,6 +2541,12 @@ pub(super) fn ensure_const_expr(
         ExprKind::TupleLiteral(elements) => elements
             .iter()
             .try_for_each(|element| ensure_const_expr(&element.value, symbols, types)),
+        // A query walks a collection, which no constant can be.
+        ExprKind::Query { .. } => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "A query cannot be a constant",
+            Some(expr.span),
+        )),
         // An interpolated string evaluates its holes at run time, so it can
         // never stand in for a constant.
         ExprKind::Interpolated(_) | ExprKind::Convert { .. } => Err(Diagnostic::new(

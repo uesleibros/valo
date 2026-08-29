@@ -442,3 +442,155 @@ End Sub
 
     assert_eq!(output, vec!["x=3"]);
 }
+
+#[test]
+fn a_query_filters_sorts_and_projects() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim numbers As New Collection()
+    numbers.Add(5)
+    numbers.Add(2)
+    numbers.Add(9)
+    numbers.Add(7)
+
+    Dim big = From n In numbers
+              Where n > 2
+              Order By n Descending
+              Select n * 10
+
+    Dim item As Variant
+    For Each item In big
+        Console.WriteLine(item)
+    Next item
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["90", "70", "50"]);
+}
+
+#[test]
+fn a_query_walks_an_array_and_can_take_skip_and_dedupe() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim words(3) As String
+    words(0) = "pear"
+    words(1) = "fig"
+    words(2) = "apple"
+    words(3) = "fig"
+
+    Dim item As Variant
+    For Each item In From w In words Distinct Order By w Take 2
+        Console.WriteLine(item)
+    Next item
+
+    For Each item In From w In words Skip 3
+        Console.WriteLine("last " & item)
+    Next item
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["apple", "fig", "last fig"]);
+}
+
+#[test]
+fn a_query_reads_members_of_what_it_walks() {
+    let output = run_source(
+        r#"
+Class Person
+    Public Name_ As String
+    Public Age As Long
+End Class
+
+Function Make(ByVal n As String, ByVal a As Long) As Person
+    Dim p As New Person()
+    p.Name_ = n
+    p.Age = a
+    Return p
+End Function
+
+Sub Main()
+    Dim people As New Collection()
+    people.Add(Make("Ada", 36))
+    people.Add(Make("Bob", 24))
+    people.Add(Make("Cy", 41))
+
+    Dim item As Variant
+    For Each item In From p In people Where p.Age > 30 Order By p.Age Select p.Name_
+        Console.WriteLine(item)
+    Next item
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["Ada", "Cy"]);
+}
+
+#[test]
+fn a_range_variable_does_not_escape_its_query() {
+    let error = source_error(
+        r#"
+Option Explicit
+
+Sub Main()
+    Dim numbers As New Collection()
+    numbers.Add(1)
+    Dim picked = From n In numbers Where n > 0
+    Console.WriteLine(n)
+End Sub
+"#,
+    );
+
+    assert!(error.contains("Variable 'n' is not declared"));
+}
+
+#[test]
+fn a_clause_that_reads_the_range_variable_cannot_follow_select() {
+    let error = source_error(
+        r#"
+Sub Main()
+    Dim numbers As New Collection()
+    numbers.Add(1)
+    Dim picked = From n In numbers Select n * 2 Where n > 0
+End Sub
+"#,
+    );
+    assert!(error.contains("which Select has replaced"));
+
+    // Reshaping what the projection produced is fine on either side of it.
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim numbers As New Collection()
+    numbers.Add(1)
+    numbers.Add(2)
+    numbers.Add(1)
+
+    Dim item As Variant
+    For Each item In From n In numbers Select n * 10 Distinct Take 1
+        Console.WriteLine(item)
+    Next item
+End Sub
+"#,
+    );
+    assert_eq!(output, vec!["10"]);
+}
+
+#[test]
+fn from_is_still_usable_where_it_is_not_a_query() {
+    let output = run_source(
+        r#"
+Sub Main()
+    Dim path_ As String = "a.txt"
+    Dim n As Long
+    n = FreeFile
+    Console.WriteLine(n > 0)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["True"]);
+}
