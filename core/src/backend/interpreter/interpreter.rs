@@ -421,7 +421,7 @@ impl Interpreter {
             .find(|procedure| procedure.name.eq_ignore_ascii_case("main"))
         else {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ENTRY_POINT,
                 "Program must contain Sub Main()",
                 None,
             ));
@@ -610,7 +610,7 @@ impl Interpreter {
             .cloned()
         else {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::ENTRY_POINT,
                 "Program must contain Sub Main()",
                 None,
             ));

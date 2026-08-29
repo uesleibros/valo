@@ -292,7 +292,7 @@ pub fn logical_or_bitwise(
                 Ok(Value::Int64(int_op(a, b)))
             } else {
                 Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                     "Logical operators require Boolean or Integer operands",
                     Some(span),
                 ))

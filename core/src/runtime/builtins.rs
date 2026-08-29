@@ -14,8 +14,8 @@ use super::TypeName;
 
 /// What a builtin produces.
 ///
-/// Most builtins have a fixed result type. The few whose result depends on the
-/// arguments are marked [`BuiltinReturn::Contextual`] and resolved by the
+/// Every builtin has one fixed result type. A builtin whose result varies with
+/// its arguments is declared [`BuiltinReturn::Variant`] and narrowed by the
 /// analyzer, which has the argument types to hand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinReturn {
@@ -36,14 +36,12 @@ pub enum BuiltinReturn {
     Object,
     /// A one-dimensional array of strings.
     StringArray,
-    /// Determined by the analyzer from the argument types.
-    Contextual,
 }
 
 impl BuiltinReturn {
-    /// The declared type this result corresponds to, if it is a fixed one.
-    pub fn type_name(self) -> Option<TypeName> {
-        Some(match self {
+    /// The declared type this result corresponds to.
+    pub fn type_name(self) -> TypeName {
+        match self {
             BuiltinReturn::Boolean => TypeName::Boolean,
             BuiltinReturn::Byte => TypeName::Byte,
             BuiltinReturn::Integer => TypeName::Integer,
@@ -59,8 +57,7 @@ impl BuiltinReturn {
             BuiltinReturn::Ptr => TypeName::Ptr,
             BuiltinReturn::Object => TypeName::User("Object".to_string()),
             BuiltinReturn::StringArray => TypeName::Array(Box::new(TypeName::String)),
-            BuiltinReturn::Contextual => return None,
-        })
+        }
     }
 }
 

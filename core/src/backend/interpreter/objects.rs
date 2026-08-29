@@ -322,7 +322,7 @@ impl Interpreter {
             })?;
         if !class.events.contains_key(&key(name)) {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Class '{}' has no event '{}'", class.name, name),
                 Some(span),
             ));
@@ -483,7 +483,7 @@ impl Interpreter {
                 let fields = &mut record_data.fields;
                 if args.len() != type_def.fields.len() {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                         format!("Structure '{}' has no Sub New constructor", type_def.name),
                         Some(span),
                     ));
@@ -530,7 +530,7 @@ impl Interpreter {
             self.call_method_sub(object.clone(), &init.name, args, caller_frame, span)?;
         } else if !args.is_empty() {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Class '{}' has no Initialize constructor", class.name),
                 Some(span),
             ));

@@ -100,7 +100,7 @@ impl Parser {
             TokenKind::Any => Ok("Any".to_string()),
             TokenKind::Base => Ok("Base".to_string()),
             _ => Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::PARSE,
                 message,
                 Some(token.span),
             )

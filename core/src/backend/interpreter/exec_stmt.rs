@@ -42,7 +42,7 @@ impl Interpreter {
                 Ok(ControlFlow::Resume(target)) => {
                     let Some(failing_ip) = frame.handled_error_ip() else {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::CONTROL_FLOW,
                             "Resume is only valid after a handled runtime error",
                             Some(stmt_span(&statements[ip])),
                         )
@@ -615,7 +615,7 @@ impl Interpreter {
 
                 if step == 0 {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::CONTROL_FLOW,
                         "For Step cannot be zero",
                         Some(*span),
                     ));
@@ -1477,7 +1477,7 @@ impl Interpreter {
         };
 
         Ok(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::RUNTIME_ERROR,
             description.clone(),
             Some(span),
         )
@@ -1499,7 +1499,7 @@ impl Interpreter {
         match self.eval_expr(expr, frame)? {
             Value::String(value) => Ok(value),
             _ => Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                 message,
                 Some(expr.span),
             )),

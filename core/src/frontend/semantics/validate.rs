@@ -64,7 +64,7 @@ fn validate_internal(program: &Program, require_main: bool) -> Result<(), Diagno
 
     if require_main && main.is_none() {
         return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ENTRY_POINT,
             "Program must contain Sub Main()",
             None,
         ));
@@ -74,7 +74,7 @@ fn validate_internal(program: &Program, require_main: bool) -> Result<(), Diagno
         && !main.params.is_empty()
     {
         return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ENTRY_POINT,
             "Sub Main() cannot have parameters",
             Some(main.span),
         ));
@@ -139,7 +139,7 @@ fn validate_module(
         .find(|procedure| procedure.name.eq_ignore_ascii_case("main"));
     if require_main && main.is_none() {
         return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ENTRY_POINT,
             "Program must contain Sub Main()",
             None,
         ));
@@ -148,7 +148,7 @@ fn validate_module(
         && !main.params.is_empty()
     {
         return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::ENTRY_POINT,
             "Sub Main() cannot have parameters",
             Some(main.span),
         ));

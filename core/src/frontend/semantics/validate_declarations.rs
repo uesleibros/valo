@@ -1964,7 +1964,7 @@ fn validate_withevents_handlers(
                             .all(|(left, right)| left.ty.same_type(&right.ty))
                     {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                             format!(
                                 "Event handler '{}' signature does not match event '{}'",
                                 handler.name, event.name
@@ -2192,7 +2192,7 @@ fn validate_parameter_list(params: &[Parameter], types: &TypeRegistry) -> Result
             }
         } else if saw_optional {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::INVALID_DECLARATION,
                 "Optional parameters must come after required parameters",
                 Some(param.span),
             ));
@@ -2552,7 +2552,7 @@ pub(super) fn validate_function(
         }
     } else if !saw_return {
         return Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::MISSING_RETURN,
             format!("Function '{}' must return a value", function.name),
             Some(function.span),
         ));

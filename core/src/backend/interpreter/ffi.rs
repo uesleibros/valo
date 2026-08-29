@@ -415,7 +415,7 @@ impl Interpreter {
         let (alloc, code) = libffi::low::closure_alloc();
         if alloc.is_null() {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::FFI_CALL,
                 "Failed to allocate libffi closure",
                 Some(span),
             ));
@@ -490,7 +490,7 @@ impl Interpreter {
                 libffi::low::closure_free(alloc as *mut _);
             }
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::FFI_CALL,
                 "Failed to prepare libffi callback trampoline",
                 Some(span),
             )

@@ -565,11 +565,15 @@ diagnostic_codes! {
     UNKNOWN_NAME = "V1001", "A name is used but never declared.";
     DUPLICATE_DECLARATION = "V1002", "A name is declared twice in the same scope.";
     MEMBER_IS_PRIVATE = "V1003", "A member exists but is not visible from here.";
+    INVALID_DECLARATION = "V1004", "A declaration parses but is not valid, such as an `Optional` parameter before a required one.";
+    ENTRY_POINT = "V1005", "The program has no `Sub Main()`, or the one it has cannot serve as the entry point.";
     TYPE_MISMATCH = "V1100", "A value cannot be used where that type is required.";
     INVALID_ASSIGNMENT = "V1101", "The target of an assignment cannot be assigned to.";
     ARGUMENT_NOT_OPTIONAL = "V1102", "A required argument was omitted.";
     ARGUMENT_COUNT = "V1103", "A call passes a number of arguments the callee does not accept.";
     ARITHMETIC = "V1104", "An arithmetic operation has no defined result, such as division by zero.";
+    MISSING_RETURN = "V1105", "A `Function` can finish without returning a value.";
+    NAMED_ARGUMENT = "V1106", "A named argument does not match a parameter, or names the same one twice.";
     ARRAY = "V1200", "An array is indexed, sized, or used incorrectly.";
     CONTROL_FLOW = "V1300", "A control-flow statement appears where it cannot apply.";
     MEMBER_ACCESS = "V1400", "A type does not have the member being accessed.";
@@ -581,12 +585,16 @@ diagnostic_codes! {
     CASE_COLLISION = "V1604", "Two names differ only by case, which cannot be told apart.";
     UNKNOWN_QUALIFIED_SYMBOL = "V1605", "A qualified name does not exist in that module.";
     INVALID_QUALIFIED_ACCESS = "V1606", "A qualified name exists but cannot be used this way.";
+    PACKAGE_MANIFEST = "V1607", "`valo.toml` is malformed.";
     FFI_LIBRARY_NOT_FOUND = "V3001", "A `Declare` names a library that could not be loaded.";
     FFI_SYMBOL_NOT_FOUND = "V3002", "A `Declare` names a symbol the library does not export.";
     FFI_UNSUPPORTED_MARSHALING = "V3003", "A `Declare` uses a type Valo cannot pass to native code.";
     FFI_CALL = "V3004", "A native call failed.";
+    COM = "V3100", "A COM object could not be created, or a call into one failed.";
     RUNTIME = "V9000", "A runtime failure with no more specific code.";
     RUNTIME_ERROR = "V9001", "An error raised by the program itself, through `Err.Raise` or `Throw`.";
+    FILE_IO = "V9002", "A file or directory operation failed.";
+    UNSUPPORTED = "V9003", "A VBA feature the standalone Valo runtime does not provide.";
 }
 
 impl fmt::Display for DiagnosticCode {
@@ -695,6 +703,59 @@ mod tests {
                 summary.ends_with('.'),
                 "{name}'s summary should read as a sentence: {summary}"
             );
+        }
+    }
+
+    /// Nothing may reach for the code that means "no code was chosen".
+    ///
+    /// `GENERIC` is the escape hatch, and an escape hatch in easy reach gets
+    /// used: this codebase once emitted 67 diagnostics under it, which told a
+    /// reader nothing and could not be matched on. Every one now names what
+    /// went wrong. Adding another is a deliberate act, not a default.
+    #[test]
+    fn no_diagnostic_is_left_without_a_code() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        collect_generic_uses(&root, &mut offenders);
+
+        assert!(
+            offenders.is_empty(),
+            "these emit DiagnosticCode::GENERIC; give each one a code that says              what went wrong, and add it to docs/reference/diagnostics.md:
+{}",
+            offenders.join("
+")
+        );
+    }
+
+    fn collect_generic_uses(dir: &std::path::Path, offenders: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let path = entry.path();
+            // Test modules are exempt: a test that renders a diagnostic needs
+            // some code to render, and `GENERIC` is the one that means nothing.
+            if path.is_dir() {
+                if path.file_name().is_some_and(|name| name == "tests") {
+                    continue;
+                }
+                collect_generic_uses(&path, offenders);
+                continue;
+            }
+            if path.extension().is_none_or(|ext| ext != "rs")
+                // This file declares the code and tests the renderer with it.
+                || path.file_name().is_some_and(|name| name == "diagnostic.rs")
+            {
+                continue;
+            }
+            let Ok(source) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            for (index, line) in source.lines().enumerate() {
+                if line.contains("DiagnosticCode::GENERIC") {
+                    offenders.push(format!("  {}:{}", path.display(), index + 1));
+                }
+            }
         }
     }
 

@@ -171,7 +171,7 @@ fn financial(
 ) -> Result<Value, Diagnostic> {
     eval_financial(name, args, span)?.ok_or_else(|| {
         Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::UNSUPPORTED,
             format!("Financial function '{name}' has no implementation"),
             Some(span),
         )
@@ -562,7 +562,7 @@ fn optional_number(
 
 fn arg_range(name: &str, min: usize, max: usize, span: crate::runtime::Span) -> Diagnostic {
     Diagnostic::new(
-        crate::runtime::DiagnosticCode::GENERIC,
+        crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
         if max == usize::MAX {
             format!("{name} expects at least {min} arguments")
         } else {

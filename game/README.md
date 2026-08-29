@@ -69,7 +69,7 @@ and changed without knowing anything about SDL.
 ### What this found
 
 Writing it surfaced five defects that the test suite and the single-feature
-examples had not:
+examples had not. All five are fixed:
 
 1. Reading a property off another instance ran the getter against the wrong
    object, so every comparison between two objects through their properties was

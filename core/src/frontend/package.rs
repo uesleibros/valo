@@ -230,7 +230,7 @@ fn manifest_error<T>(line_index: usize, message: &str) -> Result<T, Diagnostic> 
 
 fn manifest_diag(line_index: usize, message: impl Into<String>) -> Diagnostic {
     Diagnostic::new(
-        DiagnosticCode::GENERIC,
+        DiagnosticCode::PACKAGE_MANIFEST,
         format!("{} at valo.toml:{}", message.into(), line_index + 1),
         None,
     )

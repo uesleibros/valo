@@ -427,7 +427,7 @@ impl Interpreter {
                     } else if let Some(slot) = &function.return_slot {
                         Ok(frame.get_return_slot(slot).ok_or_else(|| {
                             Diagnostic::new(
-                                crate::runtime::DiagnosticCode::GENERIC,
+                                crate::runtime::DiagnosticCode::RUNTIME,
                                 "Return slot not found",
                                 Some(function.span),
                             )
@@ -708,7 +708,7 @@ impl Interpreter {
                     } else if let Some(slot) = &function.return_slot {
                         Ok(frame.get_return_slot(slot).ok_or_else(|| {
                             Diagnostic::new(
-                                crate::runtime::DiagnosticCode::GENERIC,
+                                crate::runtime::DiagnosticCode::RUNTIME,
                                 "Return slot not found",
                                 Some(function.span),
                             )
@@ -1726,7 +1726,7 @@ impl Interpreter {
                         .borrow_mut()
                         .add(item, key, before, after)
                         .map_err(|e| {
-                            Diagnostic::new(crate::runtime::DiagnosticCode::GENERIC, e, Some(span))
+                            Diagnostic::new(crate::runtime::DiagnosticCode::RUNTIME, e, Some(span))
                         })?;
                     return Ok(());
                 }
@@ -1855,7 +1855,7 @@ impl Interpreter {
                         .borrow_mut()
                         .add(item, key, before, after)
                         .map_err(|e| {
-                            Diagnostic::new(crate::runtime::DiagnosticCode::GENERIC, e, Some(span))
+                            Diagnostic::new(crate::runtime::DiagnosticCode::RUNTIME, e, Some(span))
                         })?;
                     return Ok(Value::Empty);
                 }
@@ -2015,7 +2015,7 @@ impl Interpreter {
                             } else if let Some(slot) = &function.return_slot {
                                 Ok(frame.get_return_slot(slot).ok_or_else(|| {
                                     Diagnostic::new(
-                                        crate::runtime::DiagnosticCode::GENERIC,
+                                        crate::runtime::DiagnosticCode::RUNTIME,
                                         "Return slot not found",
                                         Some(function.span),
                                     )
@@ -2366,7 +2366,7 @@ impl Interpreter {
                 }
                 if ordered[index].is_some() {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::NAMED_ARGUMENT,
                         format!("Argument '{}' is specified more than once", name),
                         Some(arg.span),
                     ));

@@ -689,7 +689,7 @@ impl Interpreter {
                     ExprKind::Variable(name) => name,
                     _ => {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                             "AddressOf target must be a method name",
                             Some(inner.span),
                         ));
@@ -937,7 +937,7 @@ impl Interpreter {
             Value::UInt32(value) => Ok(value as i64),
             Value::UInt64(value) => Ok(value as i64),
             _ => Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                 message,
                 Some(expr.span),
             )),

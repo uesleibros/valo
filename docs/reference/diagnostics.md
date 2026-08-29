@@ -35,11 +35,15 @@ Raised by the analyzer, and by the interpreter where the same rule is enforced a
 | `V1001` | `UNKNOWN_NAME` | A name is used but never declared. |
 | `V1002` | `DUPLICATE_DECLARATION` | A name is declared twice in the same scope. |
 | `V1003` | `MEMBER_IS_PRIVATE` | A member exists but is not visible from here. |
+| `V1004` | `INVALID_DECLARATION` | A declaration parses but is not valid, such as an `Optional` parameter before a required one. |
+| `V1005` | `ENTRY_POINT` | The program has no `Sub Main()`, or the one it has cannot serve as the entry point. |
 | `V1100` | `TYPE_MISMATCH` | A value cannot be used where that type is required. |
 | `V1101` | `INVALID_ASSIGNMENT` | The target of an assignment cannot be assigned to. |
 | `V1102` | `ARGUMENT_NOT_OPTIONAL` | A required argument was omitted. |
 | `V1103` | `ARGUMENT_COUNT` | A call passes a number of arguments the callee does not accept. |
 | `V1104` | `ARITHMETIC` | An arithmetic operation has no defined result, such as division by zero. |
+| `V1105` | `MISSING_RETURN` | A `Function` can finish without returning a value. |
+| `V1106` | `NAMED_ARGUMENT` | A named argument does not match a parameter, or names the same one twice. |
 | `V1200` | `ARRAY` | An array is indexed, sized, or used incorrectly. |
 | `V1300` | `CONTROL_FLOW` | A control-flow statement appears where it cannot apply. |
 | `V1400` | `MEMBER_ACCESS` | A type does not have the member being accessed. |
@@ -51,6 +55,7 @@ Raised by the analyzer, and by the interpreter where the same rule is enforced a
 | `V1604` | `CASE_COLLISION` | Two names differ only by case, which cannot be told apart. |
 | `V1605` | `UNKNOWN_QUALIFIED_SYMBOL` | A qualified name does not exist in that module. |
 | `V1606` | `INVALID_QUALIFIED_ACCESS` | A qualified name exists but cannot be used this way. |
+| `V1607` | `PACKAGE_MANIFEST` | `valo.toml` is malformed. |
 
 
 ## Native interop
@@ -63,6 +68,7 @@ Raised by `Declare` and the calls it introduces.
 | `V3002` | `FFI_SYMBOL_NOT_FOUND` | A `Declare` names a symbol the library does not export. |
 | `V3003` | `FFI_UNSUPPORTED_MARSHALING` | A `Declare` uses a type Valo cannot pass to native code. |
 | `V3004` | `FFI_CALL` | A native call failed. |
+| `V3100` | `COM` | A COM object could not be created, or a call into one failed. |
 
 
 ## Runtime
@@ -73,3 +79,5 @@ Raised while a program runs.
 |---|---|---|
 | `V9000` | `RUNTIME` | A runtime failure with no more specific code. |
 | `V9001` | `RUNTIME_ERROR` | An error raised by the program itself, through `Err.Raise` or `Throw`. |
+| `V9002` | `FILE_IO` | A file or directory operation failed. |
+| `V9003` | `UNSUPPORTED` | A VBA feature the standalone Valo runtime does not provide. |

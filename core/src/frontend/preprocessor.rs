@@ -70,11 +70,13 @@ pub fn preprocess(source: &str) -> Result<String, Diagnostic> {
         } else {
             "Missing '#End If' for conditional compilation block"
         };
-        return Err(
-            Diagnostic::new(crate::runtime::DiagnosticCode::GENERIC, message, Some(span))
-                .with_primary_label("conditional compilation block is not closed")
-                .with_help("add '#End If' for this conditional block"),
-        );
+        return Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::PREPROCESSOR,
+            message,
+            Some(span),
+        )
+        .with_primary_label("conditional compilation block is not closed")
+        .with_help("add '#End If' for this conditional block"));
     }
 
     Ok(join_line_continuations(&output))
@@ -346,7 +348,7 @@ fn key(name: &str) -> String {
 fn diagnostic(line: usize, column: usize, message: &str) -> Diagnostic {
     let pos = SourcePos::new(line, column);
     Diagnostic::new(
-        crate::runtime::DiagnosticCode::GENERIC,
+        crate::runtime::DiagnosticCode::PREPROCESSOR,
         message,
         Some(Span::new(FileId::default(), pos, pos)),
     )

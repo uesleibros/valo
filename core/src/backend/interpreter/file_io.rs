@@ -1092,5 +1092,5 @@ fn wildcard_match_bytes(pattern: &[u8], name: &[u8]) -> bool {
 }
 
 fn file_error(message: impl Into<String>, span: Span) -> Diagnostic {
-    Diagnostic::new(crate::runtime::DiagnosticCode::GENERIC, message, Some(span))
+    Diagnostic::new(crate::runtime::DiagnosticCode::FILE_IO, message, Some(span))
 }

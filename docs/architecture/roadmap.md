@@ -20,14 +20,6 @@ The language is well ahead of the ecosystem. Someone can write real VB.NET-shape
 code today; nobody can distribute a library, edit with completion, or rely on
 VM-class performance.
 
-## Open defects
-
-These are known wrong, not merely missing. All were found by writing a whole
-program — [the Breakout demo](../../game/README.md) — rather than by reading code.
-
-- [ ] 67 diagnostics still report `V0001`, the code that means "no code was
-      chosen". Each needs judgement, not a script.
-
 ## Phase 1: Foundations for a new execution engine
 
 Nothing here is a VM. All of it is what a VM needs to exist first, and the first
@@ -148,7 +140,15 @@ and bitwise operators over every integral width.
 **Architecture** — one builtin registry that the analyzer and interpreter both
 read, with seven invariants held by tests; well-known names declared once;
 built-in types described declaratively; diagnostic codes generated from a single
-table alongside a reference page that cannot drift from it.
+table alongside a reference page that cannot drift from it. Every diagnostic now
+names what went wrong: `V0001`, the code that means "no code was chosen", went
+from 67 uses to none, and a test keeps it that way.
+
+**Defects the Breakout demo found** — all five are fixed. Assigning through an
+unqualified field or property; `Set` on a nested member; a property read against
+the wrong instance; `(a + b).Method()`; `Imports` not bringing a type into
+scope, including into a module that is itself imported. Conversions round the
+way VB.NET and VBA both do, rather than truncating.
 
 **Performance** — quadratic array writes removed, per-statement allocations
 removed, and classes and method bodies no longer copied on every call. A method

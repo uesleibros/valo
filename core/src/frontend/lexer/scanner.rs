@@ -436,7 +436,7 @@ impl<'a> Lexer<'a> {
                     );
                 }
                 Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::PARSE,
                     format!("Integer literal '{}' is out of range", text),
                     Some(Span::new(self.file_id, start, self.pos())),
                 )

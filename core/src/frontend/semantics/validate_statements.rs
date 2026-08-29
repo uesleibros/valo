@@ -530,7 +530,7 @@ pub fn validate_statements(
                         continue;
                     }
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                         "Err only supports Clear() and Raise()",
                         Some(*span),
                     ));
@@ -557,7 +557,7 @@ pub fn validate_statements(
             Stmt::RaiseEvent { name, args, span } => {
                 let Some(class_name) = context.current_class() else {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::MEMBER_IS_PRIVATE,
                         "RaiseEvent is only valid inside the declaring class",
                         Some(*span),
                     ));
@@ -567,7 +567,7 @@ pub fn validate_statements(
                     .expect("current class validated");
                 let Some(event_sig) = class_sig.events.get(&key(name)) else {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                         format!("Class '{}' has no event '{}'", class_sig.name, name),
                         Some(*span),
                     ));
@@ -964,7 +964,7 @@ pub fn validate_statements(
                     && !next_variable.eq_ignore_ascii_case(variable)
                 {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::CONTROL_FLOW,
                         format!(
                             "Next variable '{}' does not match For variable '{}'",
                             next_variable, variable
@@ -1019,7 +1019,7 @@ pub fn validate_statements(
                     && !next_variable.eq_ignore_ascii_case(variable)
                 {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::CONTROL_FLOW,
                         format!(
                             "Next variable '{}' does not match For Each variable '{}'",
                             next_variable, variable

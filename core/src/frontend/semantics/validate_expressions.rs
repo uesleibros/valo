@@ -202,7 +202,7 @@ pub(super) fn validate_assignment_target(
                 }
                 VarType::Module(alias) => {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::INVALID_QUALIFIED_ACCESS,
                         format!("Module '{}' cannot be indexed", alias),
                         Some(*span),
                     ));
@@ -568,7 +568,7 @@ pub(super) fn validate_expr(
                     )?;
                 } else if !args.is_empty() {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                         format!("Structure '{}' has no Sub New constructor", type_sig.name),
                         Some(expr.span),
                     ));
@@ -598,7 +598,7 @@ pub(super) fn validate_expr(
                 )?;
             } else if !args.is_empty() {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                     format!("Class '{}' has no Initialize constructor", class_sig.name),
                     Some(expr.span),
                 ));
@@ -664,7 +664,7 @@ pub(super) fn validate_expr(
                     }
                     VarType::Module(alias) => {
                         return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::INVALID_QUALIFIED_ACCESS,
                             format!("Module '{}' cannot be used as an expression", alias),
                             Some(expr.span),
                         ));
@@ -1000,7 +1000,7 @@ pub(super) fn validate_expr(
                     return Ok(TypeName::Variant);
                 }
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                     "Err only supports Clear() and Raise()",
                     Some(expr.span),
                 ));
@@ -1099,7 +1099,7 @@ pub(super) fn validate_expr(
                 return match symbols.get(&key(param_name)) {
                     Some(VarType::Optional(Visibility::Public, _)) => Ok(TypeName::Boolean),
                     Some(_) => Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                         "IsMissing is only valid for Optional parameters",
                         Some(args[0].span),
                     )),
@@ -1321,7 +1321,7 @@ pub(super) fn validate_expr(
             let Some(function) = function else {
                 if signatures.subs.contains_key(&key(name)) {
                     return Err(Diagnostic::new(
-                        crate::runtime::DiagnosticCode::GENERIC,
+                        crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                         format!("Sub '{}' cannot be used as an expression", name),
                         Some(expr.span),
                     ));
@@ -1516,7 +1516,7 @@ pub(super) fn validate_expr(
                         Ok(wider_bitwise_result(&left_type, &right_type))
                     } else {
                         Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::GENERIC,
+                            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                             "Logical operators require Boolean or Integer operands",
                             Some(expr.span),
                         ))
@@ -1687,7 +1687,7 @@ pub(super) fn validate_array_expr(
                 Some(expr.span),
             )),
             Some(VarType::Module(alias)) => Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::INVALID_QUALIFIED_ACCESS,
                 format!("Module '{}' cannot be used as an array", alias),
                 Some(expr.span),
             )),
@@ -1796,14 +1796,7 @@ fn validate_builtin_function(
         }
     }
 
-    let return_type = builtin.returns.type_name().ok_or_else(|| {
-        Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
-            format!("Builtin '{}' has no result type", builtin.name),
-            Some(span),
-        )
-    })?;
-    Ok(Some(return_type))
+    Ok(Some(builtin.returns.type_name()))
 }
 
 pub(super) fn enum_member_value_type(name: &str, types: &TypeRegistry) -> Option<TypeName> {
@@ -1839,7 +1832,7 @@ pub(super) fn validate_arguments(
                 .position(|param| param.name.eq_ignore_ascii_case(name))
             else {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::NAMED_ARGUMENT,
                     format!(
                         "{} '{}' has no parameter named '{}'",
                         kind, callable.name, name
@@ -1849,7 +1842,7 @@ pub(super) fn validate_arguments(
             };
             if assigned[index] {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::NAMED_ARGUMENT,
                     format!("Argument '{}' is specified more than once", name),
                     Some(arg.span),
                 ));
@@ -3567,7 +3560,7 @@ pub(super) fn ensure_class_type(
         Ok(())
     } else {
         Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
             message,
             Some(span),
         ))

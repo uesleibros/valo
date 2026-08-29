@@ -434,7 +434,7 @@ fn call_by_name(
 ) -> Result<Value, Diagnostic> {
     dispatch_callbyname(interpreter, effective_name, args, frame, span)?.ok_or_else(|| {
         Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::MEMBER_ACCESS,
             "CallByName could not resolve the member",
             Some(span),
         )
@@ -500,7 +500,7 @@ fn obj_ptr(
         }
         Value::Nothing => Ok(Value::Ptr(0)),
         _ => Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
             "ObjPtr requires an object",
             Some(span),
         )),
@@ -713,7 +713,7 @@ fn shell(
     }
     .map_err(|error| {
         Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::RUNTIME,
             format!("Shell failed to start '{}': {}", command, error),
             Some(span),
         )
@@ -740,7 +740,7 @@ fn create_object(
         let server = interpreter.eval_expr(&args[1], frame)?.to_output_string();
         if !server.is_empty() {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::UNSUPPORTED,
                 "Compatibility diagnostic: CreateObject remote server activation is not supported by the standalone Valo runtime; omit the server name for local COM activation",
                 Some(args[1].span),
             )
@@ -865,7 +865,7 @@ fn mac_script(
 ) -> Result<Value, Diagnostic> {
     let _ = interpreter.eval_expr(&args[0], frame)?;
     Err(Diagnostic::new(
-        crate::runtime::DiagnosticCode::GENERIC,
+        crate::runtime::DiagnosticCode::UNSUPPORTED,
         "Compatibility diagnostic: MacScript requires an Office VBA Mac host and is not supported by the standalone Valo runtime; replace MacScript with a platform API, shell command, or host-specific adapter",
         Some(span),
     )
@@ -913,7 +913,7 @@ pub(crate) fn dispatch_function(
         let condition = interpreter.eval_expr(&args[0], frame)?.is_truthy();
         if !condition {
             return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::RUNTIME_ERROR,
                 "Assertion failed".to_string(),
                 Some(args[0].span),
             ));
@@ -1100,7 +1100,7 @@ fn filelen(
     let path = args[0].to_output_string();
     let len = std::fs::metadata(&path).map_err(|error| {
         Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::FILE_IO,
             format!("Unable to get FileLen for '{}': {}", path, error),
             Some(span),
         )
@@ -1120,7 +1120,7 @@ fn filedatetime(
         .and_then(|metadata| metadata.modified())
         .map_err(|error| {
             Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::FILE_IO,
                 format!("Unable to get FileDateTime for '{}': {}", path, error),
                 Some(span),
             )
@@ -1143,7 +1143,7 @@ fn curdir(
     }
     let cwd = std::env::current_dir().map_err(|error| {
         Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::FILE_IO,
             format!("Unable to get current directory: {}", error),
             Some(span),
         )
@@ -1570,7 +1570,7 @@ fn color_component(
 fn get_attr(path: &str, span: crate::runtime::Span) -> Result<i64, Diagnostic> {
     let metadata = std::fs::metadata(path).map_err(|error| {
         Diagnostic::new(
-            crate::runtime::DiagnosticCode::GENERIC,
+            crate::runtime::DiagnosticCode::FILE_IO,
             format!("Unable to get attributes for '{}': {}", path, error),
             Some(span),
         )
@@ -1625,7 +1625,7 @@ fn expect_value_count(
         let code = if args.len() < expected {
             crate::runtime::DiagnosticCode::ARGUMENT_NOT_OPTIONAL
         } else {
-            crate::runtime::DiagnosticCode::GENERIC
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT
         };
         Err(Diagnostic::new(
             code,
@@ -1664,7 +1664,7 @@ fn system_time_to_vba_date(time: std::time::SystemTime) -> Result<f64, Diagnosti
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| {
             Diagnostic::new(
-                crate::runtime::DiagnosticCode::GENERIC,
+                crate::runtime::DiagnosticCode::UNSUPPORTED,
                 format!("Date before Unix epoch is not supported: {}", error),
                 None,
             )
@@ -2011,7 +2011,7 @@ fn dispatch_callbyname(
             }
             _ => {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
                     format!("Invalid CallByName call type: {}", call_type),
                     Some(span),
                 ));

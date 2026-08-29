@@ -595,7 +595,7 @@ pub fn get_object(
 
 fn com_error(message: impl Into<String>, span: Span) -> Diagnostic {
     Diagnostic::new(
-        crate::runtime::DiagnosticCode::GENERIC,
+        crate::runtime::DiagnosticCode::COM,
         message.into(),
         Some(span),
     )

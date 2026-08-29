@@ -242,7 +242,7 @@ impl Parser {
             TokenKind::Base => ("Base".to_string(), None),
             _ => {
                 return Err(Diagnostic::new(
-                    crate::runtime::DiagnosticCode::GENERIC,
+                    crate::runtime::DiagnosticCode::PARSE,
                     format!("Expected variable name after '{}'", keyword),
                     Some(token.span),
                 )
