@@ -773,7 +773,10 @@ impl Parser {
             TokenKind::LeftParen => {
                 let expr = self.parse_expression()?;
                 self.expect_simple(TokenKind::RightParen, "Expected ')' after expression")?;
-                return Ok(expr);
+                // Fall through rather than returning, so a member access can
+                // continue from here: `(a + b).Describe()` reads the same as
+                // any other receiver.
+                expr
             }
             _ => {
                 return Err(Diagnostic::new(

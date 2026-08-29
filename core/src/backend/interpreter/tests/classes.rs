@@ -2538,3 +2538,75 @@ End Sub
         crate::runtime::DiagnosticCode::INVALID_ASSIGNMENT
     );
 }
+
+#[test]
+fn a_property_read_from_another_instance_uses_that_instance() {
+    let output = run_source(
+        r#"
+Class Box
+    Public X As Double
+
+    Public Property Edge As Double
+        Get
+            Return X + 1000
+        End Get
+    End Property
+
+    ' Reading a property off another object of the same class must run the
+    ' getter against that object, not against the receiver of this method.
+    Public Function EdgeOf(ByVal other As Box) As Double
+        Return other.Edge
+    End Function
+End Class
+
+Sub Main()
+    Dim first As New Box()
+    first.X = 1
+    Dim second As New Box()
+    second.X = 2
+
+    Console.WriteLine(first.EdgeOf(second))
+    Console.WriteLine(first.Edge)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["1002", "1001"]);
+}
+
+#[test]
+fn comparing_two_instances_through_their_properties_is_correct() {
+    let output = run_source(
+        r#"
+Class Span
+    Public Start As Double
+    Public Width As Double
+
+    Public Property Finish As Double
+        Get
+            Return Start + Width
+        End Get
+    End Property
+
+    Public Function IsLeftOf(ByVal other As Span) As Boolean
+        Return Finish <= other.Start
+    End Function
+End Class
+
+Sub Main()
+    Dim near As New Span()
+    near.Start = 0
+    near.Width = 10
+
+    Dim far As New Span()
+    far.Start = 50
+    far.Width = 10
+
+    Console.WriteLine(near.IsLeftOf(far))
+    Console.WriteLine(far.IsLeftOf(near))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["True", "False"]);
+}

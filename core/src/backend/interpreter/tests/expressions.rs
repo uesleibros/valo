@@ -410,3 +410,35 @@ End Sub
         crate::runtime::DiagnosticCode::TYPE_MISMATCH
     );
 }
+
+#[test]
+fn a_member_can_be_reached_through_a_parenthesised_expression() {
+    let output = run_source(
+        r#"
+Class Vector
+    Public X As Double
+
+    Public Shared Operator +(ByVal left As Vector, ByVal right As Vector) As Vector
+        Dim sum As New Vector()
+        sum.X = left.X + right.X
+        Return sum
+    End Operator
+
+    Public Function Describe() As String
+        Return "x=" & X
+    End Function
+End Class
+
+Sub Main()
+    Dim a As New Vector()
+    a.X = 1
+    Dim b As New Vector()
+    b.X = 2
+
+    Console.WriteLine((a + b).Describe())
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["x=3"]);
+}

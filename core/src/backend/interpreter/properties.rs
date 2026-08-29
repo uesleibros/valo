@@ -622,6 +622,11 @@ impl RuntimeProperty {
 pub(crate) struct RuntimePropertyAccessor {
     pub(crate) name: String,
     pub(crate) kind: PropertyKind,
+    /// True when the property belongs to the class rather than to an instance.
+    ///
+    /// Resolution needs this to tell `Shared` access apart from reading a
+    /// property off another instance: only the former runs without a receiver.
+    pub(crate) is_shared: bool,
     pub(crate) is_iterator: bool,
     pub(crate) params: Vec<crate::Parameter>,
     pub(crate) return_type: Option<TypeName>,
@@ -634,6 +639,7 @@ impl From<&ClassProperty> for RuntimePropertyAccessor {
         Self {
             name: value.name.clone(),
             kind: value.kind,
+            is_shared: value.is_shared,
             is_iterator: value.is_iterator,
             params: value.params.clone(),
             return_type: value.return_type.clone(),

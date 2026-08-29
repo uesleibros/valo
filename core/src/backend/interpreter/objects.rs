@@ -700,7 +700,16 @@ impl Interpreter {
             }
             let class = self.classes.get(&key(&current_name)).cloned();
             if let Some(class) = class {
-                if class.properties.contains_key(&key(member)) {
+                // Only a Shared property can be read without an instance.
+                // Matching on the name alone would route an ordinary property
+                // here too, and it would then run against whatever `Me` the
+                // caller happened to have.
+                if class
+                    .properties
+                    .get(&key(member))
+                    .and_then(|property| property.get.as_ref())
+                    .is_some_and(|accessor| accessor.is_shared)
+                {
                     return self.call_shared_property_get(&current_name, member, &[], frame, span);
                 }
                 if let Some(base) = &class.base_class {
