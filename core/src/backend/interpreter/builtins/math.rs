@@ -1,9 +1,43 @@
 use super::super::Interpreter;
+use super::{ValueFn, find_handler};
 use crate::runtime::numeric::{value_to_f64, value_to_i64};
 use crate::runtime::{Diagnostic, Value};
 use rand::Rng;
 use rand::SeedableRng;
 use rand_pcg::Pcg64;
+
+/// The builtins this module implements.
+pub(super) const HANDLERS: &[(&str, ValueFn)] = &[
+    ("Abs", abs),
+    ("Atn", atn),
+    ("Cos", cos),
+    ("Exp", exp),
+    ("Log", log),
+    ("Sin", sin),
+    ("Sqr", sqr),
+    ("Tan", tan),
+    ("Round", round),
+    ("Sgn", sgn),
+    ("Int", int),
+    ("Fix", fix),
+    ("Randomize", randomize),
+    ("Rnd", rnd),
+    // Every financial function shares one implementation, which reads the name
+    // to decide which formula applies.
+    ("DDB", financial),
+    ("FV", financial),
+    ("IPmt", financial),
+    ("IRR", financial),
+    ("MIRR", financial),
+    ("NPer", financial),
+    ("NPV", financial),
+    ("PPmt", financial),
+    ("PV", financial),
+    ("Pmt", financial),
+    ("Rate", financial),
+    ("SLN", financial),
+    ("SYD", financial),
+];
 
 pub(crate) fn eval_math(
     interpreter: &mut Interpreter,
@@ -11,107 +45,137 @@ pub(crate) fn eval_math(
     args: &[Value],
     span: crate::runtime::Span,
 ) -> Result<Option<Value>, Diagnostic> {
-    if name.eq_ignore_ascii_case("Abs") {
-        let num = number_arg(name, &args[0], span)?;
-        return Ok(Some(Value::Double(num.abs())));
+    match find_handler(HANDLERS, name) {
+        Some(handler) => handler(interpreter, name, args, span).map(Some),
+        None => Ok(None),
     }
-    if name.eq_ignore_ascii_case("Atn") {
-        return Ok(Some(Value::Double(
-            number_arg(name, &args[0], span)?.atan(),
-        )));
-    }
-    if name.eq_ignore_ascii_case("Cos") {
-        return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.cos())));
-    }
-    if name.eq_ignore_ascii_case("Exp") {
-        return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.exp())));
-    }
-    if name.eq_ignore_ascii_case("Log") {
-        return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.ln())));
-    }
-    if name.eq_ignore_ascii_case("Sin") {
-        return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.sin())));
-    }
-    if name.eq_ignore_ascii_case("Sqr") {
-        return Ok(Some(Value::Double(
-            number_arg(name, &args[0], span)?.sqrt(),
-        )));
-    }
-    if name.eq_ignore_ascii_case("Tan") {
-        return Ok(Some(Value::Double(number_arg(name, &args[0], span)?.tan())));
-    }
-    if name.eq_ignore_ascii_case("Round") {
-        if args.is_empty() || args.len() > 2 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Round expects 1 to 2 arguments",
-                Some(span),
-            ));
-        }
-        let value = number_arg(name, &args[0], span)?;
-        let places = args
-            .get(1)
-            .map(|value| integer_arg(name, value, span))
-            .transpose()?
-            .unwrap_or(0);
-        let factor = 10_f64.powi(places as i32);
-        return Ok(Some(Value::Double((value * factor).round() / factor)));
-    }
-    if name.eq_ignore_ascii_case("Sgn") {
-        let num = number_arg(name, &args[0], span)?;
-        return Ok(Some(Value::Int16(if num > 0.0 {
-            1
-        } else if num < 0.0 {
-            -1
-        } else {
-            0
-        })));
-    }
-    if name.eq_ignore_ascii_case("Int") {
-        let num = number_arg(name, &args[0], span)?;
-        return Ok(Some(Value::Int64(num.floor() as i64)));
-    }
-    if name.eq_ignore_ascii_case("Fix") {
-        let num = number_arg(name, &args[0], span)?;
-        return Ok(Some(Value::Int64(num.trunc() as i64)));
-    }
-    if name.eq_ignore_ascii_case("Randomize") {
-        if args.len() > 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Randomize expects at most 1 argument",
-                Some(span),
-            ));
-        }
-        let seed = if args.is_empty() {
-            rand::thread_rng().r#gen::<u64>()
-        } else {
-            value_to_i64(&args[0]).ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                    "Randomize seed must be Integer",
-                    Some(span),
-                )
-            })? as u64
-        };
-        interpreter.rng = Pcg64::seed_from_u64(seed);
-        return Ok(Some(Value::Empty));
-    }
-    if name.eq_ignore_ascii_case("Rnd") {
-        if args.len() > 1 {
-            return Err(Diagnostic::new(
-                crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-                "Rnd expects at most 1 argument",
-                Some(span),
-            ));
-        }
-        return Ok(Some(Value::Double(interpreter.rng.r#gen::<f64>())));
-    }
-    if let Some(value) = eval_financial(name, args, span)? {
-        return Ok(Some(value));
-    }
+}
 
-    Ok(None)
+/// Defines a builtin that applies one `f64` method to its single argument.
+macro_rules! unary_double {
+    ($($fn_name:ident => $method:ident,)*) => {
+        $(
+            fn $fn_name(
+                _: &mut Interpreter,
+                name: &str,
+                args: &[Value],
+                span: crate::runtime::Span,
+            ) -> Result<Value, Diagnostic> {
+                Ok(Value::Double(number_arg(name, &args[0], span)?.$method()))
+            }
+        )*
+    };
+}
+
+unary_double! {
+    abs => abs,
+    atn => atan,
+    cos => cos,
+    exp => exp,
+    log => ln,
+    sin => sin,
+    sqr => sqrt,
+    tan => tan,
+}
+
+fn round(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let value = number_arg(name, &args[0], span)?;
+    let places = args
+        .get(1)
+        .map(|value| integer_arg(name, value, span))
+        .transpose()?
+        .unwrap_or(0);
+    let factor = 10_f64.powi(places as i32);
+    Ok(Value::Double((value * factor).round() / factor))
+}
+
+fn sgn(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let number = number_arg(name, &args[0], span)?;
+    Ok(Value::Int16(if number > 0.0 {
+        1
+    } else if number < 0.0 {
+        -1
+    } else {
+        0
+    }))
+}
+
+/// Truncates toward negative infinity.
+fn int(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    Ok(Value::Int64(
+        number_arg(name, &args[0], span)?.floor() as i64
+    ))
+}
+
+/// Truncates toward zero, which differs from `Int` for negative numbers.
+fn fix(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    Ok(Value::Int64(
+        number_arg(name, &args[0], span)?.trunc() as i64
+    ))
+}
+
+fn randomize(
+    interpreter: &mut Interpreter,
+    _: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    let seed = match args.first() {
+        None => rand::thread_rng().r#gen::<u64>(),
+        Some(value) => value_to_i64(value).ok_or_else(|| {
+            Diagnostic::new(
+                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+                "Randomize seed must be Integer",
+                Some(span),
+            )
+        })? as u64,
+    };
+    interpreter.rng = Pcg64::seed_from_u64(seed);
+    Ok(Value::Empty)
+}
+
+fn rnd(
+    interpreter: &mut Interpreter,
+    _: &str,
+    _: &[Value],
+    _: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    Ok(Value::Double(interpreter.rng.r#gen::<f64>()))
+}
+
+fn financial(
+    _: &mut Interpreter,
+    name: &str,
+    args: &[Value],
+    span: crate::runtime::Span,
+) -> Result<Value, Diagnostic> {
+    eval_financial(name, args, span)?.ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::GENERIC,
+            format!("Financial function '{name}' has no implementation"),
+            Some(span),
+        )
+    })
 }
 
 fn eval_financial(

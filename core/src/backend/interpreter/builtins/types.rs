@@ -1,170 +1,167 @@
-use crate::runtime::{Diagnostic, TypeName, Value, coerce_assignment};
+//! Builtins that inspect or convert a value's type.
+//!
+//! Each is a named function reached through [`HANDLERS`], rather than a branch
+//! in a chain of name comparisons. The table *is* the dispatch, so the set of
+//! builtins this module implements can be read off — and checked against the
+//! registry by a test — instead of being inferred by reading the code.
+//!
+//! Argument counts are checked against the registry before dispatch, so these
+//! functions index the arguments their registry entry guarantees.
+
+use super::{ValueFn, find_handler};
+use crate::backend::interpreter::Interpreter;
+use crate::runtime::{Diagnostic, Span, TypeName, Value, coerce_assignment, well_known};
+
+/// The builtins this module implements.
+pub(super) const HANDLERS: &[(&str, ValueFn)] = &[
+    ("IsObject", is_object),
+    ("IsArray", is_array),
+    ("IsNull", is_null),
+    ("IsEmpty", is_empty),
+    ("IsError", is_error),
+    ("IsNumeric", is_numeric),
+    ("IsDate", is_date),
+    ("VarType", var_type),
+    ("TypeName", type_name),
+    ("CVar", c_var),
+    ("CVErr", c_verr),
+    ("CByte", c_byte),
+    ("CInt", c_int),
+    ("CLng", c_lng),
+    ("CLngLng", c_lng_lng),
+    ("CLngPtr", c_lng_lng),
+    ("CInt64", c_lng_lng),
+    ("CSng", c_sng),
+    ("CDbl", c_dbl),
+    ("CDec", c_dec),
+    ("CCur", c_cur),
+    ("CDate", c_date),
+    ("CBool", c_bool),
+];
 
 pub(crate) fn eval_types(
+    interpreter: &mut Interpreter,
     name: &str,
     args: &[Value],
-    span: crate::runtime::Span,
+    span: Span,
 ) -> Result<Option<Value>, Diagnostic> {
-    if name.eq_ignore_ascii_case("IsObject") {
-        return Ok(Some(Value::Boolean(matches!(
-            args[0],
-            Value::Object(_) | Value::ComObject(_) | Value::Nothing
-        ))));
+    match find_handler(HANDLERS, name) {
+        Some(handler) => handler(interpreter, name, args, span).map(Some),
+        None => Ok(None),
     }
-    if name.eq_ignore_ascii_case("IsArray") {
-        return Ok(Some(Value::Boolean(matches!(args[0], Value::Array(_)))));
-    }
-    if name.eq_ignore_ascii_case("IsNull") {
-        return Ok(Some(Value::Boolean(matches!(args[0], Value::Null))));
-    }
-    if name.eq_ignore_ascii_case("IsEmpty") {
-        return Ok(Some(Value::Boolean(matches!(args[0], Value::Empty))));
-    }
-    if name.eq_ignore_ascii_case("IsError") {
-        return Ok(Some(Value::Boolean(matches!(args[0], Value::Error(_)))));
-    }
-    if name.eq_ignore_ascii_case("IsNumeric") {
-        let val = match &args[0] {
-            Value::Byte(_)
-            | Value::Int16(_)
-            | Value::Int32(_)
-            | Value::Int64(_)
-            | Value::UInt32(_)
-            | Value::UInt64(_)
-            | Value::Single(_)
-            | Value::Double(_)
-            | Value::Currency(_)
-            | Value::Decimal(_)
-            | Value::Boolean(_)
-            | Value::Date(_)
-            | Value::Empty => true,
-            Value::String(s) => s.trim().parse::<f64>().is_ok(),
-            _ => false,
-        };
-        return Ok(Some(Value::Boolean(val)));
-    }
-    if name.eq_ignore_ascii_case("IsDate") {
-        let val = match &args[0] {
-            Value::Date(_) => true,
-            Value::String(s) => {
-                super::parse_date_value(s, span).is_ok() || super::parse_time_value(s, span).is_ok()
-            }
-            _ => false,
-        };
-        return Ok(Some(Value::Boolean(val)));
-    }
-    if name.eq_ignore_ascii_case("VarType") {
-        return Ok(Some(Value::Int64(vartype(&args[0]))));
-    }
-    if name.eq_ignore_ascii_case("TypeName") {
-        return Ok(Some(Value::String(match_value_type_name(&args[0]))));
-    }
-    if name.eq_ignore_ascii_case("CVar") {
-        return Ok(Some(args[0].clone()));
-    }
-    if name.eq_ignore_ascii_case("CVErr") {
-        let code = crate::runtime::numeric::value_to_i64(&args[0]).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::TYPE_MISMATCH,
-                "CVErr requires an integer error code",
-                Some(span),
-            )
-        })?;
-        return Ok(Some(Value::Error(code as i32)));
-    }
-    if name.eq_ignore_ascii_case("CByte") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Byte,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CInt") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Integer,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CLng") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Long,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CLngLng")
-        || name.eq_ignore_ascii_case("CLngPtr")
-        || name.eq_ignore_ascii_case("CInt64")
-    {
-        expect_value_count(name, args, 1, span)?;
-        return Ok(Some(coerce_assignment(
-            &TypeName::Int64,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CSng") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Single,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CDbl") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Double,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CDec") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Decimal,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CCur") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Currency,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CDate") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Date,
-            args[0].clone(),
-            span,
-        )?));
-    }
-    if name.eq_ignore_ascii_case("CBool") {
-        return Ok(Some(coerce_assignment(
-            &TypeName::Boolean,
-            args[0].clone(),
-            span,
-        )?));
-    }
-
-    Ok(None)
 }
 
-fn expect_value_count(
-    name: &str,
-    args: &[Value],
-    expected: usize,
-    span: crate::runtime::Span,
-) -> Result<(), Diagnostic> {
-    if args.len() == expected {
-        Ok(())
-    } else {
-        Err(Diagnostic::new(
-            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
-            format!("{name} expects exactly {expected} argument(s)"),
+fn is_object(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(Value::Boolean(matches!(
+        args[0],
+        Value::Object(_) | Value::ComObject(_) | Value::Nothing
+    )))
+}
+
+fn is_array(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(Value::Boolean(matches!(args[0], Value::Array(_))))
+}
+
+fn is_null(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(Value::Boolean(matches!(args[0], Value::Null)))
+}
+
+fn is_empty(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(Value::Boolean(matches!(args[0], Value::Empty)))
+}
+
+fn is_error(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(Value::Boolean(matches!(args[0], Value::Error(_))))
+}
+
+fn is_numeric(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    let numeric = match &args[0] {
+        Value::Byte(_)
+        | Value::Int16(_)
+        | Value::Int32(_)
+        | Value::Int64(_)
+        | Value::UInt32(_)
+        | Value::UInt64(_)
+        | Value::Single(_)
+        | Value::Double(_)
+        | Value::Currency(_)
+        | Value::Decimal(_)
+        | Value::Boolean(_)
+        | Value::Date(_)
+        | Value::Empty => true,
+        // A string counts as numeric when it would convert cleanly.
+        Value::String(text) => text.trim().parse::<f64>().is_ok(),
+        _ => false,
+    };
+    Ok(Value::Boolean(numeric))
+}
+
+fn is_date(_: &mut Interpreter, _: &str, args: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    let is_date = match &args[0] {
+        Value::Date(_) => true,
+        Value::String(text) => {
+            super::parse_date_value(text, span).is_ok()
+                || super::parse_time_value(text, span).is_ok()
+        }
+        _ => false,
+    };
+    Ok(Value::Boolean(is_date))
+}
+
+fn var_type(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(Value::Int64(vartype(&args[0])))
+}
+
+fn type_name(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(Value::String(match_value_type_name(&args[0])))
+}
+
+fn c_var(_: &mut Interpreter, _: &str, args: &[Value], _: Span) -> Result<Value, Diagnostic> {
+    Ok(args[0].clone())
+}
+
+fn c_verr(_: &mut Interpreter, _: &str, args: &[Value], span: Span) -> Result<Value, Diagnostic> {
+    let code = crate::runtime::numeric::value_to_i64(&args[0]).ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::TYPE_MISMATCH,
+            "CVErr requires an integer error code",
             Some(span),
-        ))
-    }
+        )
+    })?;
+    Ok(Value::Error(code as i32))
+}
+
+/// Defines a conversion builtin that coerces its argument to a fixed type.
+///
+/// These differ only in their target type, so declaring them this way keeps each
+/// one a single readable line and leaves no room for a body to drift from the
+/// name it is registered under.
+macro_rules! conversions {
+    ($($fn_name:ident => $target:ident,)*) => {
+        $(
+            fn $fn_name(
+                _: &mut Interpreter,
+                _: &str,
+                args: &[Value],
+                span: Span,
+            ) -> Result<Value, Diagnostic> {
+                coerce_assignment(&TypeName::$target, args[0].clone(), span)
+            }
+        )*
+    };
+}
+
+conversions! {
+    c_byte => Byte,
+    c_int => Integer,
+    c_lng => Long,
+    c_lng_lng => Int64,
+    c_sng => Single,
+    c_dbl => Double,
+    c_dec => Decimal,
+    c_cur => Currency,
+    c_date => Date,
+    c_bool => Boolean,
 }
 
 fn vartype(value: &Value) -> i64 {
@@ -216,7 +213,7 @@ fn match_value_type_name(value: &Value) -> String {
         Value::String(_) => "String".to_string(),
         Value::Error(_) => "Error".to_string(),
         Value::Object(object) => object.borrow().class_name.clone(),
-        Value::Collection(_) => "Collection".to_string(),
+        Value::Collection(_) => well_known::COLLECTION.to_string(),
         Value::ComObject(object) => object.prog_id.clone(),
         Value::Nothing => "Nothing".to_string(),
         Value::Array(_) => "Array".to_string(),
@@ -224,7 +221,7 @@ fn match_value_type_name(value: &Value) -> String {
         Value::BoxedRecord(record, _) => record.type_name.clone(),
         Value::Missing => "Missing".to_string(),
         Value::Nullable(value) => match_value_type_name(value),
-        Value::Lambda(_) => "Func".to_string(),
+        Value::Lambda(_) => well_known::FUNC.to_string(),
         Value::UInt32(_) => "UInt32".to_string(),
         Value::UInt64(_) => "UInt64".to_string(),
         Value::Ptr(_) => "Ptr".to_string(),

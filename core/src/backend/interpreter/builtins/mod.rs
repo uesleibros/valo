@@ -98,6 +98,117 @@ pub(crate) fn dispatch_stmt(
     Ok(None)
 }
 
+/// A builtin implemented over already-evaluated arguments.
+///
+/// The dispatcher checks the argument count against the registry before calling
+/// one of these, so an implementation may index the arguments its own registry
+/// entry guarantees without re-checking.
+/// The name is passed through so one implementation can back several
+/// registered names, as the financial functions and the numeric conversions do.
+pub(super) type ValueFn =
+    fn(&mut Interpreter, &str, &[Value], crate::runtime::Span) -> Result<Value, Diagnostic>;
+
+/// Finds the implementation a module provides for `name`.
+pub(super) fn find_handler(handlers: &[(&str, ValueFn)], name: &str) -> Option<ValueFn> {
+    handlers
+        .iter()
+        .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+        .map(|(_, handler)| *handler)
+}
+
+#[cfg(test)]
+mod handler_tests {
+    use super::*;
+
+    /// Every module that dispatches through a handler table.
+    ///
+    /// As modules are converted from name-comparison chains to tables they are
+    /// added here, and the checks below start covering them.
+    const TABLES: &[(&str, &[(&str, ValueFn)])] =
+        &[("types", types::HANDLERS), ("math", math::HANDLERS)];
+
+    /// A handler table may only name builtins the registry declares.
+    ///
+    /// Implementing something the registry has never heard of means the
+    /// analyzer will reject every call to it, so the implementation is dead
+    /// code that looks alive.
+    #[test]
+    fn every_handler_is_a_declared_builtin() {
+        for (module, handlers) in TABLES {
+            for (name, _) in *handlers {
+                assert!(
+                    crate::runtime::builtins::lookup(name).is_some(),
+                    "{module} implements '{name}', which is not in the builtin registry"
+                );
+            }
+        }
+    }
+
+    /// A name may not be registered twice within one table.
+    #[test]
+    fn no_handler_table_registers_a_name_twice() {
+        for (module, handlers) in TABLES {
+            let mut seen = std::collections::HashSet::new();
+            for (name, _) in *handlers {
+                assert!(
+                    seen.insert(name.to_lowercase()),
+                    "{module} registers '{name}' more than once"
+                );
+            }
+        }
+    }
+
+    /// Two modules must not claim the same builtin.
+    ///
+    /// Dispatch tries the tables in order, so a name in two of them would be
+    /// answered by whichever happens to be tried first — a silent choice
+    /// between two implementations.
+    #[test]
+    fn no_builtin_is_implemented_by_two_modules() {
+        let mut owner = std::collections::HashMap::new();
+        for (module, handlers) in TABLES {
+            for (name, _) in *handlers {
+                if let Some(previous) = owner.insert(name.to_lowercase(), *module)
+                    && previous != *module
+                {
+                    panic!("'{name}' is implemented by both {previous} and {module}");
+                }
+            }
+        }
+    }
+
+    /// A converted module must implement every builtin routed to it.
+    ///
+    /// `types` owns the type-inspection and conversion builtins; if the
+    /// registry gains one and the table does not, calls would fall through to
+    /// the remaining name-comparison chains and be reported as undefined.
+    #[test]
+    fn the_types_module_implements_every_conversion_builtin() {
+        for builtin in crate::runtime::builtins::BUILTINS {
+            let looks_like_a_conversion = builtin.name.starts_with('C')
+                && builtin.name.len() > 1
+                && builtin.name.as_bytes()[1].is_ascii_uppercase();
+            let looks_like_an_inspection = builtin.name.starts_with("Is");
+            if !looks_like_a_conversion && !looks_like_an_inspection {
+                continue;
+            }
+            // These are checked by the analyzer against the call site rather
+            // than evaluated from a value, so they live elsewhere.
+            if matches!(
+                builtin.name,
+                "IsMissing" | "CallByName" | "CreateObject" | "CStr"
+            ) {
+                continue;
+            }
+            assert!(
+                find_handler(types::HANDLERS, builtin.name).is_some(),
+                "the registry declares '{}' but types has no implementation for it",
+                builtin.name
+            );
+        }
+    }
+}
+
 pub(crate) fn dispatch_function(
     interpreter: &mut Interpreter,
     name: &str,
@@ -563,7 +674,7 @@ pub(crate) fn dispatch_function(
         return Ok(Some(Value::Boolean(matches!(values[0], Value::Missing))));
     }
 
-    if let Some(val) = types::eval_types(effective_name, &values, span)? {
+    if let Some(val) = types::eval_types(interpreter, effective_name, &values, span)? {
         return Ok(Some(val));
     }
     if let Some(val) = arrays::eval_arrays(effective_name, &values, span)? {
