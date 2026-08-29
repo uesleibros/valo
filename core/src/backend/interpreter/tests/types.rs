@@ -149,3 +149,40 @@ fn test_ptr_foundation() {
     let output = run(&program).unwrap();
     assert_eq!(output, vec!["Ptr", "FuncPtr"]);
 }
+
+#[test]
+fn converting_to_an_integer_rounds_with_ties_to_even() {
+    let output = crate::backend::interpreter::tests::helpers::run_source(
+        r#"
+Sub Main()
+    Console.WriteLine(CInt(3.9))
+    Console.WriteLine(CInt(3.1))
+    Console.WriteLine(CInt(-3.9))
+
+    ' Ties go to the even neighbour, as they do in VB.NET and VBA.
+    Console.WriteLine(CInt(2.5))
+    Console.WriteLine(CInt(3.5))
+    Console.WriteLine(CInt(-2.5))
+
+    Console.WriteLine(CLng(1234.6))
+    Console.WriteLine(CByte(200.7))
+    Console.WriteLine(CInt("3.9"))
+
+    ' An assignment converts the same way a conversion does.
+    Dim narrowed As Integer = 7.8
+    Console.WriteLine(narrowed)
+
+    ' Int and Fix are not conversions and still do what they say.
+    Console.WriteLine(Int(3.9))
+    Console.WriteLine(Fix(-3.9))
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        output,
+        vec![
+            "4", "3", "-4", "2", "4", "-2", "1235", "201", "4", "8", "3", "-3"
+        ]
+    );
+}

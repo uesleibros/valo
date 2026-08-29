@@ -176,6 +176,41 @@ pub fn expect_numbers(left: Value, right: Value, span: Span) -> Result<(f64, f64
     Ok((a, b))
 }
 
+/// Converts a value to an integer the way Basic does: by rounding.
+///
+/// `CInt(3.9)` is 4, not 3. Ties go to the even neighbour, so `CInt(2.5)` is 2
+/// and `CInt(3.5)` is 4 -- VB.NET and VBA agree on this, so there is nothing to
+/// trade off between them. Use this wherever a conversion is what the program
+/// asked for; [`value_to_i64`] truncates, which is right for reading an index
+/// or a bit pattern out of a value that already holds one.
+pub fn value_to_rounded_i64(v: &Value) -> Option<i64> {
+    match v {
+        Value::Single(n) => Some(f64::from(*n).round_ties_even() as i64),
+        Value::Double(n) | Value::Date(n) => Some(n.round_ties_even() as i64),
+        // Currency is a scaled integer, so rounding it through `f64` would lose
+        // the low digits of a large amount. Divide and round the remainder.
+        Value::Currency(n) => Some(divide_ties_even(*n, 10_000)),
+        Value::String(text) => parse_numeric_string_f64(text)
+            .map(|value| value.round_ties_even() as i64)
+            .or_else(|| parse_numeric_string_i64(text)),
+        Value::Nullable(inner) => value_to_rounded_i64(inner),
+        other => value_to_i64(other),
+    }
+}
+
+/// Divides, rounding a tie to the even quotient.
+fn divide_ties_even(numerator: i64, divisor: i64) -> i64 {
+    let quotient = numerator / divisor;
+    let remainder = (numerator % divisor).abs();
+    let step = if numerator < 0 { -1 } else { 1 };
+
+    match (remainder * 2).cmp(&divisor) {
+        std::cmp::Ordering::Greater => quotient + step,
+        std::cmp::Ordering::Equal if quotient % 2 != 0 => quotient + step,
+        _ => quotient,
+    }
+}
+
 pub fn value_to_i64(v: &Value) -> Option<i64> {
     match v {
         Value::Byte(n) => Some(*n as i64),

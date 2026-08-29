@@ -1,5 +1,5 @@
 use crate::runtime::numeric::{
-    is_integer_type, is_really_float, value_to_f64, value_to_i64, value_to_u64,
+    is_integer_type, is_really_float, value_to_f64, value_to_rounded_i64, value_to_u64,
 };
 use crate::runtime::well_known;
 use crate::runtime::{Diagnostic, Span, TypeName, Value};
@@ -46,32 +46,37 @@ pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Valu
 
     match ty {
         TypeName::Byte => {
-            let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let v =
+                value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             if !(0..=255).contains(&v) {
                 return Err(overflow_err(span));
             }
             Ok(Value::Byte(v as u8))
         }
         TypeName::Integer => {
-            let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let v =
+                value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             if !(i16::MIN as i64..=i16::MAX as i64).contains(&v) {
                 return Err(overflow_err(span));
             }
             Ok(Value::Int16(v as i16))
         }
         TypeName::Long => {
-            let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let v =
+                value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             if !(i32::MIN as i64..=i32::MAX as i64).contains(&v) {
                 return Err(overflow_err(span));
             }
             Ok(Value::Int32(v as i32))
         }
         TypeName::Int64 => {
-            let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let v =
+                value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             Ok(Value::Int64(v))
         }
         TypeName::UInt32 => {
-            let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let v =
+                value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             if !(0..=u32::MAX as i64).contains(&v) {
                 return Err(overflow_err(span));
             }
@@ -92,16 +97,18 @@ pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Valu
         TypeName::Currency => {
             if is_really_float(&value) {
                 let v = value_to_f64(&value).unwrap();
-                Ok(Value::Currency((v * 10000.0) as i64))
+                Ok(Value::Currency((v * 10000.0).round_ties_even() as i64))
             } else {
-                let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+                let v = value_to_rounded_i64(&value)
+                    .ok_or_else(|| type_mismatch_err(ty, &value, span))?;
                 Ok(Value::Currency(
                     v.checked_mul(10000).ok_or_else(|| overflow_err(span))?,
                 ))
             }
         }
         TypeName::Decimal => {
-            let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let v =
+                value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             Ok(Value::Decimal(v as i128))
         }
         TypeName::Boolean => Ok(Value::Boolean(value.is_truthy())),
@@ -111,11 +118,13 @@ pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Valu
         }
         TypeName::String => Ok(Value::String(value.to_output_string())),
         TypeName::Ptr => {
-            let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let v =
+                value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             Ok(Value::Ptr(v as usize))
         }
         TypeName::FuncPtr => {
-            let v = value_to_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
+            let v =
+                value_to_rounded_i64(&value).ok_or_else(|| type_mismatch_err(ty, &value, span))?;
             Ok(Value::FuncPtr(v as usize))
         }
         TypeName::Nullable(inner) => match value {
