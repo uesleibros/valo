@@ -661,6 +661,15 @@ impl Interpreter {
         }
     }
 
+    /// The procedure an `AddressOf` address was made for.
+    ///
+    /// A delegate holds whatever was assigned to it, and `AddressOf` yields an
+    /// address rather than a callable value -- the address is what a native
+    /// library needs. Calling one from Valo means going back the other way.
+    pub(crate) fn procedure_at(&self, address: usize) -> Option<String> {
+        self.callback_names.get(&address).cloned()
+    }
+
     pub(crate) fn bind_parameter_values(
         &mut self,
         params: &[crate::Parameter],
@@ -753,6 +762,11 @@ impl Interpreter {
                     eval_args.push(self.eval_expr(arg, caller_frame)?);
                 }
                 return self.call_lambda_value(lambda, &eval_args, span);
+            }
+            if let Value::FuncPtr(address) = value
+                && let Some(target) = self.procedure_at(address)
+            {
+                return self.call_function(&target, type_args, args, caller_frame, span);
             }
         }
 
@@ -1238,6 +1252,11 @@ impl Interpreter {
                 }
                 self.call_lambda_value(lambda, &eval_args, span)?;
                 return Ok(());
+            }
+            if let Value::FuncPtr(address) = value
+                && let Some(target) = self.procedure_at(address)
+            {
+                return self.call_sub(&target, args, caller_frame, span);
             }
         }
 
@@ -2770,7 +2789,7 @@ impl Interpreter {
                                 let _ = callee_frame.assign(&param.name, value, param.span)?;
                             }
                         }
-                        ExprKind::Call { name, args, .. } if caller_frame.has_variable(name) => {
+                        ExprKind::Call { name, args, .. } if caller_frame.holds_array(name) => {
                             let array_variable = caller_frame.variable(name, arg.span)?;
                             let mut indices = Vec::new();
                             for index_expr in args {

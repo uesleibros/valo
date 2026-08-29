@@ -182,6 +182,45 @@ apart.
 - A class's `Property` accessors do not overload; only `Sub` and `Function`
   members do.
 
+## Delegates
+
+A `Delegate` names a callable shape. It has no body -- what goes into a
+variable of that type is a lambda or the address of a procedure:
+
+```vb
+Delegate Function Transform(ByVal value As Long) As Long
+
+Function Twice(ByVal n As Long) As Long
+    Return n * 2
+End Function
+
+Dim f As Transform
+f = AddressOf Twice                     ' a procedure
+Console.WriteLine(f(21))                ' 42
+
+f = Function(x As Long) x + 1           ' or a lambda
+Console.WriteLine(f(41))                ' 42
+```
+
+Because the shape is declared, a call through a delegate is checked like any
+other call: the argument count and types have to match, and the result carries
+the declared return type. A delegate is also an ordinary parameter type, which
+is what makes it worth declaring:
+
+```vb
+Function ApplyTo(ByVal step_ As Transform, ByVal value As Long) As Long
+    Return step_(value)
+End Function
+```
+
+A closure fits a delegate as readily as a plain procedure does, so a delegate
+can carry state with it.
+
+`AddressOf` on a procedure whose parameters native code cannot marshal -- a
+`String`, or anything `ByRef` -- is allowed, because most addresses never leave
+Valo. Handing one to a `Declare` is what gets refused, and the diagnostic points
+at the call that does it.
+
 ## Related
 
 - [Example: overloads](../../examples/overloads.valo)

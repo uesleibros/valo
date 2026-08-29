@@ -1174,6 +1174,49 @@ impl Parser {
         Ok(consts)
     }
 
+    /// Parses `Delegate Sub|Function Name(params) [As T]`.
+    ///
+    /// A delegate has no body: it names a shape that a lambda or the address of
+    /// a procedure can be checked against.
+    pub(super) fn parse_delegate_decl(
+        &mut self,
+        visibility: Visibility,
+    ) -> Result<DelegateDecl, Diagnostic> {
+        let start = self
+            .expect_simple(TokenKind::Delegate, "Expected 'Delegate'")?
+            .span;
+        let kind = if self.match_simple(&TokenKind::Function) {
+            DeclareKind::Function
+        } else if self.match_simple(&TokenKind::Sub) {
+            DeclareKind::Sub
+        } else {
+            return Err(self.error_here("Expected Function or Sub after Delegate"));
+        };
+        let name = self.expect_identifier("Expected Delegate name")?;
+        self.expect_simple(TokenKind::LeftParen, "Expected '(' in Delegate")?;
+        let params = self.parse_parameters()?;
+        self.expect_simple(
+            TokenKind::RightParen,
+            "Expected ')' after Delegate parameters",
+        )?;
+        let return_type = if kind == DeclareKind::Function {
+            self.expect_simple(TokenKind::As, "Expected 'As' before Delegate return type")?;
+            Some(self.parse_type_name()?)
+        } else {
+            None
+        };
+        let end = self.previous().span;
+        self.expect_statement_end("Expected newline after Delegate")?;
+        Ok(DelegateDecl {
+            visibility,
+            kind,
+            name,
+            params,
+            return_type,
+            span: Span::new(self.file_id, start.start, end.end),
+        })
+    }
+
     pub(super) fn parse_declare_decl(
         &mut self,
         visibility: Visibility,

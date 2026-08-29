@@ -82,6 +82,7 @@ COM examples require Windows and the relevant COM server. They are skipped by th
 - [Object Initializers](object_initializers.valo) (`New T With { .Member = value }`)
 - [Lambdas](lambdas.valo) (single-expression and multi-line `Function` / `Sub`)
 - [Overloads](overloads.valo) (several procedures sharing one name)
+- [Delegates](delegates.valo) (named callable types)
 - [Null-Conditional Access](null_conditional.valo) (`obj?.Member`)
 
 ## Generics, Advanced Syntax, and Modern Features

@@ -209,6 +209,55 @@ fn only_overload<'a, T>(
 }
 
 impl Interpreter {
+    /// Records the names declared as `Delegate`.
+    ///
+    /// Unqualified: a delegate is a shape rather than something to construct,
+    /// and the runtime only needs to know a name is one so that declaring a
+    /// variable of it does not go looking for a record layout.
+    /// Stops an address that only Valo can call from reaching a library.
+    ///
+    /// `AddressOf` accepts any procedure, because most of them are only ever
+    /// called from Valo. The ones whose signature native code cannot take are
+    /// refused here, where handing one over is what would actually break.
+    fn refuse_valo_only_callbacks(
+        &self,
+        marshaled: &MarshaledArgs,
+        span: Span,
+    ) -> Result<(), Diagnostic> {
+        for storage in &marshaled.storage {
+            if let ArgumentStorage::Ptr(address) = storage
+                && let Some(reason) = self.native_callback_refusal(**address)
+            {
+                return Err(reason.with_secondary_label(span, "passed to native code here"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Hands out an address for a procedure that native code cannot accept.
+    ///
+    /// The handle is deliberately a small counter rather than anything that
+    /// could be mistaken for code: it is only ever resolved back to a name for
+    /// a call made from Valo, and [`Interpreter::native_callback_refusal`]
+    /// stops it reaching a library.
+    fn reserve_valo_only_callback(&mut self, name: &str, reason: Diagnostic) -> usize {
+        let handle = self.valo_only_callbacks.len() + 1;
+        self.callback_names.insert(handle, name.to_string());
+        self.valo_only_callbacks.insert(handle, reason);
+        handle
+    }
+
+    /// Why this address cannot be given to native code, if it cannot.
+    pub(crate) fn native_callback_refusal(&self, address: usize) -> Option<Diagnostic> {
+        self.valo_only_callbacks.get(&address).cloned()
+    }
+
+    pub(crate) fn register_delegates(&mut self, delegates: &[crate::DelegateDecl]) {
+        for delegate in delegates {
+            self.delegates.insert(key(&delegate.name));
+        }
+    }
+
     pub(crate) fn register_declares(&mut self, declares: &[DeclareDecl], module_key: Option<&str>) {
         for declare in declares {
             let name = match module_key {
@@ -405,6 +454,7 @@ impl Interpreter {
             ));
         };
         if let Some(&ptr) = self.ffi_callbacks.get(&callback_key) {
+            self.callback_names.insert(ptr, name.to_string());
             return Ok(ptr);
         }
         let params = params.expect("callback params resolved");
@@ -412,25 +462,50 @@ impl Interpreter {
 
         let mut arg_types = Vec::new();
         let mut callback_params = Vec::new();
+        let mut native = Ok(());
         for param in &params {
             let ty = self.resolve_type_name(&param.ty, &Frame::default(), span)?;
             if !matches!(param.mode, PassingMode::ByVal) {
-                return Err(unsupported(
+                native = Err(unsupported(
                     "AddressOf callbacks currently require ByVal parameters",
                     param.span,
                 )
                 .with_help("pass pointer-sized values as ByVal LongPtr"));
+                break;
             }
-            let ffi_type = callback_ffi_type(&ty, param.span)?;
-            arg_types.push(ffi_type);
+            match callback_ffi_type(&ty, param.span) {
+                Ok(ffi_type) => arg_types.push(ffi_type),
+                Err(err) => {
+                    native = Err(err);
+                    break;
+                }
+            }
             callback_params.push(CallbackParam { ty });
         }
 
         let ret_ffi_type = if is_sub {
             FfiType::void()
         } else {
-            return_ffi_type(&return_type, false, span)?
+            match return_ffi_type(&return_type, false, span) {
+                Ok(ffi_type) => ffi_type,
+                Err(err) => {
+                    native = native.and(Err(err));
+                    FfiType::void()
+                }
+            }
         };
+
+        // A signature native code cannot take is not an error here: the address
+        // may never leave Valo. `AddressOf Show` for a `Sub Show(text As
+        // String)` is perfectly good as a delegate, and only passing it to a
+        // library is not. So hand back a handle that Valo can call and that the
+        // native side refuses, and report the marshaling problem there, where
+        // it is actually a problem.
+        if let Err(reason) = native {
+            let handle = self.reserve_valo_only_callback(name, reason);
+            self.ffi_callbacks.insert(callback_key, handle);
+            return Ok(handle);
+        }
 
         let cif = Cif::new(arg_types, ret_ffi_type);
 
@@ -527,6 +602,8 @@ impl Interpreter {
         });
 
         self.ffi_callbacks.insert(callback_key, code.0 as usize);
+        self.callback_names
+            .insert(code.0 as usize, name.to_string());
         Ok(code.0 as usize)
     }
 
@@ -549,6 +626,7 @@ impl Interpreter {
             .with_help("add PtrSafe and use LongPtr for pointer values"));
         }
         let mut marshaled = self.marshal_args(declare, args, frame, span)?;
+        self.refuse_valo_only_callbacks(&marshaled, span)?;
         let symbol_name = declare.alias.as_deref().unwrap_or(&declare.name);
         let symbol = self
             .native_libraries

@@ -16,6 +16,7 @@ pub struct Program {
     pub module_vars: Vec<ModuleVarDecl>,
     pub module_consts: Vec<ConstDecl>,
     pub declares: Vec<DeclareDecl>,
+    pub delegates: Vec<DelegateDecl>,
     pub interfaces: Vec<InterfaceDecl>,
     pub classes: Vec<ClassDecl>,
     pub procedures: Vec<Procedure>,
@@ -180,6 +181,21 @@ pub struct DeclareDecl {
     pub name: String,
     pub lib: String,
     pub alias: Option<String>,
+    pub params: Vec<Parameter>,
+    pub return_type: Option<TypeName>,
+    pub span: Span,
+}
+
+/// A named callable type: `Delegate Function Compare(a As Long, b As Long) As Boolean`.
+///
+/// A delegate declares a shape, not a body. What ends up in a variable of this
+/// type is a lambda or the address of a procedure; the declaration is what lets
+/// the analyzer check that the one put there fits.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DelegateDecl {
+    pub visibility: Visibility,
+    pub kind: DeclareKind,
+    pub name: String,
     pub params: Vec<Parameter>,
     pub return_type: Option<TypeName>,
     pub span: Span,

@@ -747,6 +747,7 @@ pub fn validate_statements(
                         context,
                         option_explicit,
                     )?,
+                    types,
                     condition.span,
                 )?;
                 validate_statements(
@@ -772,6 +773,7 @@ pub fn validate_statements(
                             context,
                             option_explicit,
                         )?,
+                        types,
                         branch.condition.span,
                     )?;
                     validate_statements(
@@ -895,6 +897,7 @@ pub fn validate_statements(
                                 context,
                                 option_explicit,
                             )?,
+                            types,
                             condition.span,
                         )?;
                     }
@@ -946,17 +949,20 @@ pub fn validate_statements(
                 ensure_assignable(
                     &TypeName::Integer,
                     &validate_expr(start, symbols, types, signatures, context, option_explicit)?,
+                    types,
                     start.span,
                 )?;
                 ensure_assignable(
                     &TypeName::Integer,
                     &validate_expr(end, symbols, types, signatures, context, option_explicit)?,
+                    types,
                     end.span,
                 )?;
                 if let Some(step) = step {
                     ensure_assignable(
                         &TypeName::Integer,
                         &validate_expr(step, symbols, types, signatures, context, option_explicit)?,
+                        types,
                         step.span,
                     )?;
                 }
@@ -1014,7 +1020,7 @@ pub fn validate_statements(
                     context,
                     option_explicit,
                 )?;
-                ensure_assignable(&loop_type, &array_type, *span)?;
+                ensure_assignable(&loop_type, &array_type, types, *span)?;
                 if let Some((next_variable, next_span)) = next_variable
                     && !next_variable.eq_ignore_ascii_case(variable)
                 {
@@ -1085,7 +1091,7 @@ pub fn validate_statements(
                                 option_explicit,
                             )
                         })?;
-                    ensure_assignable(&TypeName::Integer, &upper_type, upper.span)?;
+                    ensure_assignable(&TypeName::Integer, &upper_type, types, upper.span)?;
                     if let Some(lower) = lower {
                         let lower_type = class_field_expr_type(lower, symbols, types, context)
                             .map(Ok)
@@ -1099,7 +1105,7 @@ pub fn validate_statements(
                                     option_explicit,
                                 )
                             })?;
-                        ensure_assignable(&TypeName::Integer, &lower_type, lower.span)?;
+                        ensure_assignable(&TypeName::Integer, &lower_type, types, lower.span)?;
                     }
                 }
                 if *preserve && dims.len() > 1 {
@@ -1161,7 +1167,7 @@ pub fn validate_statements(
                     context,
                     option_explicit,
                 )?;
-                ensure_assignable(&TypeName::String, &expr_ty, expr.span)?;
+                ensure_assignable(&TypeName::String, &expr_ty, types, expr.span)?;
             }
             Stmt::Label { .. } => {}
             Stmt::GoTo { .. } => {}
@@ -1554,9 +1560,15 @@ fn validate_sub_call(
                 validation,
             )?;
             validate_arguments("Function", func, args, span, validation)?;
+        } else if let Some(delegate) =
+            delegate_type_of(effective_name, validation.symbols, validation.types)
+        {
+            // Calling a delegate is the point of having one, so it is checked
+            // against what the delegate declares.
+            validate_arguments("Sub", &delegate, args, span, validation)?;
         } else if holds_callable_value(effective_name, validation.symbols) {
-            // A `Sub` lambda held in a variable is invoked like any other Sub;
-            // its parameters are only known at run time.
+            // A `Sub` lambda held in an untyped variable is invoked like any
+            // other Sub; its parameters are only known at run time.
             for arg in args {
                 validate_expr(
                     arg,
@@ -1579,6 +1591,21 @@ fn validate_sub_call(
 
     let chosen = resolve_overload("Sub", effective_name, &sub, args, span, validation)?;
     validate_arguments("Sub", chosen, args, span, validation)
+}
+
+/// The delegate a variable is declared as, if it is declared as one.
+fn delegate_type_of(
+    name: &str,
+    symbols: &HashMap<String, VarType>,
+    types: &TypeRegistry,
+) -> Option<CallableSig> {
+    let (VarType::Scalar(_, TypeName::User(type_name))
+    | VarType::Optional(_, TypeName::User(type_name))
+    | VarType::Const(_, TypeName::User(type_name))) = symbols.get(&key(name))?
+    else {
+        return None;
+    };
+    types.delegates.get(&key(type_name)).cloned()
 }
 
 /// Reports whether a name refers to a variable that can hold something callable.

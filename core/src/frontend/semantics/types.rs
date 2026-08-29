@@ -39,8 +39,15 @@ pub(super) struct TypeRegistry {
     pub(super) enums: HashMap<String, EnumSig>,
     pub(super) interfaces: HashMap<String, InterfaceSig>,
     pub(super) classes: HashMap<String, ClassSig>,
+    pub(super) delegates: HashMap<String, DelegateSig>,
     pub(super) generic_params: HashSet<String>,
 }
+
+/// A named callable shape: what `Delegate Sub`/`Delegate Function` declares.
+///
+/// It is the same thing as a procedure signature with no body, so it reuses
+/// [`ClassMethodSig`]. What makes it a type is being in the registry.
+pub(super) type DelegateSig = ClassMethodSig;
 
 #[allow(dead_code)]
 impl TypeRegistry {
@@ -49,6 +56,7 @@ impl TypeRegistry {
             || self.enums.contains_key(&key(name))
             || self.interfaces.contains_key(&key(name))
             || self.classes.contains_key(&key(name))
+            || self.delegates.contains_key(&key(name))
             || self.unique_nested_type_name(name).is_some()
     }
 

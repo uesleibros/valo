@@ -20,6 +20,7 @@ impl Parser {
         let mut module_vars = Vec::new();
         let mut module_consts = Vec::new();
         let mut declares = Vec::new();
+        let mut delegates = Vec::new();
         let mut interfaces = Vec::new();
         let mut classes = Vec::new();
         let mut procedures = Vec::new();
@@ -243,6 +244,10 @@ impl Parser {
                             }
                             declares.push(self.parse_declare_decl(visibility)?);
                         }
+                        TokenKind::Delegate => {
+                            let visibility = explicit_visibility.unwrap_or(Visibility::Public);
+                            delegates.push(self.parse_delegate_decl(visibility)?);
+                        }
                         TokenKind::Const => {
                             let visibility = explicit_visibility.unwrap_or(Visibility::Public);
                             if is_iterator {
@@ -285,6 +290,7 @@ impl Parser {
                                 &mut module_vars,
                                 &mut module_consts,
                                 &mut declares,
+                                &mut delegates,
                                 &mut interfaces,
                                 &mut classes,
                                 &mut procedures,
@@ -329,6 +335,7 @@ impl Parser {
             module_vars,
             module_consts,
             declares,
+            delegates,
             interfaces,
             classes,
             procedures,
@@ -358,6 +365,7 @@ impl Parser {
         module_vars: &mut Vec<ModuleVarDecl>,
         module_consts: &mut Vec<ConstDecl>,
         declares: &mut Vec<DeclareDecl>,
+        delegates: &mut Vec<DelegateDecl>,
         interfaces: &mut Vec<InterfaceDecl>,
         classes: &mut Vec<ClassDecl>,
         procedures: &mut Vec<Procedure>,
@@ -487,6 +495,10 @@ impl Parser {
                     }
                     declares.push(self.parse_declare_decl(visibility)?);
                 }
+                TokenKind::Delegate => {
+                    let visibility = explicit_visibility.unwrap_or(Visibility::Public);
+                    delegates.push(self.parse_delegate_decl(visibility)?);
+                }
                 TokenKind::Const => {
                     let visibility = explicit_visibility.unwrap_or(Visibility::Public);
                     if inheritance != ClassInheritance::Normal {
@@ -527,6 +539,7 @@ impl Parser {
                         module_vars,
                         module_consts,
                         declares,
+                        delegates,
                         interfaces,
                         classes,
                         procedures,

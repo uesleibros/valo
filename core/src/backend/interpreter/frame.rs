@@ -555,6 +555,15 @@ impl Frame {
         with_key(name, |k| self.variables.remove(k))
     }
 
+    /// Whether a name is a variable that currently holds an array.
+    ///
+    /// `f(1)` is indexing when `f` is an array and a call when `f` holds
+    /// something callable, and only the value tells the two apart.
+    pub(crate) fn holds_array(&self, name: &str) -> bool {
+        self.variable_ref(name)
+            .is_some_and(|variable| matches!(&*variable.borrow(), Value::Array(_)))
+    }
+
     pub(crate) fn has_variable(&self, name: &str) -> bool {
         with_key(name, |k| self.variables.contains_key(k))
     }

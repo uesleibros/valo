@@ -403,16 +403,35 @@ End Sub
 }
 
 #[test]
-fn addressof_byref_callback_reports_v3003() {
-    let diagnostic = source_diagnostic(
+fn a_callback_native_code_cannot_take_is_refused_where_it_is_handed_over() {
+    // Taking the address is fine on its own: most addresses are only ever
+    // called from Valo, and a ByRef parameter is no obstacle to that.
+    let output = run_source(
         r#"
-Function MyCallback(value As Long) As Long
-    MyCallback = value
+Function MyCallback(ByRef value As Long) As Long
+    Return value
 End Function
 
 Sub Main()
     Dim ptr As LongPtr
     ptr = AddressOf MyCallback
+    Console.WriteLine("taken")
+End Sub
+"#,
+    );
+    assert_eq!(output, vec!["taken"]);
+
+    // Passing it to a library is where the marshaling has to be possible.
+    let diagnostic = source_diagnostic(
+        r#"
+Declare PtrSafe Sub UseCallback Lib "nosuchlib" (ByVal fn_ As LongPtr)
+
+Function MyCallback(ByRef value As Long) As Long
+    Return value
+End Function
+
+Sub Main()
+    UseCallback AddressOf MyCallback
 End Sub
 "#,
     );

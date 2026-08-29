@@ -60,6 +60,11 @@ pub(crate) fn default_value(
     if interpreter.classes.contains_key(&key(&name)) {
         return Ok(Value::Nothing);
     }
+    // A delegate-typed variable starts empty and holds a lambda or a procedure
+    // address once one is assigned. There is nothing to construct.
+    if interpreter.delegates.contains(&key(&name)) {
+        return Ok(Value::Nothing);
+    }
     let type_def = interpreter
         .types
         .get(&key(&display_name))

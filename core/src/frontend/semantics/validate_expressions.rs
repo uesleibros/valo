@@ -220,6 +220,7 @@ pub(super) fn validate_assignment_target(
                 ensure_assignable(
                     &TypeName::Integer,
                     &validate_expr(index, symbols, types, signatures, context, option_explicit)?,
+                    types,
                     index.span,
                 )?;
             }
@@ -635,6 +636,7 @@ pub(super) fn validate_expr(
                     ensure_assignable(
                         &member_type.substitute_generics(&bindings),
                         &value_type,
+                        types,
                         init.value.span,
                     )?;
                 }
@@ -1138,6 +1140,7 @@ pub(super) fn validate_expr(
                             context,
                             option_explicit,
                         )?,
+                        types,
                         args[1].span,
                     )?;
                 }
@@ -1166,6 +1169,7 @@ pub(super) fn validate_expr(
                                     context,
                                     option_explicit,
                                 )?,
+                                types,
                                 arg.span,
                             )?;
                         }
@@ -1174,6 +1178,25 @@ pub(super) fn validate_expr(
                     VarType::Scalar(_, TypeName::User(class_name))
                     | VarType::Optional(_, TypeName::User(class_name))
                     | VarType::Const(_, TypeName::User(class_name)) => {
+                        // Calling a delegate is the point of having one, so it
+                        // is checked like a call to the procedure it names.
+                        if let Some(delegate) =
+                            types.delegates.get(&key(class_name.as_str())).cloned()
+                        {
+                            let validation = ExprValidation::new(
+                                symbols,
+                                types,
+                                signatures,
+                                context,
+                                option_explicit,
+                            );
+                            let kind = match delegate.return_type {
+                                Some(_) => "Function",
+                                None => "Sub",
+                            };
+                            validate_arguments(kind, &delegate, args, expr.span, validation)?;
+                            return Ok(delegate.return_type.unwrap_or(TypeName::Variant));
+                        }
                         if class_name.eq_ignore_ascii_case(well_known::OBJECT)
                             || class_name.eq_ignore_ascii_case(well_known::FUNC)
                         {
@@ -1277,6 +1300,7 @@ pub(super) fn validate_expr(
                                 context,
                                 option_explicit,
                             )?,
+                            types,
                             arg.span,
                         )?;
                     }
@@ -1488,8 +1512,8 @@ pub(super) fn validate_expr(
                         };
                         Ok(wrap_nullable(base_ty))
                     } else {
-                        ensure_assignable(&TypeName::Int64, &left_type, left.span)?;
-                        ensure_assignable(&TypeName::Int64, &right_type, right.span)?;
+                        ensure_assignable(&TypeName::Int64, &left_type, types, left.span)?;
+                        ensure_assignable(&TypeName::Int64, &right_type, types, right.span)?;
                         Ok(wrap_nullable(TypeName::Int64))
                     }
                 }
@@ -1497,8 +1521,8 @@ pub(super) fn validate_expr(
                 // A shift keeps the left operand's type; the count only has to
                 // be a whole number.
                 BinaryOp::ShiftLeft | BinaryOp::ShiftRight => {
-                    ensure_assignable(&TypeName::Int64, &left_type, left.span)?;
-                    ensure_assignable(&TypeName::Int64, &right_type, right.span)?;
+                    ensure_assignable(&TypeName::Int64, &left_type, types, left.span)?;
+                    ensure_assignable(&TypeName::Int64, &right_type, types, right.span)?;
                     Ok(wrap_nullable(if left_type.is_integral() {
                         left_type
                     } else {
@@ -1534,8 +1558,8 @@ pub(super) fn validate_expr(
                 }
                 BinaryOp::Equal | BinaryOp::NotEqual => Ok(TypeName::Boolean),
                 BinaryOp::Like => {
-                    ensure_assignable(&TypeName::String, &left_type, left.span)?;
-                    ensure_assignable(&TypeName::String, &right_type, right.span)?;
+                    ensure_assignable(&TypeName::String, &left_type, types, left.span)?;
+                    ensure_assignable(&TypeName::String, &right_type, types, right.span)?;
                     Ok(TypeName::Boolean)
                 }
                 BinaryOp::Is | BinaryOp::IsNot => {
@@ -1616,7 +1640,7 @@ pub(super) fn validate_expr(
                     }
                 }
                 UnaryOp::LogicalNot => {
-                    ensure_assignable(&TypeName::Boolean, &ty, inner.span)?;
+                    ensure_assignable(&TypeName::Boolean, &ty, types, inner.span)?;
                     Ok(TypeName::Boolean)
                 }
             }
@@ -2809,7 +2833,7 @@ fn validate_structure_method_call(
         for arg in args {
             let index_type =
                 validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-            ensure_assignable(&TypeName::Int64, &index_type, arg.span)?;
+            ensure_assignable(&TypeName::Int64, &index_type, types, arg.span)?;
         }
         return Ok(field_sig.ty.substitute_generics(&bindings));
     }
@@ -3692,7 +3716,7 @@ pub(super) fn ensure_assignable_expr(
         && let Some(get) = &prop_sig.get
         && get.params.is_empty()
         && let Some(prop_type) = &get.return_type
-        && ensure_assignable(target, prop_type, span).is_ok()
+        && ensure_assignable(target, prop_type, types, span).is_ok()
     {
         return Ok(());
     }
@@ -3711,7 +3735,7 @@ pub(super) fn ensure_assignable_expr(
         return Ok(());
     }
 
-    ensure_assignable(target, source, span)
+    ensure_assignable(target, source, types, span)
 }
 
 fn class_implements_interface(
@@ -4038,12 +4062,30 @@ pub(super) fn is_numeric_type(ty: &TypeName) -> bool {
     }
 }
 
+/// Whether a callable value fits a delegate-typed place.
+///
+/// A delegate names a shape, and what actually flows into one is a lambda or
+/// the address of a procedure. Neither carries the delegate's name, so the fit
+/// is decided by what the value is, not by what it is called. Checking that the
+/// shape *matches* happens where the value is still an expression, in
+/// [`ensure_delegate_shape`]; by the time a type name is all that is left, the
+/// parameters are gone.
+fn fits_delegate(target: &TypeName, source: &TypeName, types: &TypeRegistry) -> bool {
+    let TypeName::User(name) = target else {
+        return false;
+    };
+    types.delegates.contains_key(&key(name))
+        && matches!(source, TypeName::FuncPtr | TypeName::Variant)
+}
+
 pub(super) fn ensure_assignable(
     target: &TypeName,
     source: &TypeName,
+    types: &TypeRegistry,
     span: crate::runtime::Span,
 ) -> Result<(), Diagnostic> {
-    if target.same_type(&TypeName::Variant)
+    if fits_delegate(target, source, types)
+        || target.same_type(&TypeName::Variant)
         || source.same_type(&TypeName::Variant)
         || target.same_type(source)
         || (is_numeric_type(target) && is_numeric_type(source))
@@ -4058,12 +4100,12 @@ pub(super) fn ensure_assignable(
             && (matches!(source, TypeName::Variant) || matches!(source, TypeName::User(_))))
         || (matches!(source, TypeName::Nullable(_)) && matches!(target, TypeName::Variant))
         || (if let (TypeName::Nullable(t_inner), TypeName::Nullable(s_inner)) = (target, source) {
-            ensure_assignable(t_inner, s_inner, span).is_ok()
+            ensure_assignable(t_inner, s_inner, types, span).is_ok()
         } else {
             false
         })
         || (if let TypeName::Nullable(inner) = target {
-            ensure_assignable(inner, source, span).is_ok()
+            ensure_assignable(inner, source, types, span).is_ok()
         } else {
             false
         })
@@ -4117,7 +4159,7 @@ fn validate_err_raise_args(
     ];
     for (index, arg) in args.iter().enumerate() {
         let actual = validate_expr(arg, symbols, types, signatures, context, option_explicit)?;
-        ensure_assignable(&expected[index], &actual, arg.span)?;
+        ensure_assignable(&expected[index], &actual, types, arg.span)?;
     }
     Ok(())
 }

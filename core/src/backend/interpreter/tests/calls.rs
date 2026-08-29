@@ -436,3 +436,99 @@ End Sub
                 && note.contains("Only(a As String)"))
     );
 }
+
+#[test]
+fn a_delegate_holds_a_procedure_address_or_a_lambda() {
+    let output = run_source(
+        r#"
+Public Delegate Function Transform(ByVal value As Long) As Long
+Public Delegate Sub Report(ByVal text As String)
+
+Function Twice(ByVal n As Long) As Long
+    Return n * 2
+End Function
+
+Sub Show(ByVal text As String)
+    Console.WriteLine("> " & text)
+End Sub
+
+Sub Main()
+    Dim f As Transform
+    f = AddressOf Twice
+    Console.WriteLine(f(21))
+
+    f = Function(x As Long) x + 1
+    Console.WriteLine(f(41))
+
+    Dim r As Report
+    r = AddressOf Show
+    r("hello")
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["42", "42", "> hello"]);
+}
+
+#[test]
+fn a_delegate_checks_the_arguments_of_a_call_through_it() {
+    let wrong_type = source_error(
+        r#"
+Public Delegate Function Transform(ByVal value As Long) As Long
+
+Sub Main()
+    Dim f As Transform
+    f = Function(x As Long) x
+    Console.WriteLine(f("no"))
+End Sub
+"#,
+    );
+    assert!(wrong_type.contains("Cannot assign String value to Long"));
+
+    let wrong_count = source_error(
+        r#"
+Public Delegate Function Transform(ByVal value As Long) As Long
+
+Sub Main()
+    Dim f As Transform
+    f = Function(x As Long) x
+    Console.WriteLine(f(1, 2))
+End Sub
+"#,
+    );
+    assert!(wrong_count.contains("expects 1 argument"));
+}
+
+#[test]
+fn a_delegate_carries_its_return_type() {
+    let error = source_error(
+        r#"
+Public Delegate Function Name_() As String
+
+Sub Main()
+    Dim f As Name_
+    f = Function() "x"
+    Dim n As Long
+    n = f()
+End Sub
+"#,
+    );
+
+    assert!(error.contains("Cannot assign String value to Long variable"));
+}
+
+#[test]
+fn a_value_that_is_not_callable_cannot_go_into_a_delegate() {
+    let error = source_error(
+        r#"
+Public Delegate Sub Report(ByVal text As String)
+
+Sub Main()
+    Dim r As Report
+    r = 42
+End Sub
+"#,
+    );
+
+    assert!(error.contains("Cannot assign"));
+}

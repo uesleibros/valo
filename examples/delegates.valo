@@ -1,0 +1,58 @@
+' Delegates: named callable types.
+'
+' A delegate declares a shape, not a body. What goes into a variable of that
+' type is a lambda or the address of a procedure -- and because the shape is
+' declared, calls through it are checked like any other call.
+
+Public Delegate Function Transform(ByVal value As Long) As Long
+Public Delegate Sub Report(ByVal text As String)
+
+Function Twice(ByVal n As Long) As Long
+    Return n * 2
+End Function
+
+Function Square(ByVal n As Long) As Long
+    Return n * n
+End Function
+
+Sub Announce(ByVal text As String)
+    Console.WriteLine("* " & text)
+End Sub
+
+' A delegate is an ordinary parameter type, which is the point: this works for
+' anything of the right shape without knowing what it is.
+Function ApplyToRange(ByVal step_ As Transform, ByVal count As Long) As String
+    Dim result As String
+    Dim i As Long
+    For i = 1 To count
+        If Len(result) > 0 Then
+            result = result & ", "
+        End If
+        result = result & step_(i)
+    Next i
+    Return result
+End Function
+
+Sub Main()
+    Dim f As Transform
+
+    ' The address of a procedure.
+    f = AddressOf Twice
+    Console.WriteLine(f(21))
+
+    ' A lambda of the same shape.
+    f = Function(x As Long) x + 1
+    Console.WriteLine(f(41))
+
+    ' Passed like any other value.
+    Console.WriteLine(ApplyToRange(AddressOf Square, 5))
+
+    ' A closure fits too, so a delegate can carry state with it.
+    Dim factor As Long = 10
+    f = Function(x As Long) x * factor
+    Console.WriteLine(ApplyToRange(f, 4))
+
+    Dim say As Report
+    say = AddressOf Announce
+    say("delegates work for Subs as well")
+End Sub

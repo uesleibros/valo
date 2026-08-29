@@ -22,6 +22,7 @@ pub(super) fn collect_types_in_scope(
     let mut enums = HashMap::new();
     let mut interfaces = HashMap::new();
     let mut classes = HashMap::new();
+    let mut delegates = HashMap::new();
 
     // Add built-in Collection class
     builtin_types::register_classes(&mut classes);
@@ -1264,11 +1265,30 @@ pub(super) fn collect_types_in_scope(
         }
     }
 
+    for delegate in &program.delegates {
+        delegates.insert(
+            key(&delegate.name),
+            DelegateSig {
+                attributes: Vec::new(),
+                visibility: delegate.visibility,
+                name: delegate.name.clone(),
+                type_params: Vec::new(),
+                generic_constraints: Vec::new(),
+                is_shared: false,
+                _is_iterator: false,
+                is_declare: false,
+                params: params_to_sigs(&delegate.params),
+                return_type: delegate.return_type.clone(),
+            },
+        );
+    }
+
     let mut registry = TypeRegistry {
         types,
         enums,
         interfaces,
         classes,
+        delegates,
         generic_params,
     };
     apply_class_sig_inheritance(&mut registry)?;

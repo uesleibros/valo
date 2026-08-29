@@ -57,6 +57,7 @@ pub enum TokenKind {
     Shared,
     ReadOnly,
     WriteOnly,
+    Delegate,
     Overloads,
     Overridable,
     Overrides,

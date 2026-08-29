@@ -82,8 +82,9 @@ None of this blocks the VM, and the VM blocks none of it.
       both call so they cannot drift apart.
 - [ ] **Overloaded `Property` accessors**, the one member kind still limited to
       one signature per name.
-- [ ] **`Delegate Sub` / `Delegate Function`** — named callable types. Lambdas
-      already carry parameters and a body, so this is mostly a type story.
+- [x] **`Delegate Sub` / `Delegate Function`** — named callable types, checked
+      at the call. `AddressOf` values are now callable from Valo, not only
+      passable to native code.
 - [ ] **Tuples and tuple returns** — `(a, b)` literals, `As (X As Long, …)`
       types, and destructuring.
 - [ ] **Anonymous types** — `New With { Key .X = 1 }`. The object-initializer

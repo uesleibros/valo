@@ -12,8 +12,8 @@ use crate::frontend::semantics::symbols::{
     CallableSig, Overloads, ParamSig, Signatures, VarType, key,
 };
 use crate::frontend::semantics::types::{
-    ClassEventSig, ClassFieldSig, ClassMethodSig, ClassPropertySig, ClassSig, EnumSig, FieldSig,
-    InterfaceSig, MethodOverloads, PropertyAccessorSig, TypeRegistry, TypeSig,
+    ClassEventSig, ClassFieldSig, ClassMethodSig, ClassPropertySig, ClassSig, DelegateSig, EnumSig,
+    FieldSig, InterfaceSig, MethodOverloads, PropertyAccessorSig, TypeRegistry, TypeSig,
 };
 
 #[path = "builtin_types.rs"]

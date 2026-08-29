@@ -1,0 +1,5 @@
+42
+42
+1, 4, 9, 16, 25
+10, 20, 30, 40
+* delegates work for Subs as well

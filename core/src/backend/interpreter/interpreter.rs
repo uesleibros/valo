@@ -31,9 +31,24 @@ pub struct Interpreter {
     pub(crate) procedures: HashMap<String, Vec<Procedure>>,
     pub(crate) functions: HashMap<String, Vec<Function>>,
     pub(crate) declares: HashMap<String, DeclareDecl>,
+    /// The names declared as `Delegate`.
+    ///
+    /// A delegate is a shape the analyzer checks against, not something the
+    /// interpreter constructs: what ends up in a delegate-typed variable is a
+    /// lambda or a procedure address. The runtime only needs to know the name
+    /// is one, so that declaring a variable of it does not look for a record.
+    pub(crate) delegates: std::collections::HashSet<String>,
     pub(crate) native_libraries: super::ffi::NativeLibraries,
     pub(crate) native_cifs: HashMap<String, Rc<libffi::middle::Cif>>,
     pub(crate) ffi_callbacks: HashMap<String, usize>,
+    /// The source name each `AddressOf` address was made for.
+    ///
+    /// `AddressOf` yields a native address so the value can be handed to a
+    /// library. A delegate holds the same value but is *called from Valo*,
+    /// which means turning the address back into the name it was made for.
+    pub(crate) callback_names: HashMap<usize, String>,
+    /// Addresses that only Valo can call, and why native code cannot.
+    pub(crate) valo_only_callbacks: HashMap<usize, Diagnostic>,
     pub(crate) callback_trampolines: Vec<super::ffi::CallbackTrampoline>,
     pub(crate) varptr_storage: Vec<super::ffi::ArgumentStorage>,
     pub(crate) varptr_updates: Vec<super::ffi::VarPtrUpdate>,
@@ -85,9 +100,12 @@ impl Default for Interpreter {
             procedures: HashMap::new(),
             functions: HashMap::new(),
             declares: HashMap::new(),
+            delegates: std::collections::HashSet::new(),
             native_libraries: super::ffi::NativeLibraries::default(),
             native_cifs: HashMap::new(),
             ffi_callbacks: HashMap::new(),
+            callback_names: HashMap::new(),
+            valo_only_callbacks: HashMap::new(),
             callback_trampolines: Vec::new(),
             varptr_storage: Vec::new(),
             varptr_updates: Vec::new(),
@@ -384,6 +402,7 @@ impl Interpreter {
                 .push(function.clone());
         }
         self.register_declares(&program.declares, None);
+        self.register_delegates(&program.delegates);
 
         let mut frame = Frame::default();
         for var in &program.module_vars {
@@ -554,6 +573,7 @@ impl Interpreter {
                 .push(function.clone());
         }
         self.register_declares(&program.declares, None);
+        self.register_delegates(&program.delegates);
 
         for var in &program.module_vars {
             if !frame.has_variable(&var.name) {
@@ -878,6 +898,7 @@ impl Interpreter {
                 }
             }
             self.register_declares(&module.program.declares, Some(&module_key));
+            self.register_delegates(&module.program.delegates);
         }
         self.register_merged_partial_classes(partial_class_groups);
         self.apply_class_inheritance(crate::runtime::Span::empty(

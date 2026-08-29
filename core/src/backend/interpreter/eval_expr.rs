@@ -583,6 +583,22 @@ impl Interpreter {
                             }
                             return self.call_lambda_value(lambda, &eval_args, expr.span);
                         }
+                        // A delegate can hold the address of a procedure as
+                        // readily as a lambda, and calling it has to mean the
+                        // same thing either way.
+                        Value::FuncPtr(address) => {
+                            if let Some(target) = self.procedure_at(address) {
+                                return self.call_function(&target, &[], args, frame, expr.span);
+                            }
+                            return Err(Diagnostic::new(
+                                crate::runtime::DiagnosticCode::MEMBER_ACCESS,
+                                format!(
+                                    "'{}' holds an address that does not belong to a Valo procedure",
+                                    name
+                                ),
+                                Some(expr.span),
+                            ));
+                        }
                         _ => {
                             return Err(Diagnostic::new(
                                 crate::runtime::DiagnosticCode::ARRAY,
