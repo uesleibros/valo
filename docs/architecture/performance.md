@@ -148,6 +148,24 @@ names, which for a name with one procedure behind it was work with nothing to
 decide: doing it lazily took 18% off a benchmark that passes a string to a
 function 600,000 times.
 
+## The hash is not what a variable read costs
+
+Rust's default hasher is SipHash, chosen to resist an attacker who controls the
+keys. Nothing in the interpreter is in that position: the keys are identifiers
+out of the program being run. Swapping it for the multiply-and-rotate hash that
+rustc uses is the obvious move, and it made variable reads 6% *slower*: 20.9
+seconds against 22.0 for twenty million reads, the same way round on five
+consecutive rounds.
+
+Short names are why. SipHash has a tight path for a handful of bytes, and a
+hand-written replacement pays a separate round for the tail and another for the
+length, which is more work rather than less at that size.
+
+The useful part is what it says about where the time goes. If replacing the
+hash function changes so little, hashing is not what a variable read costs. The
+lookup is, and the way to remove a lookup is to know the slot: that is what
+[resolving identifiers to slot indices](roadmap.md) is for.
+
 ## What could not be measured
 
 A call formats two strings for the stack trace and the scope name, on every
