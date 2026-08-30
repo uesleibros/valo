@@ -2947,3 +2947,33 @@ End Sub
         "Property Get 'Item' in Class 'Store' is already declared with these parameter types"
     ));
 }
+
+#[test]
+fn a_getter_runs_once_when_the_member_is_called() {
+    let output = run_source(
+        r#"
+Class Counter
+    Public Reads As Long
+
+    Public Property Get Touched() As Long
+        Reads = Reads + 1
+        Return Reads
+    End Property
+
+    Public Function Look() As Long
+        Return Reads
+    End Function
+End Class
+
+Sub Main()
+    Dim c As New Counter()
+    Console.WriteLine(c.Touched)
+    Console.WriteLine(c.Look())
+    Console.WriteLine(c.Reads)
+End Sub
+"#,
+    );
+
+    // One read of the property, and calling a method does not touch it.
+    assert_eq!(output, vec!["1", "1", "1"]);
+}

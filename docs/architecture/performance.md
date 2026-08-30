@@ -177,6 +177,21 @@ elsewhere without having cloned it.
 The empty loop improved because a `For` assigns its counter through the same
 path, which is a fair summary of how much of a program this is.
 
+## A method call asked whether the method was an array
+
+`thing.Items(2)` indexes an array field where `thing.Method(2)` calls one, and
+only the member says which. The question was asked through the general member
+read, which for an object runs the property getter of that name and, when there
+is no such member, builds a diagnostic listing every member the class has.
+
+That ran on every method call. Asking only whether the name is a field, which is
+all the question needs, took a method call from 5404ms to 2607ms over five
+hundred thousand of them, and the objects benchmark down 15%.
+
+It was also wrong. When the member *was* a property, the getter ran once to
+find out what it returned and again for the call itself, so a getter with a
+side effect had it twice.
+
 ## Every call built a diagnostic and threw it away
 
 Calling a procedure starts by asking whether the name holds a lambda, because a

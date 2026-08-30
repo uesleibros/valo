@@ -587,6 +587,38 @@ impl Interpreter {
         Ok(())
     }
 
+    /// The value of a field that holds an array, if the name is one.
+    ///
+    /// `thing.Items(2)` indexes an array field where `thing.Method(2)` calls,
+    /// and only the member tells them apart. Asking through
+    /// [`Interpreter::read_member`] answered it by running property getters and
+    /// building a diagnostic when the name was neither, which is most of what a
+    /// method call used to cost. It also ran a getter twice when the name was a
+    /// property, once to look and once for real.
+    pub(crate) fn field_holding_array(
+        &self,
+        object: &Value,
+        name: &str,
+        span: Span,
+    ) -> Option<Value> {
+        let holds = match object {
+            Value::Object(instance) => {
+                super::values::with_key(name, |k| instance.borrow().fields.contains_key(k))
+            }
+            Value::Record(record) | Value::BoxedRecord(record, _) => {
+                super::values::with_key(name, |k| record.fields.contains_key(k))
+            }
+            _ => false,
+        };
+        if !holds {
+            return None;
+        }
+        match read_field_member(object, name, span) {
+            Ok(value @ Value::Array(_)) => Some(value),
+            _ => None,
+        }
+    }
+
     pub(crate) fn read_member(
         &mut self,
         value: &Value,

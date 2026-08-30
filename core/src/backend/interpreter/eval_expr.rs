@@ -731,9 +731,7 @@ impl Interpreter {
                 if *conditional && matches!(object, Value::Nothing) {
                     return Ok(Value::Nothing);
                 }
-                if let Ok(field_value) = self.read_member(&object, method, frame, expr.span)
-                    && matches!(field_value, Value::Array(_))
-                {
+                if let Some(field_value) = self.field_holding_array(&object, method, expr.span) {
                     return self.eval_index_expr(field_value, args, frame, expr.span);
                 }
                 if matches!(object, Value::Record(_) | Value::BoxedRecord(_, _)) {
