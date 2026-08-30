@@ -2977,3 +2977,26 @@ End Sub
     // One read of the property, and calling a method does not touch it.
     assert_eq!(output, vec!["1", "1", "1"]);
 }
+
+#[test]
+fn a_variable_shadows_a_class_of_the_same_name_as_a_receiver() {
+    let output = run_source(
+        r#"
+Class Config
+    Public Value_ As Long
+    Public Shared Function Default_() As Long
+        Return 99
+    End Function
+End Class
+
+Sub Main()
+    ' A local named after the class is the receiver here, not the class.
+    Dim Config As New Config()
+    Config.Value_ = 7
+    Console.WriteLine(Config.Value_)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["7"]);
+}

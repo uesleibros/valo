@@ -909,6 +909,12 @@ impl Interpreter {
     ) -> Result<(), Diagnostic> {
         match &target.kind {
             ExprKind::Variable(name) => {
+                // A declared variable shadows a module or a class of the same
+                // name, and is what a receiver almost always is. Asking the
+                // frame first also settles it in one lookup rather than two.
+                if let Some(variable) = frame.variable_ref(name).cloned() {
+                    return self.assign_member_to_variable(variable, member, value, span);
+                }
                 if let Ok(module_key) = self.resolve_module_qualifier(name, frame, span) {
                     if frame.module_key() != Some(module_key.as_str())
                         && !self
@@ -932,10 +938,6 @@ impl Interpreter {
                         })?;
                     let old = module_frame.assign(member, value, span)?;
                     return self.maybe_terminate(old, span);
-                }
-                if frame.has_variable(name) {
-                    let variable = frame.variable(name, target.span)?;
-                    return self.assign_member_to_variable(variable, member, value, span);
                 }
                 if let Ok(resolved) = self.resolve_user_type_name(name, frame, span)
                     && self.classes.contains_key(&key(&resolved))

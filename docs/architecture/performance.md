@@ -177,6 +177,26 @@ elsewhere without having cloned it.
 The empty loop improved because a `For` assigns its counter through the same
 path, which is a fair summary of how much of a program this is.
 
+## Reaching a field walked past everything it was not
+
+`p.X` on a local holding an object cost 690ns, fourteen times what reading the
+local itself costs. The receiver was checked against `Err`, `VBA`, and
+`Console`, then against every enum, then against a nested module qualifier,
+then against the module table, then against the class table, and only then
+looked at. Two of those build a diagnostic when the answer is no.
+
+A declared variable shadows a module, an enum, and a class of the same name, so
+when the receiver is one there is nothing else it can be. Asking the frame first
+is both the common answer and the right one:
+
+| | before | after |
+|---|---|---|
+| reading `p.X` | 15579ms | 5435ms |
+| writing `p.X` | 22221ms | 11227ms |
+
+The write path had the second half of the same problem: once past the module
+check it asked whether the name was a variable and then looked it up again.
+
 ## Two thirds of a call was working out what to call
 
 A call to a function whose body is `Return 7` cost 3.2 microseconds. Stopping

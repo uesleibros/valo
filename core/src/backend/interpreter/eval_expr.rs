@@ -405,6 +405,20 @@ impl Interpreter {
                 field,
                 conditional,
             } => {
+                // A declared variable is what a receiver almost always is, and
+                // a variable shadows a module, an enum, or a class of the same
+                // name. Everything below is a search for one of those, so
+                // asking the frame first is both the common answer and the
+                // right one. It is what a field read used to walk past.
+                if let ExprKind::Variable(name) = &object.kind
+                    && frame.has_variable(name)
+                {
+                    let object = self.eval_expr(object, frame)?;
+                    if *conditional && matches!(object, Value::Nothing) {
+                        return Ok(Value::Nothing);
+                    }
+                    return self.read_member(&object, field, frame, expr.span);
+                }
                 if let ExprKind::Variable(name) = &object.kind {
                     if name.eq_ignore_ascii_case(well_known::ERR)
                         && let Some(val) = super::builtins::err::eval_err(self, field, expr.span)?
@@ -714,15 +728,22 @@ impl Interpreter {
                 args,
                 conditional,
             } => {
-                if let ExprKind::Variable(module_name) = &object.kind
+                // A declared variable shadows a module of the same name, and
+                // asking whether a name is a module builds a diagnostic when it
+                // is not. Both are avoided when the receiver is a variable,
+                // which for a method call it nearly always is.
+                let receiver_is_variable = matches!(&object.kind, ExprKind::Variable(name)
+                    if frame.has_variable(name));
+                if !receiver_is_variable
+                    && let ExprKind::Variable(module_name) = &object.kind
                     && self
                         .resolve_module_qualifier(module_name, frame, expr.span)
                         .is_ok()
                 {
                     return self.call_module_function(module_name, method, args, frame, expr.span);
                 }
-                if let ExprKind::Variable(class_name) = &object.kind
-                    && !frame.has_variable(class_name)
+                if !receiver_is_variable
+                    && let ExprKind::Variable(class_name) = &object.kind
                     && self.classes.contains_key(&super::values::key(class_name))
                 {
                     return self.call_shared_function(class_name, method, args, frame, expr.span);
