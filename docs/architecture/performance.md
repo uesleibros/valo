@@ -177,6 +177,23 @@ elsewhere without having cloned it.
 The empty loop improved because a `For` assigns its counter through the same
 path, which is a fair summary of how much of a program this is.
 
+## A call site names the same thing every time
+
+Working out which procedure a name means walks declares, module scoping, and
+the registry, and a call site does it again on every run through. The answer is
+the same every time, so it is remembered against the site, keyed by the span of
+the call. Calling a function went down 29%, a Sub 33%.
+
+Two things keep it honest. A local shadows a procedure, and the frame is asked
+before the remembered answer is used, so a call site that resolved to a
+procedure still finds a lambda assigned over that name later. And a name with
+more than one procedure behind it is never remembered, because there the
+arguments choose and the arguments differ between runs.
+
+The registry carries a generation that a remembered answer records. Adding a
+procedure bumps it and every remembered answer goes stale at once, which is
+what makes this safe in the REPL, where procedures arrive between statements.
+
 ## What a round of this is worth
 
 Every entry below came from measuring rather than from reading, and each one

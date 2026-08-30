@@ -1,7 +1,7 @@
 use std::fmt;
 use std::io::IsTerminal;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SourcePos {
     pub line: usize,
     pub column: usize,
@@ -16,7 +16,11 @@ impl SourcePos {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub struct FileId(pub u32);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Where something is in the source.
+///
+/// Hashable because it identifies a site as well as describing one: the
+/// interpreter keys what a call site resolved to by the span of the call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     pub file_id: FileId,
     pub start: SourcePos,

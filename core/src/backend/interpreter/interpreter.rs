@@ -34,6 +34,23 @@ pub struct Interpreter {
     /// the procedure contained, which is not a price a call should pay.
     pub(crate) procedures: HashMap<String, Vec<Rc<Procedure>>>,
     pub(crate) functions: HashMap<String, Vec<Rc<Function>>>,
+    /// What each call site resolved to the last time it ran.
+    ///
+    /// A call site names the same procedure every time, but working out which
+    /// one that is takes a walk through declares, module scoping, and the
+    /// registry. Remembering the answer against the site turns the second and
+    /// later runs into a lookup by source position.
+    ///
+    /// Only sites whose name has exactly one procedure behind it are
+    /// remembered, since with several the arguments choose and the arguments
+    /// differ between runs.
+    pub(crate) resolved_calls: HashMap<crate::runtime::Span, Resolved<Rc<Function>>>,
+    pub(crate) resolved_subs: HashMap<crate::runtime::Span, Resolved<Rc<Procedure>>>,
+    /// Bumped whenever a procedure is registered.
+    ///
+    /// The REPL adds procedures between statements, so a remembered answer has
+    /// to be able to go stale. Comparing one integer is what makes that safe.
+    pub(crate) registry_generation: u64,
     pub(crate) declares: HashMap<String, DeclareDecl>,
     /// The names declared as `Delegate`.
     ///
@@ -103,6 +120,9 @@ impl Default for Interpreter {
             shared_class_fields: HashMap::new(),
             procedures: HashMap::new(),
             functions: HashMap::new(),
+            resolved_calls: HashMap::new(),
+            resolved_subs: HashMap::new(),
+            registry_generation: 0,
             declares: HashMap::new(),
             delegates: std::collections::HashSet::new(),
             native_libraries: super::ffi::NativeLibraries::default(),
@@ -398,12 +418,14 @@ impl Interpreter {
                 .entry(key(&procedure.name))
                 .or_default()
                 .push(Rc::new(procedure.clone()));
+            self.registry_generation += 1;
         }
         for function in &program.functions {
             self.functions
                 .entry(key(&function.name))
                 .or_default()
                 .push(Rc::new(function.clone()));
+            self.registry_generation += 1;
         }
         self.register_declares(&program.declares, None);
         self.register_delegates(&program.delegates);
@@ -569,12 +591,14 @@ impl Interpreter {
                 .entry(key(&procedure.name))
                 .or_default()
                 .push(Rc::new(procedure.clone()));
+            self.registry_generation += 1;
         }
         for function in &program.functions {
             self.functions
                 .entry(key(&function.name))
                 .or_default()
                 .push(Rc::new(function.clone()));
+            self.registry_generation += 1;
         }
         self.register_declares(&program.declares, None);
         self.register_delegates(&program.delegates);
@@ -857,6 +881,7 @@ impl Interpreter {
                     .entry(qualified.clone())
                     .or_default()
                     .push(Rc::new(procedure.clone()));
+                self.registry_generation += 1;
                 if module_key == entry_key || crate::modules::is_public(procedure.visibility) {
                     self.sub_modules
                         .entry(super::values::key(&procedure.name))
@@ -882,6 +907,7 @@ impl Interpreter {
                     .entry(qualified.clone())
                     .or_default()
                     .push(Rc::new(function.clone()));
+                self.registry_generation += 1;
                 if module_key == entry_key || crate::modules::is_public(function.visibility) {
                     self.function_modules
                         .entry(super::values::key(&function.name))
@@ -1385,4 +1411,12 @@ impl Interpreter {
         }
         Ok(())
     }
+}
+
+/// What a call site resolved to, and the registry it was resolved against.
+#[derive(Clone)]
+pub(crate) struct Resolved<T> {
+    pub(crate) generation: u64,
+    pub(crate) module_key: Option<String>,
+    pub(crate) target: T,
 }

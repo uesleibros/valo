@@ -41,11 +41,14 @@ two are worth doing even if the VM never happens.
       to 999ms. `Rc<str>` was tried first and was worse: it saves eight bytes
       but copies the text again on every concatenation, which cost 15% there
       for 15% less on copies.
-- [ ] **Per-call-site method and property caches.** Resolution used to be two
-      thirds of a call and is now a good deal less, but it is still repeated
-      work: the same call site resolves the same name every time it runs. A
-      cache on the site itself is what removes it, and is the same machinery an
-      inline cache in a VM would need.
+- [x] **Per-call-site caches for procedures.** A call site remembers which
+      procedure its name meant, guarded by a registry generation and by the
+      frame lookup that lets a local shadow it. Calling a function is 29%
+      cheaper, a Sub 33%.
+- [ ] **The same for methods and properties.** A method call resolves a class
+      and then a member on every call, which is the same repeated work against
+      a receiver whose type is usually the same one. This is where an inline
+      cache belongs, and the shape a VM would reuse.
 
 ## Phase 2: Bytecode VM
 

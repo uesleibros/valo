@@ -532,3 +532,56 @@ End Sub
 
     assert!(error.contains("Cannot assign"));
 }
+
+#[test]
+fn a_local_still_shadows_a_procedure_a_call_site_already_resolved() {
+    let output = run_source(
+        r#"
+Function Base() As Long
+    Return 1
+End Function
+
+Sub Main()
+    Dim i As Long
+    For i = 1 To 2
+        ' The same call site, answered by the procedure on the first pass and
+        ' by the local on the second.
+        Console.WriteLine(Base())
+        If i = 1 Then
+            Dim Base = Function() 2
+        End If
+    Next i
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["1", "2"]);
+}
+
+#[test]
+fn two_call_sites_of_one_overloaded_name_keep_their_own_answers() {
+    let output = run_source(
+        r#"
+Public Function Describe(ByVal value As Long) As String
+    Return "long " & value
+End Function
+
+Public Function Describe(ByVal value As String) As String
+    Return "string " & value
+End Function
+
+Sub Main()
+    Dim i As Long
+    For i = 1 To 2
+        Console.WriteLine(Describe(7))
+        Console.WriteLine(Describe("seven"))
+    Next i
+End Sub
+"#,
+    );
+
+    assert_eq!(
+        output,
+        vec!["long 7", "string seven", "long 7", "string seven"]
+    );
+}

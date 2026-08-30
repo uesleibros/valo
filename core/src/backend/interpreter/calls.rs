@@ -671,6 +671,51 @@ impl Interpreter {
         self.callback_names.get(&address).cloned()
     }
 
+    /// What this call site resolved to last time, if that answer still holds.
+    fn remembered<T: Clone>(
+        remembered: Option<&super::interpreter::Resolved<T>>,
+        generation: u64,
+    ) -> Option<(Option<String>, T)> {
+        let remembered = remembered?;
+        if remembered.generation != generation {
+            return None;
+        }
+        Some((remembered.module_key.clone(), remembered.target.clone()))
+    }
+
+    fn remembered_call(&self, span: Span) -> Option<(Option<String>, Rc<Function>)> {
+        Self::remembered(self.resolved_calls.get(&span), self.registry_generation)
+    }
+
+    fn remembered_sub(&self, span: Span) -> Option<(Option<String>, Rc<Procedure>)> {
+        Self::remembered(self.resolved_subs.get(&span), self.registry_generation)
+    }
+
+    /// Records what a call site resolved to, against the registry it saw.
+    fn remember_call(&mut self, span: Span, module_key: Option<String>, function: Rc<Function>) {
+        let generation = self.registry_generation;
+        self.resolved_calls.insert(
+            span,
+            super::interpreter::Resolved {
+                generation,
+                module_key,
+                target: function,
+            },
+        );
+    }
+
+    fn remember_sub(&mut self, span: Span, module_key: Option<String>, procedure: Rc<Procedure>) {
+        let generation = self.registry_generation;
+        self.resolved_subs.insert(
+            span,
+            super::interpreter::Resolved {
+                generation,
+                module_key,
+                target: procedure,
+            },
+        );
+    }
+
     pub(crate) fn bind_parameter_values(
         &mut self,
         params: &[crate::Parameter],
@@ -770,28 +815,44 @@ impl Interpreter {
             }
         }
 
-        if let Some(value) = self.call_declared_function(name, args, caller_frame, span)? {
-            return Ok(value);
-        }
-        let module_key = self.resolve_function_module(name, caller_frame, span)?;
-        let lookup = qualified_key(module_key.as_deref(), name);
-        let candidates = self.functions.get(&lookup).ok_or_else(|| {
-            Diagnostic::new(
-                crate::runtime::DiagnosticCode::UNKNOWN_NAME,
-                format!("Function '{}' is not defined", name),
-                Some(span),
-            )
-        })?;
-        let function = self
-            .pick_overload(
-                "Function",
-                name,
-                candidates,
-                |function: &Rc<Function>| &function.params,
-                || self.argument_types_of(args, caller_frame),
-                span,
-            )?
-            .clone();
+        // This site named the same procedure last time it ran, and finding that
+        // out again means walking declares, module scoping, and the registry.
+        let (module_key, function) = match self.remembered_call(span) {
+            Some(remembered) => remembered,
+            None => {
+                if let Some(value) = self.call_declared_function(name, args, caller_frame, span)? {
+                    return Ok(value);
+                }
+                let module_key = self.resolve_function_module(name, caller_frame, span)?;
+                let lookup = qualified_key(module_key.as_deref(), name);
+                let candidates = self.functions.get(&lookup).ok_or_else(|| {
+                    Diagnostic::new(
+                        crate::runtime::DiagnosticCode::UNKNOWN_NAME,
+                        format!("Function '{}' is not defined", name),
+                        Some(span),
+                    )
+                })?;
+                let only_one = candidates.len() == 1;
+                let function = self
+                    .pick_overload(
+                        "Function",
+                        name,
+                        candidates,
+                        |function: &Rc<Function>| &function.params,
+                        || self.argument_types_of(args, caller_frame),
+                        span,
+                    )?
+                    .clone();
+                // An overloaded name is chosen by the arguments, and those
+                // differ between runs, so only a name with one procedure
+                // behind it is worth remembering. Neither is a generic one,
+                // which is rewritten per call.
+                if only_one && function.type_params.is_empty() {
+                    self.remember_call(span, module_key.clone(), function.clone());
+                }
+                (module_key, function)
+            }
+        };
         // Substituting type arguments rewrites the procedure, so a generic one
         // has to be copied. A plain one is only read, and stays shared.
         let function = if function.type_params.is_empty() {
@@ -1265,24 +1326,38 @@ impl Interpreter {
             }
         }
 
-        if self.call_declared_sub(name, args, caller_frame, span)? {
-            return Ok(());
-        }
-        let module_key = self.resolve_sub_module(name, caller_frame, span)?;
-        let lookup = qualified_key(module_key.as_deref(), name);
-        let chosen = match self.procedures.get(&lookup) {
-            Some(candidates) => Some(
-                self.pick_overload(
-                    "Sub",
-                    name,
-                    candidates,
-                    |procedure: &Rc<Procedure>| &procedure.params,
-                    || self.argument_types_of(args, caller_frame),
-                    span,
-                )?
-                .clone(),
-            ),
-            None => None,
+        // As with a function call: this site names the same Sub every time, and
+        // finding that out again is the walk this remembers.
+        let (module_key, chosen) = match self.remembered_sub(span) {
+            Some((module_key, procedure)) => (module_key, Some(procedure)),
+            None => {
+                if self.call_declared_sub(name, args, caller_frame, span)? {
+                    return Ok(());
+                }
+                let module_key = self.resolve_sub_module(name, caller_frame, span)?;
+                let lookup = qualified_key(module_key.as_deref(), name);
+                let chosen = match self.procedures.get(&lookup) {
+                    Some(candidates) => {
+                        let only_one = candidates.len() == 1;
+                        let procedure = self
+                            .pick_overload(
+                                "Sub",
+                                name,
+                                candidates,
+                                |procedure: &Rc<Procedure>| &procedure.params,
+                                || self.argument_types_of(args, caller_frame),
+                                span,
+                            )?
+                            .clone();
+                        if only_one {
+                            self.remember_sub(span, module_key.clone(), procedure.clone());
+                        }
+                        Some(procedure)
+                    }
+                    None => None,
+                };
+                (module_key, chosen)
+            }
         };
         let Some(procedure) = chosen else {
             return match self.call_function(name, &[], args, caller_frame, span) {
