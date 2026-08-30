@@ -1,4 +1,4 @@
-use crate::interpreter::values::{default_value, key};
+use crate::interpreter::values::{default_value, key, with_key};
 use crate::runtime::overloads;
 use crate::runtime::well_known;
 use crate::runtime::{
@@ -1890,7 +1890,7 @@ impl Interpreter {
                 Some(span),
             )
         })?;
-        let candidates = class.subs.get(&key(method)).ok_or_else(|| {
+        let candidates = with_key(method, |k| class.subs.get(k)).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Class '{}' has no method '{}'", class.name, method),
@@ -2017,19 +2017,19 @@ impl Interpreter {
         }
 
         let instance = ensure_object(object, span)?;
-        let class_name = instance.borrow().class_name.clone();
-        let class = self
-            .classes
-            .get(&key(&class_name))
-            .cloned()
-            .ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::UNKNOWN_NAME,
-                    format!("Class '{}' is not defined", class_name),
-                    Some(span),
-                )
-            })?;
-        let candidates = class.subs.get(&key(method)).ok_or_else(|| {
+        let class = {
+            let borrowed = instance.borrow();
+            with_key(&borrowed.class_name, |k| self.classes.get(k))
+                .cloned()
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        crate::runtime::DiagnosticCode::UNKNOWN_NAME,
+                        format!("Class '{}' is not defined", borrowed.class_name),
+                        Some(span),
+                    )
+                })?
+        };
+        let candidates = with_key(method, |k| class.subs.get(k)).ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Class '{}' has no method '{}'", class.name, method),
@@ -2205,19 +2205,19 @@ impl Interpreter {
                     return Ok(val);
                 }
                 let instance = ensure_object(object.clone(), span)?;
-                let class_name = instance.borrow().class_name.clone();
-                let class = self
-                    .classes
-                    .get(&key(&class_name))
-                    .cloned()
-                    .ok_or_else(|| {
-                        Diagnostic::new(
-                            crate::runtime::DiagnosticCode::UNKNOWN_NAME,
-                            format!("Class '{}' is not defined", class_name),
-                            Some(span),
-                        )
-                    })?;
-                if let Some(candidates) = class.functions.get(&key(method)) {
+                let class = {
+                    let borrowed = instance.borrow();
+                    with_key(&borrowed.class_name, |k| self.classes.get(k))
+                        .cloned()
+                        .ok_or_else(|| {
+                            Diagnostic::new(
+                                crate::runtime::DiagnosticCode::UNKNOWN_NAME,
+                                format!("Class '{}' is not defined", borrowed.class_name),
+                                Some(span),
+                            )
+                        })?
+                };
+                if let Some(candidates) = with_key(method, |k| class.functions.get(k)) {
                     let function = self
                         .pick_overload(
                             "Function",
@@ -2516,18 +2516,18 @@ impl Interpreter {
         span: Span,
     ) -> Result<Value, Diagnostic> {
         let instance = ensure_object(object, span)?;
-        let class_name = instance.borrow().class_name.clone();
-        let class = self
-            .classes
-            .get(&key(&class_name))
-            .cloned()
-            .ok_or_else(|| {
-                Diagnostic::new(
-                    crate::runtime::DiagnosticCode::UNKNOWN_NAME,
-                    format!("Class '{}' is not defined", class_name),
-                    Some(span),
-                )
-            })?;
+        let class = {
+            let borrowed = instance.borrow();
+            with_key(&borrowed.class_name, |k| self.classes.get(k))
+                .cloned()
+                .ok_or_else(|| {
+                    Diagnostic::new(
+                        crate::runtime::DiagnosticCode::UNKNOWN_NAME,
+                        format!("Class '{}' is not defined", borrowed.class_name),
+                        Some(span),
+                    )
+                })?
+        };
         if !function.params.is_empty() {
             return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
