@@ -200,11 +200,41 @@ fn merge_imported_types(
     project: &crate::modules::Project,
     types: &mut TypeRegistry,
 ) -> Result<(), Diagnostic> {
+    merge_imported_types_seen(
+        imports,
+        project,
+        types,
+        &mut std::collections::HashSet::new(),
+    )
+}
+
+/// The same, refusing to walk a module twice.
+///
+/// Modules can import each other: a directory of `.bas` and `.cls` files is
+/// loaded as one group where each sees all the others. Following an import's
+/// own imports without remembering where it has been runs out of stack rather
+/// than out of modules.
+fn merge_imported_types_seen(
+    imports: &[crate::modules::ResolvedImport],
+    project: &crate::modules::Project,
+    types: &mut TypeRegistry,
+    seen: &mut std::collections::HashSet<usize>,
+) -> Result<(), Diagnostic> {
     for import in imports {
+        if !seen.insert(import.module) {
+            continue;
+        }
         let Some(imported) = project.modules.get(import.module) else {
             continue;
         };
-        let imported_types = collect_types(&imported.program)?;
+        // Against the imported module's own scope, not this one's. A signature
+        // written `As Thing` in a module that imports `Thing` is well-formed
+        // there, and stays well-formed when a third module imports it without
+        // knowing `Thing` at all. `merge_imported_callables` does the same for
+        // procedures; this is the type half of the same rule.
+        let mut outer = TypeRegistry::default();
+        merge_imported_types_seen(&imported.imports, project, &mut outer, seen)?;
+        let imported_types = collect_types_in_scope(&imported.program, &outer)?;
 
         // Imported types are reachable both bare and through the import
         // qualifier, so register `PersonRecord` and `Models.PersonRecord`.

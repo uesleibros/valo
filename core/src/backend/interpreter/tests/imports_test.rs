@@ -104,3 +104,35 @@ fn a_module_can_name_its_own_enum_and_an_importer_can_too() {
         vec!["2".to_string(), "1".to_string()]
     );
 }
+
+#[test]
+fn an_imported_module_can_use_its_own_imports_in_a_signature() {
+    let dir = temp_project();
+    write(
+        &dir,
+        "Shapes.valo",
+        "Public Structure Point_\nPublic X As Double\nEnd Structure\n",
+    );
+    // Middle names Shapes' type in an interface and a class. A third module
+    // importing Middle knows nothing of Shapes, and does not have to.
+    write(
+        &dir,
+        "Middle.valo",
+        "Imports Shapes\n\n\
+         Public Interface IHasPoint\nFunction Where() As Point_\nEnd Interface\n\n\
+         Public Class Marker\nImplements IHasPoint\n\
+         Public Function Where() As Point_ Implements IHasPoint.Where\n\
+         Dim p As Point_\np.X = 3\nReturn p\nEnd Function\nEnd Class\n",
+    );
+    write(
+        &dir,
+        "main.valo",
+        "Imports Middle\n\nSub Main()\nDim m As New Marker()\n\
+         Console.WriteLine(m.Where().X)\nEnd Sub\n",
+    );
+
+    assert_eq!(
+        run_file(dir.join("main.valo")).unwrap(),
+        vec!["3".to_string()]
+    );
+}

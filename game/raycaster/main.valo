@@ -1,5 +1,18 @@
 Imports World
+Imports Things
 
 Sub Main()
-    Console.WriteLine(World.IsWall(0, 0))
+    World.Build()
+    Dim things As Collection
+    Set things = Things.Populate()
+    Console.WriteLine(things.Count)
+    Dim item As Variant
+    Dim n As Long
+    For Each item In things
+        Dim thing As IThing
+        Set thing = CType(item, IThing)
+        thing.Advance(0.016, New Vec2(5, 7.5))
+        n = n + 1
+    Next item
+    Console.WriteLine(n)
 End Sub

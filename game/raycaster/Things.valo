@@ -1,0 +1,197 @@
+' The things standing in the world: what they are, and how they move.
+'
+' Walls are grid cells and are handled by the raycaster. Everything else is one
+' of these, drawn as a billboard that always faces the camera and composited
+' against the depth the walls left behind.
+
+Imports World
+
+' Anything the renderer can draw as a billboard.
+Public Interface IThing
+    Function Where() As Vec2
+    ' Half-width in world units, so a thing one unit wide has a radius of 0.5.
+    Function Radius() As Double
+    Function Tint() As Long
+    ' How far off the floor the middle of the sprite sits, in wall heights.
+    Function Rise() As Double
+    Function IsAlive() As Boolean
+    Sub Advance(ByVal seconds As Double, ByVal player As Vec2)
+End Interface
+
+' What every thing has, so the specific kinds only write what is theirs.
+Public Class Thing
+    Public Position As Vec2
+    Public Size As Double
+    Public Color As Long
+    Public Height As Double
+    Public Alive As Boolean
+
+    Public Sub Initialize()
+        Size = 0.35
+        Height = 0
+        Alive = True
+        Color = PackColor(220, 220, 220)
+    End Sub
+
+    Public Overridable Function Where() As Vec2
+        Return Position
+    End Function
+
+    Public Overridable Function Radius() As Double
+        Return Size
+    End Function
+
+    Public Overridable Function Tint() As Long
+        Return Color
+    End Function
+
+    Public Overridable Function Rise() As Double
+        Return Height
+    End Function
+
+    Public Overridable Function IsAlive() As Boolean
+        Return Alive
+    End Function
+
+    Public Overridable Sub Advance(ByVal seconds As Double, ByVal player As Vec2)
+    End Sub
+End Class
+
+' A pillar of light that pulses where it stands.
+Public Class Lamp
+    Inherits Thing
+
+    Private Phase As Double
+
+    Public Sub Initialize()
+        Size = 0.22
+        Height = -0.25
+        Color = PackColor(250, 220, 130)
+    End Sub
+
+    Public Overrides Sub Advance(ByVal seconds As Double, ByVal player As Vec2)
+        Phase = Phase + seconds * 3
+    End Sub
+
+    ' Brightness rides the pulse, so a lamp reads as a light source rather than
+    ' a coloured post.
+    Public Overrides Function Tint() As Long
+        Return Shade(Color, 0.7 + 0.3 * Abs(Sin(Phase)))
+    End Function
+
+    Public Overrides Function Rise() As Double
+        Return Height + 0.04 * Sin(Phase)
+    End Function
+End Class
+
+' A drifting shape that wanders until it notices the player, then closes in.
+Public Class Wanderer
+    Inherits Thing
+
+    Public Heading As Vec2
+    Public Speed As Double
+    Private Wobble As Double
+
+    Public Sub Initialize()
+        Size = 0.3
+        Height = 0.05
+        Speed = 1.1
+        Color = PackColor(200, 90, 140)
+        Set Heading = New Vec2(1, 0)
+    End Sub
+
+    Public Overrides Sub Advance(ByVal seconds As Double, ByVal player As Vec2)
+        Wobble = Wobble + seconds * 5
+
+        ' Close in when the player is near, otherwise keep drifting. Chasing
+        ' from anywhere would have every wanderer converge on the same spot.
+        Dim toPlayer As Vec2 = player - Position
+        Dim range As Double = toPlayer.Length_()
+        If range < 6 And range > 0.6 Then
+            Heading = toPlayer * (1 / range)
+        End If
+
+        Dim stepped As Vec2 = Position + Heading * (Speed * seconds)
+        If IsOpen(stepped) Then
+            Position = stepped
+        Else
+            ' Turn away from whatever it walked into.
+            Heading = Heading.Rotated(2.2)
+        End If
+    End Sub
+
+    Public Overrides Function Rise() As Double
+        Return Height + 0.05 * Sin(Wobble)
+    End Function
+End Class
+
+' A shard that spins in place, there to fill the view with things to sort.
+Public Class Shard
+    Inherits Thing
+
+    Private Spin As Double
+
+    Public Sub Initialize()
+        Size = 0.16
+        Height = 0.15
+        Color = PackColor(120, 220, 235)
+    End Sub
+
+    Public Overrides Sub Advance(ByVal seconds As Double, ByVal player As Vec2)
+        Spin = Spin + seconds * 4
+    End Sub
+
+    ' The apparent width breathes as it turns, which is as much of a spin as a
+    ' billboard can show.
+    Public Overrides Function Radius() As Double
+        Return Size * (0.45 + 0.55 * Abs(Cos(Spin)))
+    End Function
+End Class
+
+' Builds the population. Positions are picked to sit in the open corridors of
+' the map rather than inside its blocks.
+Public Function Populate() As Collection
+    Dim things As New Collection()
+
+    Dim lampSpots As New Collection()
+    lampSpots.Add(New Vec2(4.5, 4.5))
+    lampSpots.Add(New Vec2(17.5, 4.5))
+    lampSpots.Add(New Vec2(7.5, 11.5))
+    lampSpots.Add(New Vec2(15.5, 11.5))
+    lampSpots.Add(New Vec2(13.5, 17.5))
+    lampSpots.Add(New Vec2(4.5, 20.5))
+
+    Dim spot As Variant
+    For Each spot In lampSpots
+        Dim lamp As New Lamp()
+        Set lamp.Position = CType(spot, Vec2)
+        things.Add(lamp)
+    Next spot
+
+    ' Wanderers, spread along the open middle band.
+    Dim i As Long
+    For i = 0 To 7
+        Dim wanderer As New Wanderer()
+        Set wanderer.Position = New Vec2(2.5 + i * 2.6, 7.5)
+        Set wanderer.Heading = New Vec2(Cos(i * 0.8), Sin(i * 0.8))
+        wanderer.Speed = 0.7 + 0.18 * i
+        wanderer.Color = PackColor(150 + i * 12, 70 + i * 8, 150 - i * 9)
+        things.Add(wanderer)
+    Next i
+
+    ' Shards, in two rows so there is always a crowd to depth-sort.
+    For i = 0 To 11
+        Dim shard As New Shard()
+        Set shard.Position = New Vec2(2.5 + i * 1.7, 14.5)
+        shard.Color = PackColor(90 + i * 10, 200, 240 - i * 8)
+        things.Add(shard)
+
+        Dim high As New Shard()
+        Set high.Position = New Vec2(2.5 + i * 1.7, 19.5)
+        high.Height = -0.2
+        high.Color = PackColor(240 - i * 9, 180, 90 + i * 11)
+        things.Add(high)
+    Next i
+
+    Return things
+End Function
