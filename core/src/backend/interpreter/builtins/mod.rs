@@ -111,6 +111,8 @@ pub(super) type ValueFn =
 
 /// Finds the implementation a module provides for `name`.
 pub(super) fn find_handler(handlers: &[(&str, ValueFn)], name: &str) -> Option<ValueFn> {
+    // The registry has already said whether the name is a builtin at all, so
+    // this scan only runs for names that are one, over a table of a few dozen.
     handlers
         .iter()
         .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
@@ -901,9 +903,13 @@ pub(crate) fn dispatch_function(
     // Check the argument count once, against the registry, before anything is
     // evaluated. Every implementation below can then rely on having a count its
     // own entry allows, instead of restating the check.
-    if let Some(builtin) = crate::runtime::builtins::lookup(effective_name) {
-        builtin.check_arity(args.len(), span)?;
-    }
+    // A name that is not in the registry is not a builtin, and everything below
+    // is a search for one. Saying so here is what keeps a call to a user
+    // procedure from walking the dispatch tables.
+    let Some(builtin) = crate::runtime::builtins::lookup(effective_name) else {
+        return Ok(None);
+    };
+    builtin.check_arity(args.len(), span)?;
 
     // Builtins that need their arguments unevaluated, or that need the storage
     // an argument names rather than its value.

@@ -334,6 +334,11 @@ impl Interpreter {
         span: Span,
         kind_: DeclareKind,
     ) -> Result<Option<DeclareDecl>, Diagnostic> {
+        // A program with no `Declare` cannot be calling one, and this is asked
+        // before every call to a procedure.
+        if self.declares.is_empty() {
+            return Ok(None);
+        }
         if let Some(current) = frame.module_key()
             && let Some(declare) = self
                 .declares

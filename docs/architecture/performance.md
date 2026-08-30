@@ -177,6 +177,32 @@ elsewhere without having cloned it.
 The empty loop improved because a `For` assigns its counter through the same
 path, which is a fair summary of how much of a program this is.
 
+## Two thirds of a call was working out what to call
+
+A call to a function whose body is `Return 7` cost 3.2 microseconds. Stopping
+the interpreter at each stage of the call and timing it showed where that went:
+2.4 of the 3.2 was spent deciding which function was meant, and only 0.8 running
+it.
+
+Three things were in that 2.4, and each was a search for something the name was
+not.
+
+**The builtin registry was scanned in order.** `lookup` walked a hundred and
+fifty entries comparing names, and it is asked about every call, including the
+ones that turn out to be user procedures. It is now a map built once from the
+same table, so the table stays written in reading order and grouped by purpose
+while lookups no longer read it that way. Worth 780ns a call.
+
+**The dispatch tables were searched even when the registry had said no.** If a
+name is not in the registry it is not a builtin, and everything after that check
+is a search for one. Saying so at the top ends it.
+
+**`Declare` was resolved before every call.** A program with no `Declare` cannot
+be calling one, and the check allocated several strings to find that out.
+
+A call went from 3204ns to 1896ns. The benchmarks moved with it: calls -36%,
+arrays -27%, strings -17%.
+
 ## A method call asked whether the method was an array
 
 `thing.Items(2)` indexes an array field where `thing.Method(2)` calls one, and

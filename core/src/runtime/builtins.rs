@@ -465,11 +465,27 @@ pub fn is_name_in(name: &str, names: &[&str]) -> bool {
 
 /// Looks up a builtin by the name it is called with, ignoring case and an
 /// optional `VBA.` qualifier.
+/// The registry keyed by folded name, built once.
+///
+/// The table is written in reading order and grouped by what each builtin is
+/// for, which is how it should stay. Searching it in that order is another
+/// matter: `lookup` is asked about every call in a program, including the ones
+/// that turn out to be user procedures, and scanning a hundred and fifty names
+/// to answer "no" was most of what a call cost.
+fn by_name() -> &'static std::collections::HashMap<String, &'static Builtin> {
+    static BY_NAME: std::sync::OnceLock<std::collections::HashMap<String, &'static Builtin>> =
+        std::sync::OnceLock::new();
+    BY_NAME.get_or_init(|| {
+        BUILTINS
+            .iter()
+            .map(|builtin| (crate::runtime::fold(builtin.name), builtin))
+            .collect()
+    })
+}
+
 pub fn lookup(name: &str) -> Option<&'static Builtin> {
     let name = strip_vba_namespace(name);
-    BUILTINS
-        .iter()
-        .find(|builtin| builtin.name.eq_ignore_ascii_case(name))
+    crate::runtime::with_folded(name, |folded| by_name().get(folded).copied())
 }
 
 pub fn is_builtin_function(name: &str) -> bool {

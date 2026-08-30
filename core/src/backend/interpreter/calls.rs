@@ -792,7 +792,6 @@ impl Interpreter {
                 span,
             )?
             .clone();
-
         // Substituting type arguments rewrites the procedure, so a generic one
         // has to be copied. A plain one is only read, and stays shared.
         let function = if function.type_params.is_empty() {
