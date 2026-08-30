@@ -1041,7 +1041,9 @@ End Sub
 "#,
     );
 
-    assert!(error.contains("Property Get 'Name' is already declared"));
+    assert!(error.contains(
+        "Property Get 'Name' in Class 'User' is already declared with these parameter types"
+    ));
 }
 
 #[test]
@@ -1061,7 +1063,9 @@ End Sub
 "#,
     );
 
-    assert!(error.contains("Property Let 'Name' is already declared"));
+    assert!(error.contains(
+        "Property Let 'Name' in Class 'User' is already declared with these parameter types"
+    ));
 }
 
 #[test]
@@ -2852,5 +2856,94 @@ End Sub
 
     assert!(diagnostic.message.contains(
         "Method 'Draw' in Class 'Painter' is already declared with these parameter types"
+    ));
+}
+
+#[test]
+fn an_indexed_property_can_be_written_as_well_as_read() {
+    let output = run_source(
+        r#"
+Class Store
+    Private Slots(9) As String
+
+    Public Property Get Item(ByVal index As Long) As String
+        Return Slots(index)
+    End Property
+
+    Public Property Let Item(ByVal index As Long, ByVal value As String)
+        Slots(index) = value
+    End Property
+End Class
+
+Sub Main()
+    Dim s As New Store()
+    s.Item(2) = "two"
+    Console.WriteLine(s.Item(2))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["two"]);
+}
+
+#[test]
+fn property_accessors_overload_on_what_indexes_them() {
+    let output = run_source(
+        r#"
+Class Store
+    Private Slots(9) As String
+    Private Named As String
+
+    Public Property Get Item(ByVal index As Long) As String
+        Return Slots(index)
+    End Property
+
+    Public Property Get Item(ByVal key As String) As String
+        Return Named
+    End Property
+
+    Public Property Let Item(ByVal index As Long, ByVal value As String)
+        Slots(index) = value
+    End Property
+
+    Public Property Let Item(ByVal key As String, ByVal value As String)
+        Named = key & "=" & value
+    End Property
+End Class
+
+Sub Main()
+    Dim s As New Store()
+    s.Item(2) = "two"
+    s.Item("k") = "v"
+    Console.WriteLine(s.Item(2))
+    Console.WriteLine(s.Item("k"))
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["two", "k=v"]);
+}
+
+#[test]
+fn two_accessors_with_the_same_parameters_are_rejected() {
+    let diagnostic = source_diagnostic(
+        r#"
+Class Store
+    Public Property Get Item(ByVal index As Long) As String
+        Return "a"
+    End Property
+
+    Public Property Get Item(ByVal other As Long) As String
+        Return "b"
+    End Property
+End Class
+
+Sub Main()
+End Sub
+"#,
+    );
+
+    assert!(diagnostic.message.contains(
+        "Property Get 'Item' in Class 'Store' is already declared with these parameter types"
     ));
 }

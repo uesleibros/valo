@@ -246,6 +246,7 @@ pub(super) fn validate_assignment_target(
                 &object_type,
                 field,
                 value_type,
+                &[],
                 types,
                 *span,
                 current_class.as_deref(),
@@ -258,8 +259,11 @@ pub(super) fn validate_assignment_target(
             span,
         } => {
             let object_type = validate_expr(object, symbols, types, signatures, context, options)?;
+            let mut index_types = Vec::with_capacity(indices.len());
             for index in indices {
-                validate_expr(index, symbols, types, signatures, context, options)?;
+                index_types.push(Some(validate_expr(
+                    index, symbols, types, signatures, context, options,
+                )?));
             }
             let current_class = member_access_class(object, &object_type)
                 .or_else(|| context.current_class().map(str::to_string));
@@ -267,6 +271,7 @@ pub(super) fn validate_assignment_target(
                 &object_type,
                 field,
                 value_type,
+                &index_types,
                 types,
                 *span,
                 current_class.as_deref(),
@@ -348,15 +353,13 @@ fn wider_bitwise_result(left: &TypeName, right: &TypeName) -> TypeName {
 }
 
 fn bare_property_type(property: &ClassPropertySig) -> Option<TypeName> {
-    if let Some(get) = &property.get
+    if let Some(get) = property.get.first()
         && let Some(return_type) = &get.return_type
     {
         return Some(return_type.clone());
     }
     property
-        .let_
-        .as_ref()
-        .or(property.set.as_ref())
+        .writer()
         .and_then(|accessor| accessor.params.last())
         .map(|param| param.ty.clone())
 }
@@ -798,7 +801,7 @@ pub(super) fn validate_expr(
                     }
                     if let Some(prop_sig) = class_sig.properties.get(&member_key)
                         && (prop_sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
-                        && let Some(get) = &prop_sig.get
+                        && let Some(get) = prop_sig.get.first()
                     {
                         let callable = CallableSig {
                             attributes: Vec::new(),
@@ -849,7 +852,7 @@ pub(super) fn validate_expr(
                         return Ok(func_sig.return_type.clone().expect("function return type"));
                     }
                     if let Some(prop_sig) = type_sig.properties.get(&member_key)
-                        && let Some(get) = &prop_sig.get
+                        && let Some(get) = prop_sig.get.first()
                     {
                         let callable = CallableSig {
                             attributes: Vec::new(),
@@ -962,7 +965,7 @@ pub(super) fn validate_expr(
                     return Ok(field_sig.ty.clone());
                 }
                 if let Some(property_sig) = class_sig.properties.get(&key(field))
-                    && let Some(get) = &property_sig.get
+                    && let Some(get) = property_sig.get.first()
                 {
                     return Ok(get.return_type.clone().unwrap_or(TypeName::Variant));
                 }
@@ -1050,7 +1053,7 @@ pub(super) fn validate_expr(
                     return Ok(function.return_type.clone().unwrap_or(TypeName::Variant));
                 }
                 if let Some(property_sig) = class_sig.properties.get(&key(method))
-                    && let Some(get) = &property_sig.get
+                    && let Some(get) = property_sig.get.first()
                 {
                     let callable = CallableSig {
                         attributes: Vec::new(),
@@ -1307,7 +1310,7 @@ pub(super) fn validate_expr(
                         candidates = Some(methods.clone());
                     }
                 } else if let Some(prop_sig) = class_sig.properties.get(&member_key)
-                    && let Some(get) = &prop_sig.get
+                    && let Some(get) = prop_sig.get.first()
                     && (prop_sig.is_shared || symbols.contains_key(well_known::SELF_KEY))
                 {
                     candidates = Some(vec![CallableSig {
@@ -2481,7 +2484,17 @@ pub(super) fn validate_method_call(
         if let Some(get) = class_sig
             .properties
             .get(&key(method))
-            .and_then(|p| p.get.as_ref())
+            .map(|p| {
+                resolve_accessor(
+                    method,
+                    &p.get,
+                    args,
+                    span,
+                    validation_for(symbols, types, signatures, context, options),
+                )
+            })
+            .transpose()?
+            .flatten()
         {
             ensure_visible(get.visibility, &class_sig.name, method, current_class, span)?;
             let return_type = get
@@ -2521,7 +2534,7 @@ pub(super) fn validate_method_call(
             // Case 2: The property returns an object that has a default property
             let default_call = match &return_type {
                 TypeName::User(inner_class_name) => types
-                    .get_class(inner_class_name)
+                    .get_class(inner_class_name.as_str())
                     .and_then(|c| c.default_property.as_ref())
                     .map(|name| (return_type.clone(), name.clone())),
                 _ => None,
@@ -2704,7 +2717,7 @@ fn validate_structure_method_call(
             if let Some(get) = interface_sig
                 .properties
                 .get(&key(method))
-                .and_then(|p| p.get.as_ref())
+                .and_then(|p| p.getter())
             {
                 let return_type = get
                     .return_type
@@ -2750,7 +2763,7 @@ fn validate_structure_method_call(
             if let Some(property_accessor) = interface_sig
                 .properties
                 .get(&key(method))
-                .and_then(|p| p.let_.as_ref().or(p.set.as_ref()))
+                .and_then(|p| p.writer())
             {
                 let dummy_sig = CallableSig {
                     attributes: Vec::new(),
@@ -2836,7 +2849,7 @@ fn validate_structure_method_call(
         if let Some(get) = type_sig
             .properties
             .get(&key(method))
-            .and_then(|p| p.get.as_ref())
+            .and_then(|p| p.getter())
         {
             ensure_visible(get.visibility, &type_sig.name, method, current_type, span)?;
             let return_type = get
@@ -3092,7 +3105,7 @@ pub(super) fn member_read_type(
                 Some(span),
             ));
         };
-        let get = property_sig.get.as_ref().ok_or_else(|| {
+        let get = property_sig.getter().ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Property '{}' has no Get accessor", property_sig.name),
@@ -3135,7 +3148,7 @@ pub(super) fn member_read_type(
             Some(span),
         )
     })?;
-    let get = property_sig.get.as_ref().ok_or_else(|| {
+    let get = property_sig.getter().ok_or_else(|| {
         Diagnostic::new(
             crate::runtime::DiagnosticCode::MEMBER_ACCESS,
             format!("Property '{}' has no Get accessor", property_sig.name),
@@ -3150,10 +3163,76 @@ pub(super) fn member_read_type(
         .substitute_generics(&bindings))
 }
 
+/// Picks which `Let` or `Set` accessor a write goes through.
+///
+/// An indexed property is written `Item(2) = "two"`, so the indices come first
+/// and the value last. That whole shape is what chooses between overloads:
+/// `Item(2) = "two"` and `Item("k") = "v"` can reach different accessors.
+fn pick_writer<'a>(
+    candidates: &'a [PropertyAccessorSig],
+    index_types: &[Option<TypeName>],
+    value_type: &TypeName,
+    member: &str,
+    span: crate::runtime::Span,
+) -> Result<Option<&'a PropertyAccessorSig>, Diagnostic> {
+    match candidates {
+        [] => return Ok(None),
+        [only] => return Ok(Some(only)),
+        _ => {}
+    }
+
+    let shapes: Vec<Vec<overloads::ParamShape>> = candidates
+        .iter()
+        .map(|accessor| {
+            accessor
+                .params
+                .iter()
+                .map(|param| overloads::ParamShape {
+                    ty: param.ty.clone(),
+                    is_optional: param.is_optional,
+                    is_param_array: param.is_param_array,
+                })
+                .collect()
+        })
+        .collect();
+    let mut supplied: Vec<Option<TypeName>> = index_types.to_vec();
+    supplied.push(Some(value_type.clone()));
+
+    match overloads::resolve(&shapes, &supplied) {
+        overloads::Resolution::Single(chosen) => Ok(Some(&candidates[chosen])),
+        overloads::Resolution::NoMatch => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            format!("No accessor of property '{member}' accepts a write of this shape"),
+            Some(span),
+        )),
+        overloads::Resolution::Ambiguous(_) => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::AMBIGUOUS_OVERLOAD,
+            format!("Which accessor of property '{member}' is written to is ambiguous"),
+            Some(span),
+        )),
+    }
+}
+
+/// The parameter a write to a property lands in.
+///
+/// It is the last one. A plain property has only that; an indexed one takes
+/// its indices first and the value after them, which is what
+/// `Property Let Item(index As Long, value As String)` declares.
+fn assigned_parameter(accessor: &PropertyAccessorSig) -> Result<&ParamSig, Diagnostic> {
+    accessor.params.last().ok_or_else(|| {
+        Diagnostic::new(
+            crate::runtime::DiagnosticCode::INVALID_DECLARATION,
+            "A property Let or Set has to declare the value it is given",
+            None,
+        )
+    })
+}
+
 fn member_assignment_type(
     object_type: &TypeName,
     member: &str,
     value_type: &TypeName,
+    index_types: &[Option<TypeName>],
     types: &TypeRegistry,
     span: crate::runtime::Span,
     current_class: Option<&str>,
@@ -3199,13 +3278,14 @@ fn member_assignment_type(
                 Some(span),
             )
         })?;
-        let accessor =
+        let candidates =
             if is_class_type(value_type, types) || value_type.same_type(&TypeName::Variant) {
-                property_sig.set.as_ref().or(property_sig.let_.as_ref())
+                property_sig.writers()
             } else {
-                property_sig.let_.as_ref()
-            }
-            .ok_or_else(|| {
+                &property_sig.let_
+            };
+        let accessor =
+            pick_writer(candidates, index_types, value_type, member, span)?.ok_or_else(|| {
                 Diagnostic::new(
                     crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                     format!(
@@ -3222,7 +3302,9 @@ fn member_assignment_type(
             current_class,
             span,
         )?;
-        return Ok(accessor.params[0].ty.substitute_generics(&bindings));
+        return Ok(assigned_parameter(accessor)?
+            .ty
+            .substitute_generics(&bindings));
     }
 
     let class_sig = types.get_class(&type_name).ok_or_else(|| {
@@ -3253,13 +3335,14 @@ fn member_assignment_type(
             Some(span),
         )
     })?;
+    let candidates = if is_class_type(value_type, types) || value_type.same_type(&TypeName::Variant)
+    {
+        property_sig.writers()
+    } else {
+        &property_sig.let_
+    };
     let accessor =
-        if is_class_type(value_type, types) || value_type.same_type(&TypeName::Variant) {
-            property_sig.set.as_ref().or(property_sig.let_.as_ref())
-        } else {
-            property_sig.let_.as_ref()
-        }
-        .ok_or_else(|| {
+        pick_writer(candidates, index_types, value_type, member, span)?.ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!(
@@ -3276,7 +3359,9 @@ fn member_assignment_type(
         current_class,
         span,
     )?;
-    Ok(accessor.params[0].ty.substitute_generics(&bindings))
+    Ok(assigned_parameter(accessor)?
+        .ty
+        .substitute_generics(&bindings))
 }
 
 fn ensure_visible(
@@ -3347,6 +3432,80 @@ fn tuple_member_type(
         Some(span),
     )
     .with_available_items("its elements are", names.iter().map(String::as_str)))
+}
+
+/// Picks which accessor of a property a use site means.
+///
+/// Reading `Item(1)` and `Item("a")` can reach different getters, the way two
+/// procedures sharing a name can. With one accessor there is nothing to choose,
+/// and it is returned untouched so the argument checking that follows reports
+/// what is actually wrong.
+pub(super) fn resolve_accessor<'a>(
+    name: &str,
+    candidates: &'a [PropertyAccessorSig],
+    args: &[Expr],
+    span: crate::runtime::Span,
+    validation: ExprValidation<'_, '_>,
+) -> Result<Option<&'a PropertyAccessorSig>, Diagnostic> {
+    match candidates {
+        [] => return Ok(None),
+        [only] => return Ok(Some(only)),
+        _ => {}
+    }
+
+    let shapes: Vec<Vec<overloads::ParamShape>> = candidates
+        .iter()
+        .map(|accessor| {
+            accessor
+                .params
+                .iter()
+                .map(|param| overloads::ParamShape {
+                    ty: param.ty.clone(),
+                    is_optional: param.is_optional,
+                    is_param_array: param.is_param_array,
+                })
+                .collect()
+        })
+        .collect();
+    let argument_types: Vec<Option<TypeName>> = args
+        .iter()
+        .map(|arg| {
+            validate_expr(
+                arg,
+                validation.symbols,
+                validation.types,
+                validation.signatures,
+                validation.context,
+                validation.options,
+            )
+            .ok()
+        })
+        .collect();
+
+    match overloads::resolve(&shapes, &argument_types) {
+        overloads::Resolution::Single(chosen) => Ok(Some(&candidates[chosen])),
+        overloads::Resolution::NoMatch => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::ARGUMENT_COUNT,
+            format!("No accessor of property '{name}' accepts these arguments"),
+            Some(span),
+        )),
+        overloads::Resolution::Ambiguous(_) => Err(Diagnostic::new(
+            crate::runtime::DiagnosticCode::AMBIGUOUS_OVERLOAD,
+            format!("Which accessor of property '{name}' is meant is ambiguous"),
+            Some(span),
+        )),
+    }
+}
+
+/// Bundles the pieces validation carries, where the call site has them loose.
+fn validation_for<'a, 'ctx>(
+    symbols: &'a HashMap<String, VarType>,
+    types: &'a TypeRegistry,
+    signatures: &'a Signatures,
+    context: &'a Context<'ctx>,
+    options: Options,
+) -> ExprValidation<'a, 'ctx> {
+    ExprValidation::new(symbols, types, signatures, context, options)
 }
 
 pub(super) fn ensure_known_type(
@@ -3838,7 +3997,7 @@ pub(super) fn ensure_assignable_expr(
         && let Some(class_sig) = types.get_class(class_name)
         && let Some(default_prop_name) = &class_sig.default_property
         && let Some(prop_sig) = class_sig.properties.get(&key(default_prop_name))
-        && let Some(get) = &prop_sig.get
+        && let Some(get) = prop_sig.get.first()
         && get.params.is_empty()
         && let Some(prop_type) = &get.return_type
         && ensure_assignable(target, prop_type, types, span).is_ok()

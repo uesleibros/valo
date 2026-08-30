@@ -40,7 +40,7 @@ impl Interpreter {
         let accessor = structure
             .properties
             .get(&key(property))
-            .and_then(|property| property.get.as_ref())
+            .and_then(|property| property.getter())
             .ok_or_else(|| {
                 Diagnostic::new(
                     crate::runtime::DiagnosticCode::MEMBER_ACCESS,
@@ -174,9 +174,9 @@ impl Interpreter {
             )
         })?;
         let accessor = if matches!(value, Value::Object(_) | Value::Nothing) {
-            property_sig.set.as_ref().or(property_sig.let_.as_ref())
+            property_sig.let_set()
         } else {
-            property_sig.let_.as_ref()
+            property_sig.let_.first()
         }
         .cloned()
         .ok_or_else(|| {
@@ -266,10 +266,11 @@ impl Interpreter {
                     Some(span),
                 )
             })?;
-        let accessor = class
+        let candidates = class
             .properties
             .get(&key(property))
-            .and_then(|property| property.get.as_ref())
+            .map(|entry| entry.get.as_slice())
+            .filter(|accessors| !accessors.is_empty())
             .ok_or_else(|| {
                 Diagnostic::new(
                     crate::runtime::DiagnosticCode::MEMBER_ACCESS,
@@ -277,6 +278,18 @@ impl Interpreter {
                     Some(span),
                 )
             })?;
+        // Overloaded getters are picked the way an overloaded method is:
+        // `Item(1)` and `Item("a")` can reach different ones.
+        let accessor = self
+            .pick_overload(
+                "Property Get",
+                property,
+                candidates,
+                |accessor: &Rc<RuntimePropertyAccessor>| &accessor.params,
+                || self.argument_types_of(args, caller_frame),
+                span,
+            )?
+            .clone();
         let mut frame = Frame::default();
         frame.inherit_modules_from(caller_frame)?;
         if let Some((module_key, _)) = key(&class.name).split_once('.') {
@@ -369,7 +382,7 @@ impl Interpreter {
 
     pub(crate) fn call_property_accessor(
         &mut self,
-        accessor: RuntimePropertyAccessor,
+        accessor: Rc<RuntimePropertyAccessor>,
         args: &[Value],
         me: Option<Value>,
         class_context: Option<String>,
@@ -459,7 +472,7 @@ impl Interpreter {
 
     pub(crate) fn call_property_accessor_sub(
         &mut self,
-        accessor: RuntimePropertyAccessor,
+        accessor: Rc<RuntimePropertyAccessor>,
         args: &[Value],
         me: Option<Value>,
         class_context: Option<String>,
@@ -549,19 +562,30 @@ impl Interpreter {
             )
         })?;
         let value = values.last().cloned().unwrap_or(Value::Missing);
-        let accessor = if matches!(value, Value::Object(_) | Value::Nothing) {
-            property_sig.set.as_ref().or(property_sig.let_.as_ref())
+        let candidates = if matches!(value, Value::Object(_) | Value::Nothing) {
+            property_sig.writers()
         } else {
-            property_sig.let_.as_ref()
-        }
-        .cloned()
-        .ok_or_else(|| {
-            Diagnostic::new(
+            &property_sig.let_
+        };
+        if candidates.is_empty() {
+            return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Property '{}' has no Let or Set accessor", property),
                 Some(span),
-            )
-        })?;
+            ));
+        }
+        // An indexed property is written `Item(2) = "two"`, so the indices come
+        // first and the value last. That whole shape picks between overloads.
+        let accessor = self
+            .pick_overload(
+                "Property Let",
+                property,
+                candidates,
+                |accessor: &Rc<RuntimePropertyAccessor>| &accessor.params,
+                || Self::argument_types_of_values(values),
+                span,
+            )?
+            .clone();
         let mut frame = Frame::default();
         frame.declare_object_alias(well_known::SELF_KEY, &class.name, instance, span)?;
         self.bind_parameter_values(&accessor.params, values, &mut frame, span)?;
@@ -607,14 +631,33 @@ impl Interpreter {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeProperty {
-    pub(crate) get: Option<RuntimePropertyAccessor>,
-    pub(crate) let_: Option<RuntimePropertyAccessor>,
-    pub(crate) set: Option<RuntimePropertyAccessor>,
+    /// The accessors of each kind, in declaration order.
+    ///
+    /// A property usually has one of each. Several are overloads, picked by
+    /// the arguments at the use site the way a method call is.
+    pub(crate) get: Vec<Rc<RuntimePropertyAccessor>>,
+    pub(crate) let_: Vec<Rc<RuntimePropertyAccessor>>,
+    pub(crate) set: Vec<Rc<RuntimePropertyAccessor>>,
 }
 
 impl RuntimeProperty {
-    pub(crate) fn let_set(&self) -> Option<&RuntimePropertyAccessor> {
-        self.set.as_ref().or(self.let_.as_ref())
+    /// The getter to run when the use site offers nothing to choose by.
+    pub(crate) fn getter(&self) -> Option<&Rc<RuntimePropertyAccessor>> {
+        self.get.first()
+    }
+
+    /// The accessor a write goes through: `Set` if there is one, else `Let`.
+    pub(crate) fn let_set(&self) -> Option<&Rc<RuntimePropertyAccessor>> {
+        self.set.first().or_else(|| self.let_.first())
+    }
+
+    /// Every accessor a write could go through.
+    pub(crate) fn writers(&self) -> &[Rc<RuntimePropertyAccessor>] {
+        if self.set.is_empty() {
+            &self.let_
+        } else {
+            &self.set
+        }
     }
 }
 

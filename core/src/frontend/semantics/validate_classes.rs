@@ -404,7 +404,7 @@ fn validate_implements_common(
         }
         for property in interface.properties.values() {
             let property_bound = property.substitute_generics(&bindings);
-            if let Some(get) = &property_bound.get {
+            if let Some(get) = property_bound.get.first() {
                 let target = find_explicit_property_impl(
                     members,
                     decl_name,
@@ -430,7 +430,7 @@ fn validate_implements_common(
                     ));
                 }
             }
-            if let Some(let_) = &property_bound.let_ {
+            if let Some(let_) = property_bound.let_.first() {
                 let target = find_explicit_property_impl(
                     members,
                     decl_name,
@@ -451,7 +451,7 @@ fn validate_implements_common(
                     ));
                 }
             }
-            if let Some(set) = &property_bound.set {
+            if let Some(set) = property_bound.set.first() {
                 let target = find_explicit_property_impl(
                     members,
                     decl_name,

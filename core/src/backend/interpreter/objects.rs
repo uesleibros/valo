@@ -136,14 +136,13 @@ impl Interpreter {
                 substitute_function_types(iterator, &bindings);
             }
             for property in instance.properties.values_mut() {
-                if let Some(get) = &mut property.get {
-                    substitute_property_accessor_types(get, &bindings);
-                }
-                if let Some(let_) = &mut property.let_ {
-                    substitute_property_accessor_types(let_, &bindings);
-                }
-                if let Some(set) = &mut property.set {
-                    substitute_property_accessor_types(set, &bindings);
+                for accessor in property
+                    .get
+                    .iter_mut()
+                    .chain(property.let_.iter_mut())
+                    .chain(property.set.iter_mut())
+                {
+                    substitute_property_accessor_types(Rc::make_mut(accessor), &bindings);
                 }
             }
             let instance_key = key(&instance.name);
@@ -197,14 +196,13 @@ impl Interpreter {
                 substitute_function_types(Rc::make_mut(function), &bindings);
             }
             for property in instance.properties.values_mut() {
-                if let Some(get) = &mut property.get {
-                    substitute_property_accessor_types(get, &bindings);
-                }
-                if let Some(let_) = &mut property.let_ {
-                    substitute_property_accessor_types(let_, &bindings);
-                }
-                if let Some(set) = &mut property.set {
-                    substitute_property_accessor_types(set, &bindings);
+                for accessor in property
+                    .get
+                    .iter_mut()
+                    .chain(property.let_.iter_mut())
+                    .chain(property.set.iter_mut())
+                {
+                    substitute_property_accessor_types(Rc::make_mut(accessor), &bindings);
                 }
             }
             self.types.insert(key(&instance.name), instance);
@@ -739,7 +737,7 @@ impl Interpreter {
                 if class
                     .properties
                     .get(&key(member))
-                    .and_then(|property| property.get.as_ref())
+                    .and_then(|property| property.getter())
                     .is_some_and(|accessor| accessor.is_shared)
                 {
                     return self.call_shared_property_get(&current_name, member, &[], frame, span);
@@ -1552,15 +1550,15 @@ impl From<&crate::ClassDecl> for RuntimeClass {
                         properties
                             .entry(key(&property.name))
                             .or_insert_with(|| RuntimeProperty {
-                                get: None,
-                                let_: None,
-                                set: None,
+                                get: Vec::new(),
+                                let_: Vec::new(),
+                                set: Vec::new(),
                             });
-                    let accessor = RuntimePropertyAccessor::from(property);
+                    let accessor = Rc::new(RuntimePropertyAccessor::from(property));
                     match property.kind {
-                        PropertyKind::Get => property_entry.get = Some(accessor),
-                        PropertyKind::Let => property_entry.let_ = Some(accessor),
-                        PropertyKind::Set => property_entry.set = Some(accessor),
+                        PropertyKind::Get => property_entry.get.push(accessor),
+                        PropertyKind::Let => property_entry.let_.push(accessor),
+                        PropertyKind::Set => property_entry.set.push(accessor),
                     }
                 }
                 ClassMember::Operator(op) => {

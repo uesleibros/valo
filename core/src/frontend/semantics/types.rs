@@ -285,21 +285,45 @@ pub(super) struct ClassPropertySig {
     pub(super) is_shared: bool,
     pub(super) is_readonly: bool,
     pub(super) is_writeonly: bool,
-    pub(super) get: Option<PropertyAccessorSig>,
-    pub(super) let_: Option<PropertyAccessorSig>,
-    pub(super) set: Option<PropertyAccessorSig>,
+    /// The accessors of each kind, in declaration order.
+    ///
+    /// A property usually has one of each. Several are overloads, picked by the
+    /// arguments at the use site the way a method call is: `Item(1)` and
+    /// `Item("a")` can reach different getters.
+    pub(super) get: Vec<PropertyAccessorSig>,
+    pub(super) let_: Vec<PropertyAccessorSig>,
+    pub(super) set: Vec<PropertyAccessorSig>,
 }
 
 impl ClassPropertySig {
+    /// The getter to answer with when the use site offers nothing to choose by.
+    pub(super) fn getter(&self) -> Option<&PropertyAccessorSig> {
+        self.get.first()
+    }
+
+    /// The accessor a write goes through: `Set` if there is one, else `Let`.
+    pub(super) fn writer(&self) -> Option<&PropertyAccessorSig> {
+        self.set.first().or_else(|| self.let_.first())
+    }
+
+    /// Every accessor a write could go through.
+    pub(super) fn writers(&self) -> &[PropertyAccessorSig] {
+        if self.set.is_empty() {
+            &self.let_
+        } else {
+            &self.set
+        }
+    }
+
     pub(super) fn substitute_generics(&self, bindings: &[(String, TypeName)]) -> Self {
         ClassPropertySig {
             name: self.name.clone(),
             is_shared: self.is_shared,
             is_readonly: self.is_readonly,
             is_writeonly: self.is_writeonly,
-            get: self.get.as_ref().map(|a| a.substitute_generics(bindings)),
-            let_: self.let_.as_ref().map(|a| a.substitute_generics(bindings)),
-            set: self.set.as_ref().map(|a| a.substitute_generics(bindings)),
+            get: substitute_accessors(&self.get, bindings),
+            let_: substitute_accessors(&self.let_, bindings),
+            set: substitute_accessors(&self.set, bindings),
         }
     }
 }
@@ -328,4 +352,14 @@ impl PropertyAccessorSig {
                 .map(|ty| ty.substitute_generics(bindings)),
         }
     }
+}
+
+fn substitute_accessors(
+    accessors: &[PropertyAccessorSig],
+    bindings: &[(String, TypeName)],
+) -> Vec<PropertyAccessorSig> {
+    accessors
+        .iter()
+        .map(|accessor| accessor.substitute_generics(bindings))
+        .collect()
 }

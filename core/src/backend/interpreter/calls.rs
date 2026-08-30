@@ -1739,7 +1739,7 @@ impl Interpreter {
                 Some(span),
             )
         })?;
-        let get = prop.get.as_ref().cloned().ok_or_else(|| {
+        let get = prop.getter().cloned().ok_or_else(|| {
             Diagnostic::new(
                 crate::runtime::DiagnosticCode::MEMBER_ACCESS,
                 format!("Property '{}' has no Get accessor", property_name),

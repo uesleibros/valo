@@ -277,15 +277,15 @@ impl From<&TypeDecl> for RuntimeType {
                 })
                 .fold(std::collections::HashMap::new(), |mut props, property| {
                     let entry = props.entry(key(&property.name)).or_insert(RuntimeProperty {
-                        get: None,
-                        let_: None,
-                        set: None,
+                        get: Vec::new(),
+                        let_: Vec::new(),
+                        set: Vec::new(),
                     });
-                    let accessor = RuntimePropertyAccessor::from(property);
+                    let accessor = Rc::new(RuntimePropertyAccessor::from(property));
                     match property.kind {
-                        crate::PropertyKind::Get => entry.get = Some(accessor),
-                        crate::PropertyKind::Let => entry.let_ = Some(accessor),
-                        crate::PropertyKind::Set => entry.set = Some(accessor),
+                        crate::PropertyKind::Get => entry.get.push(accessor),
+                        crate::PropertyKind::Let => entry.let_.push(accessor),
+                        crate::PropertyKind::Set => entry.set.push(accessor),
                     }
                     props
                 }),

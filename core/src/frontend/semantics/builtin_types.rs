@@ -109,14 +109,14 @@ fn read_only_property(
         is_shared: false,
         is_readonly: true,
         is_writeonly: false,
-        get: Some(PropertyAccessorSig {
+        get: vec![PropertyAccessorSig {
             visibility: Visibility::Public,
             is_iterator: false,
             params,
             return_type: Some(return_type),
-        }),
-        let_: None,
-        set: None,
+        }],
+        let_: Vec::new(),
+        set: Vec::new(),
     }
 }
 

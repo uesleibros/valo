@@ -85,8 +85,9 @@ None of this blocks the VM, and the VM blocks none of it.
       methods, `Shared` methods, and the constructor. The rule and its ranking
       live in `runtime/overloads.rs`, which the analyzer and the interpreter
       both call so they cannot drift apart.
-- [ ] **Overloaded `Property` accessors**, the one member kind still limited to
-      one signature per name.
+- [x] **Overloaded `Property` accessors**, resolved by what indexes them.
+      Writing to an indexed property did not work at all before this: the value
+      was taken from the accessor's first parameter rather than its last.
 - [x] **`Delegate Sub` / `Delegate Function`**: named callable types, checked
       at the call. `AddressOf` values are now callable from Valo, not only
       passable to native code.

@@ -469,31 +469,39 @@ pub(super) fn collect_types_in_scope(
                                 is_shared: property.is_shared,
                                 is_readonly: property.is_readonly,
                                 is_writeonly: property.is_writeonly,
-                                get: None,
-                                let_: None,
-                                set: None,
+                                get: Vec::new(),
+                                let_: Vec::new(),
+                                set: Vec::new(),
                             });
                     let target = match property.kind {
                         PropertyKind::Get => &mut property_sig.get,
                         PropertyKind::Let => &mut property_sig.let_,
                         PropertyKind::Set => &mut property_sig.set,
                     };
-                    if target.is_some() {
-                        return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
-                            format!(
-                                "Property {:?} '{}' is already declared in Structure '{}'",
-                                property.kind, property.name, type_decl.name
-                            ),
-                            Some(property.span),
-                        ));
-                    }
-                    *target = Some(PropertyAccessorSig {
+                    let accessor = PropertyAccessorSig {
                         visibility: property.visibility,
                         is_iterator: property.is_iterator,
                         params: params_to_sigs(&property.params),
                         return_type: property.return_type.clone(),
-                    });
+                    };
+                    // Accessors of one kind may share a name when their
+                    // parameters differ: `Item(1)` and `Item("a")` are two
+                    // getters, and the use site picks between them.
+                    if target
+                        .iter()
+                        .any(|existing| same_accessor_parameters(existing, &accessor))
+                    {
+                        return Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+                            format!(
+                                "Property {:?} '{}' in Structure '{}' is already declared with these parameter types",
+                                property.kind, property.name, type_decl.name
+                            ),
+                            Some(property.span),
+                        )
+                        .with_help("overloads have to differ by parameter type or count"));
+                    }
+                    target.push(accessor);
                 }
             }
         }
@@ -724,31 +732,36 @@ pub(super) fn collect_types_in_scope(
                                 is_shared: false,
                                 is_readonly: false,
                                 is_writeonly: false,
-                                get: None,
-                                let_: None,
-                                set: None,
+                                get: Vec::new(),
+                                let_: Vec::new(),
+                                set: Vec::new(),
                             });
                     let target = match property.kind {
                         PropertyKind::Get => &mut property_sig.get,
                         PropertyKind::Let => &mut property_sig.let_,
                         PropertyKind::Set => &mut property_sig.set,
                     };
-                    if target.is_some() {
-                        return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
-                            format!(
-                                "Property {:?} '{}' is already declared in Interface '{}'",
-                                property.kind, property.name, interface_decl.name
-                            ),
-                            Some(property.span),
-                        ));
-                    }
-                    *target = Some(PropertyAccessorSig {
+                    let accessor = PropertyAccessorSig {
                         visibility: Visibility::Public,
                         is_iterator: false,
                         params: params_to_sigs(&property.params),
                         return_type: property.return_type.clone(),
-                    });
+                    };
+                    if target
+                        .iter()
+                        .any(|existing| same_accessor_parameters(existing, &accessor))
+                    {
+                        return Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+                            format!(
+                                "Property {:?} '{}' in Interface '{}' is already declared with these parameter types",
+                                property.kind, property.name, interface_decl.name
+                            ),
+                            Some(property.span),
+                        )
+                        .with_help("overloads have to differ by parameter type or count"));
+                    }
+                    target.push(accessor);
                 }
             }
         }
@@ -1155,31 +1168,39 @@ pub(super) fn collect_types_in_scope(
                                 is_shared: property.is_shared,
                                 is_readonly: property.is_readonly,
                                 is_writeonly: property.is_writeonly,
-                                get: None,
-                                let_: None,
-                                set: None,
+                                get: Vec::new(),
+                                let_: Vec::new(),
+                                set: Vec::new(),
                             });
                     let target = match property.kind {
                         PropertyKind::Get => &mut property_sig.get,
                         PropertyKind::Let => &mut property_sig.let_,
                         PropertyKind::Set => &mut property_sig.set,
                     };
-                    if target.is_some() {
-                        return Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
-                            format!(
-                                "Property {:?} '{}' is already declared in Class '{}'",
-                                property.kind, property.name, class_decl.name
-                            ),
-                            Some(property.span),
-                        ));
-                    }
-                    *target = Some(PropertyAccessorSig {
+                    let accessor = PropertyAccessorSig {
                         visibility: property.visibility,
                         is_iterator: property.is_iterator,
                         params: params_to_sigs(&property.params),
                         return_type: property.return_type.clone(),
-                    });
+                    };
+                    // Accessors of one kind may share a name when their
+                    // parameters differ: `Item(1)` and `Item("a")` are two
+                    // getters, and the use site picks between them.
+                    if target
+                        .iter()
+                        .any(|existing| same_accessor_parameters(existing, &accessor))
+                    {
+                        return Err(Diagnostic::new(
+                            crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION,
+                            format!(
+                                "Property {:?} '{}' in Class '{}' is already declared with these parameter types",
+                                property.kind, property.name, class_decl.name
+                            ),
+                            Some(property.span),
+                        )
+                        .with_help("overloads have to differ by parameter type or count"));
+                    }
+                    target.push(accessor);
                 }
                 ClassMember::Type(_)
                 | ClassMember::Declare(_)
@@ -2326,6 +2347,16 @@ fn push_overload(
     }
     overloads.push(signature);
     Ok(())
+}
+
+/// Whether two property accessors take the same parameters.
+fn same_accessor_parameters(left: &PropertyAccessorSig, right: &PropertyAccessorSig) -> bool {
+    left.params.len() == right.params.len()
+        && left
+            .params
+            .iter()
+            .zip(&right.params)
+            .all(|(a, b)| a.ty.same_type(&b.ty) && a.is_param_array == b.is_param_array)
 }
 
 /// Whether two procedures take the same parameters, and so cannot be told apart.
