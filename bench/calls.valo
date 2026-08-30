@@ -9,5 +9,5 @@ Function Fib(ByVal n As Long) As Long
 End Function
 
 Sub Main()
-    Console.WriteLine("fib(24)=" & Fib(24))
+    Console.WriteLine("fib(27)=" & Fib(27))
 End Sub

@@ -27,3 +27,24 @@ To run one benchmark directly:
 ```sh
 ./target/release/valo run bench/loop.valo
 ```
+
+## Comparing two builds
+
+A single number tells you nothing on its own. Timings on a developer machine
+drift over minutes, so a build measured now against one measured five minutes
+ago can differ by more than the change between them:
+
+```sh
+cargo build --release && cp target/release/valo /tmp/before
+# make the change
+cargo build --release && cp target/release/valo /tmp/after
+./scripts/bench-compare.sh /tmp/before /tmp/after
+```
+
+It runs the two alternately and reports, for each benchmark, how much the same
+build varied from its own fastest run to its median one. A change smaller than
+that is marked `not measured`, because it has not been.
+
+Each benchmark is sized to run for a few seconds. Shorter is tempting and
+wrong: process startup alone is around 60ms, and a real 20% change has hidden
+under the jitter of a run lasting a fraction of a second more than once.

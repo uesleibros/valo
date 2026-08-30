@@ -12,7 +12,7 @@ End Class
 Sub Main()
     Dim total As Long
     Dim i As Long
-    For i = 1 To 50000
+    For i = 1 To 250000
         Dim p As New Point()
         p.X = i Mod 100
         p.Y = (i + 1) Mod 100

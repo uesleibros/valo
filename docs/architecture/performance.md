@@ -26,6 +26,10 @@ Each benchmark targets one part of the interpreter:
 | `calls.valo` | Recursive calls, frame setup, parameter binding |
 | `objects.valo` | Object allocation, field access, method dispatch |
 
+`scripts/bench-compare.sh` runs two builds alternately and marks a change
+smaller than the machine's own jitter as not measured. Use it for any claim
+that something got faster.
+
 `scripts/bench.sh` reports the best of several runs, since wall-clock timings on
 a developer machine are noisy. Treat a change under roughly 10% as noise unless
 it reproduces.
