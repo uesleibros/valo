@@ -1172,7 +1172,10 @@ pub(super) fn validate_expr(
                 && !recurses_through_own_name
             {
                 match var_type {
-                    VarType::Array(Visibility::Public, element_type, _) => {
+                    // Indexing an array does not depend on its visibility. A
+                    // `Private` one at module level used to fall past this and
+                    // be reported as not an array at all.
+                    VarType::Array(_, element_type, _) => {
                         for arg in args {
                             ensure_assignable(
                                 &TypeName::Integer,

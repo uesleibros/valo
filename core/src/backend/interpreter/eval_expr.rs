@@ -453,7 +453,7 @@ impl Interpreter {
                     }
                 }
                 if let ExprKind::Variable(enum_name) = &object.kind
-                    && let Some(enum_) = self.enums.get(&super::values::key(enum_name))
+                    && let Some(enum_) = self.find_enum(enum_name, frame)
                 {
                     let value = enum_
                         .members

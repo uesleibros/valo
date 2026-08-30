@@ -82,3 +82,25 @@ fn an_imported_module_can_name_types_from_its_own_imports() {
         vec!["42".to_string()]
     );
 }
+
+#[test]
+fn a_module_can_name_its_own_enum_and_an_importer_can_too() {
+    let dir = temp_project();
+    write(
+        &dir,
+        "Kinds.valo",
+        "Public Enum Kind\nFirst_ = 1\nSecond_ = 2\nEnd Enum\n\n\
+         Public Function Named() As Long\nReturn Kind.Second_\nEnd Function\n",
+    );
+    write(
+        &dir,
+        "main.valo",
+        "Imports Kinds\n\nSub Main()\nConsole.WriteLine(Kinds.Named())\n\
+         Console.WriteLine(Kind.First_)\nEnd Sub\n",
+    );
+
+    assert_eq!(
+        run_file(dir.join("main.valo")).unwrap(),
+        vec!["2".to_string(), "1".to_string()]
+    );
+}

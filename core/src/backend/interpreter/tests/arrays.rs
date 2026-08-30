@@ -139,3 +139,24 @@ fn test_for_each_multidimensional() {
     let output = run(&program).unwrap();
     assert_eq!(output, vec!["1", "2", "3", "4"]);
 }
+
+#[test]
+fn a_private_module_array_can_be_indexed() {
+    let output = crate::backend::interpreter::tests::helpers::run_source(
+        r#"
+Private Cells(0 To 9) As Long
+
+Sub Main()
+    Cells(3) = 7
+    Console.WriteLine(Read_(3))
+End Sub
+
+' Indexing does not depend on the array being Public.
+Function Read_(ByVal index As Long) As Long
+    Return Cells(index)
+End Function
+"#,
+    );
+
+    assert_eq!(output, vec!["7"]);
+}

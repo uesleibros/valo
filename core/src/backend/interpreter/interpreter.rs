@@ -7,7 +7,7 @@ use crate::runtime::{Diagnostic, TypeName, Value};
 use crate::{ClassDecl, DeclareDecl, Function, Procedure, Program};
 
 use super::records::{RuntimeInterface, RuntimeType};
-use super::values::key;
+use super::values::{key, with_key};
 use super::{ControlFlow, Frame, RuntimeClass, RuntimeEnum};
 
 type OutputSink = Box<dyn FnMut(&str)>;
@@ -1084,6 +1084,32 @@ impl Interpreter {
         };
         let resolved = self.resolve_user_type_name(name, frame, span)?;
         Ok(crate::runtime::TypeName::User(resolved))
+    }
+
+    /// An enum by its bare name, as the module it is declared in sees it.
+    ///
+    /// Enums are registered under a module-qualified key so two modules can
+    /// each have a `Kind`. The declaring module still has to be able to write
+    /// `Kind.First` without qualifying it, and until this it could not: only
+    /// the entry module got an unqualified alias.
+    pub(crate) fn find_enum(&self, name: &str, frame: &Frame) -> Option<&RuntimeEnum> {
+        if let Some(enum_) = with_key(name, |k| self.enums.get(k)) {
+            return Some(enum_);
+        }
+        if let Some(module_key) = frame.module_key()
+            && let Some(enum_) = self.enums.get(&qualified_symbol_key(module_key, name))
+        {
+            return Some(enum_);
+        }
+        // An import brings the module's enums into scope, the way it brings its
+        // types. Two imported modules offering the same name is not something
+        // to guess at, so an ambiguous one resolves to nothing and the caller
+        // reports the name as unknown.
+        let candidates = self.imported_type_candidates(name, frame, &self.enum_modules);
+        match candidates.as_slice() {
+            [only] => self.enums.get(&qualified_symbol_key(only, name)),
+            _ => None,
+        }
     }
 
     pub(crate) fn resolve_user_type_name(

@@ -1,0 +1,5 @@
+Imports World
+
+Sub Main()
+    Console.WriteLine(World.IsWall(0, 0))
+End Sub

@@ -1,0 +1,128 @@
+' SDL3 bindings for the raycaster.
+'
+' Every native entry point this demo uses is declared here, so the rest of the
+' program never mentions the library. The declarations use `Lib "SDL3"`, which
+' the loader resolves against the current directory, the executable's directory,
+' and PATH. See game/README.md for where to put the library.
+'
+' The Breakout demo has its own copy of the bindings it needs. Each demo stays
+' something you can read and run on its own, which matters more here than not
+' repeating two dozen declarations.
+
+' -- Structures shared with the native ABI --------------------------------
+
+' A rectangle in renderer coordinates: SDL_FRect.
+Public Type FRect
+    X As Single
+    Y As Single
+    W As Single
+    H As Single
+End Type
+
+' SDL_Event, which is a 128-byte union.
+'
+' Only the header and the keyboard payload are named; the rest is padding that
+' exists so the struct is the size the native side writes into. The offsets are
+' fixed by SDL_KeyboardEvent: the event kind leads, and the scancode sits at
+' byte 24.
+Public Type SdlEvent
+    Kind As Long
+    Reserved As Long
+    TimestampLow As Long
+    TimestampHigh As Long
+    WindowId As Long
+    Which As Long
+    Scancode As Long
+    KeyCode As Long
+    Pad08 As Long
+    Pad09 As Long
+    Pad10 As Long
+    Pad11 As Long
+    Pad12 As Long
+    Pad13 As Long
+    Pad14 As Long
+    Pad15 As Long
+    Pad16 As Long
+    Pad17 As Long
+    Pad18 As Long
+    Pad19 As Long
+    Pad20 As Long
+    Pad21 As Long
+    Pad22 As Long
+    Pad23 As Long
+    Pad24 As Long
+    Pad25 As Long
+    Pad26 As Long
+    Pad27 As Long
+    Pad28 As Long
+    Pad29 As Long
+    Pad30 As Long
+    Pad31 As Long
+End Type
+
+' -- Native entry points ------------------------------------------------
+
+Public Declare PtrSafe Function SDL_Init Lib "SDL3" CDecl (ByVal flags As Long) As Byte
+Public Declare PtrSafe Sub SDL_Quit Lib "SDL3" CDecl ()
+
+Public Declare PtrSafe Function SDL_CreateWindow Lib "SDL3" CDecl ( _
+    ByVal title As String, ByVal width As Long, ByVal height As Long, ByVal flags As LongLong) As LongPtr
+Public Declare PtrSafe Sub SDL_DestroyWindow Lib "SDL3" CDecl (ByVal window As LongPtr)
+Public Declare PtrSafe Function SDL_SetWindowTitle Lib "SDL3" CDecl ( _
+    ByVal window As LongPtr, ByVal title As String) As Byte
+
+Public Declare PtrSafe Function SDL_CreateRenderer Lib "SDL3" CDecl ( _
+    ByVal window As LongPtr, ByVal name As LongPtr) As LongPtr
+Public Declare PtrSafe Sub SDL_DestroyRenderer Lib "SDL3" CDecl (ByVal renderer As LongPtr)
+Public Declare PtrSafe Function SDL_SetRenderDrawColor Lib "SDL3" CDecl ( _
+    ByVal renderer As LongPtr, ByVal red As Byte, ByVal green As Byte, _
+    ByVal blue As Byte, ByVal alpha As Byte) As Byte
+Public Declare PtrSafe Function SDL_RenderClear Lib "SDL3" CDecl (ByVal renderer As LongPtr) As Byte
+Public Declare PtrSafe Sub SDL_RenderPresent Lib "SDL3" CDecl (ByVal renderer As LongPtr)
+Public Declare PtrSafe Function SDL_RenderFillRect Lib "SDL3" CDecl ( _
+    ByVal renderer As LongPtr, ByRef rect As FRect) As Byte
+Public Declare PtrSafe Function SDL_RenderLine Lib "SDL3" CDecl ( _
+    ByVal renderer As LongPtr, ByVal x1 As Single, ByVal y1 As Single, _
+    ByVal x2 As Single, ByVal y2 As Single) As Byte
+Public Declare PtrSafe Function SDL_PollEvent Lib "SDL3" CDecl (ByRef nativeEvent As SdlEvent) As Byte
+Public Declare PtrSafe Sub SDL_Delay Lib "SDL3" CDecl (ByVal milliseconds As Long)
+Public Declare PtrSafe Function SDL_GetTicks Lib "SDL3" CDecl () As LongLong
+
+' -- Constants ----------------------------------------------------------
+
+Public Const INIT_VIDEO As Long = 32
+
+Public Const EVENT_QUIT As Long = 256
+Public Const EVENT_KEY_DOWN As Long = 768
+Public Const EVENT_KEY_UP As Long = 769
+
+Public Const KEY_A As Long = 4
+Public Const KEY_D As Long = 7
+Public Const KEY_M As Long = 16
+Public Const KEY_Q As Long = 20
+Public Const KEY_S As Long = 22
+Public Const KEY_W As Long = 26
+Public Const KEY_E As Long = 8
+Public Const KEY_ESCAPE As Long = 41
+Public Const KEY_RIGHT As Long = 79
+Public Const KEY_LEFT As Long = 80
+Public Const KEY_DOWN As Long = 81
+Public Const KEY_UP As Long = 82
+
+' -- Helpers ------------------------------------------------------------
+
+Public Function IsForwardKey(ByVal scancode As Long) As Boolean
+    Return scancode = KEY_W Or scancode = KEY_UP
+End Function
+
+Public Function IsBackKey(ByVal scancode As Long) As Boolean
+    Return scancode = KEY_S Or scancode = KEY_DOWN
+End Function
+
+Public Function IsTurnLeftKey(ByVal scancode As Long) As Boolean
+    Return scancode = KEY_A Or scancode = KEY_LEFT
+End Function
+
+Public Function IsTurnRightKey(ByVal scancode As Long) As Boolean
+    Return scancode = KEY_D Or scancode = KEY_RIGHT
+End Function

@@ -1,0 +1,200 @@
+' The world the raycaster walks through: a grid of walls, and the maths for
+' moving around in it.
+
+' A point or a direction on the floor plane.
+'
+' A Structure rather than a Class: it is copied constantly and never shared, and
+' a copy of two Doubles is cheaper than an allocation and a reference.
+Public Structure Vec2
+    Public X As Double
+    Public Y As Double
+
+    Public Sub New(ByVal x As Double, ByVal y As Double)
+        Me.X = x
+        Me.Y = y
+    End Sub
+
+    Public Shared Operator +(ByVal left As Vec2, ByVal right As Vec2) As Vec2
+        Return New Vec2(left.X + right.X, left.Y + right.Y)
+    End Operator
+
+    Public Shared Operator -(ByVal left As Vec2, ByVal right As Vec2) As Vec2
+        Return New Vec2(left.X - right.X, left.Y - right.Y)
+    End Operator
+
+    Public Shared Operator *(ByVal value As Vec2, ByVal scale As Double) As Vec2
+        Return New Vec2(value.X * scale, value.Y * scale)
+    End Operator
+
+    Public Function Length_() As Double
+        Return Sqr(X * X + Y * Y)
+    End Function
+
+    ' Turns the vector by an angle, which is how the camera looks around.
+    Public Function Rotated(ByVal radians As Double) As Vec2
+        Dim c As Double = Cos(radians)
+        Dim s As Double = Sin(radians)
+        Return New Vec2(X * c - Y * s, X * s + Y * c)
+    End Function
+End Structure
+
+' What a cell holds. Zero is open floor; the rest are wall materials.
+Public Enum Material
+    Open_ = 0
+    Brick = 1
+    Stone = 2
+    Metal = 3
+    Moss = 4
+    Glass = 5
+End Enum
+
+Public Const MAP_WIDTH As Long = 24
+Public Const MAP_HEIGHT As Long = 24
+
+' The grid, one cell per Long, laid out row by row.
+'
+' A flat array rather than a two-dimensional one: the raycaster reads a cell for
+' every step of every ray, and one multiply is less work than whatever a second
+' dimension costs.
+' Sized 24 * 24 - 1. Written as a literal because an array bound has to be one:
+' `Cells(0 To MAP_WIDTH * MAP_HEIGHT - 1)` is rejected.
+Private Cells(0 To 575) As Long
+Private Built As Boolean
+
+' The map, written as one string per row so it can be read as a picture.
+Private Function Rows_() As Collection
+    Dim rows As New Collection()
+    rows.Add("111111111111111111111111")
+    rows.Add("1..........2..........31")
+    rows.Add("1.22222....2....44444..1")
+    rows.Add("1.2...2....2....4...4..1")
+    rows.Add("1.2.5.2....2....4.5.4..1")
+    rows.Add("1.2...2.........4...4..1")
+    rows.Add("1.22.22.........44.44..1")
+    rows.Add("1......................1")
+    rows.Add("1...333333...222222....1")
+    rows.Add("1...3....3...2....2....1")
+    rows.Add("1...3....3...2....2....1")
+    rows.Add("1...3.55.3...2.44.2....1")
+    rows.Add("1...3....3...2....2....1")
+    rows.Add("1...33..33...22..22....1")
+    rows.Add("1......................1")
+    rows.Add("1..4444....11111....22.1")
+    rows.Add("1..4..4....1...1....2..1")
+    rows.Add("1..4..4....1.5.1....2..1")
+    rows.Add("1..4444....1...1....22.1")
+    rows.Add("1..........11111.......1")
+    rows.Add("1..55..................1")
+    rows.Add("1..55....333333333.....1")
+    rows.Add("1........................")
+    rows.Add("111111111111111111111111")
+    Return rows
+End Function
+
+' Fills the grid from the picture above, once.
+Public Sub Build()
+    If Built Then
+        Exit Sub
+    End If
+
+    Dim y As Long = 0
+    Dim row As Variant
+    For Each row In Rows_()
+        Dim x As Long
+        For x = 0 To MAP_WIDTH - 1
+            Dim cell As String = "1"
+            If x < Len(row) Then
+                cell = Mid(row, x + 1, 1)
+            End If
+            Dim value As Long = 0
+            If cell <> "." Then
+                value = CLng(cell)
+            End If
+            Cells(y * MAP_WIDTH + x) = value
+        Next x
+        y = y + 1
+    Next row
+    Built = True
+End Sub
+
+' The material at a cell. Anything outside the grid is solid, so a ray that
+' escapes still stops.
+Public Function At(ByVal x As Long, ByVal y As Long) As Long
+    If x < 0 Or y < 0 Or x >= MAP_WIDTH Or y >= MAP_HEIGHT Then
+        Return Material.Brick
+    End If
+    Return Cells(y * MAP_WIDTH + x)
+End Function
+
+Public Function IsWall(ByVal x As Long, ByVal y As Long) As Boolean
+    Return At(x, y) <> Material.Open_
+End Function
+
+' Whether a position is somewhere the player can stand, leaving a little room
+' so they do not end up flush against a wall.
+Public Function IsOpen(ByVal at_ As Vec2) As Boolean
+    Const MARGIN As Double = 0.2
+    If IsWall(CLng(Fix(at_.X - MARGIN)), CLng(Fix(at_.Y))) Then
+        Return False
+    End If
+    If IsWall(CLng(Fix(at_.X + MARGIN)), CLng(Fix(at_.Y))) Then
+        Return False
+    End If
+    If IsWall(CLng(Fix(at_.X)), CLng(Fix(at_.Y - MARGIN))) Then
+        Return False
+    End If
+    If IsWall(CLng(Fix(at_.X)), CLng(Fix(at_.Y + MARGIN))) Then
+        Return False
+    End If
+    Return True
+End Function
+
+' -- Colour ---------------------------------------------------------------
+
+' Packs a colour into one Long, so a material is a single value to pass around.
+Public Function PackColor(ByVal red As Long, ByVal green As Long, ByVal blue As Long) As Long
+    Return (red << 16) Or (green << 8) Or blue
+End Function
+
+Public Function RedOf(ByVal color As Long) As Long
+    Return (color >> 16) And 255
+End Function
+
+Public Function GreenOf(ByVal color As Long) As Long
+    Return (color >> 8) And 255
+End Function
+
+Public Function BlueOf(ByVal color As Long) As Long
+    Return color And 255
+End Function
+
+' The base colour of a material.
+Public Function ColorOf(ByVal material As Long) As Long
+    Select Case material
+        Case Material.Brick
+            Return PackColor(168, 68, 52)
+        Case Material.Stone
+            Return PackColor(128, 128, 138)
+        Case Material.Metal
+            Return PackColor(96, 118, 148)
+        Case Material.Moss
+            Return PackColor(76, 132, 74)
+        Case Material.Glass
+            Return PackColor(96, 176, 196)
+        Case Else
+            Return PackColor(200, 200, 200)
+    End Select
+End Function
+
+' Scales a colour by a brightness between 0 and 1.
+Public Function Shade(ByVal color As Long, ByVal light As Double) As Long
+    If light < 0 Then
+        light = 0
+    ElseIf light > 1 Then
+        light = 1
+    End If
+    Return PackColor( _
+        CLng(RedOf(color) * light), _
+        CLng(GreenOf(color) * light), _
+        CLng(BlueOf(color) * light))
+End Function
