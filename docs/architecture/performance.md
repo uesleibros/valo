@@ -177,6 +177,24 @@ elsewhere without having cloned it.
 The empty loop improved because a `For` assigns its counter through the same
 path, which is a fair summary of how much of a program this is.
 
+## What a round of this is worth
+
+Every entry below came from measuring rather than from reading, and each one
+was the same shape: work done to answer a question whose answer was almost
+always no.
+
+| benchmark | before | after |
+|---|---|---|
+| `calls` | 5643ms | 1199ms |
+| `objects` | 5708ms | 3424ms |
+| `loop` | 5982ms | 3992ms |
+| `arrays` | 2719ms | 1959ms |
+| `strings` | 1338ms | 1105ms |
+
+The Breakout demo went from 24ms of work per frame to 16, which is the budget
+its loop asks for. Timed over a whole 900-frame run with the per-frame sleep
+subtracted, since that is the only way to separate the work from the wait.
+
 ## Reaching a field walked past everything it was not
 
 `p.X` on a local holding an object cost 690ns, fourteen times what reading the

@@ -41,9 +41,11 @@ two are worth doing even if the VM never happens.
       to 999ms. `Rc<str>` was tried first and was worse: it saves eight bytes
       but copies the text again on every concatenation, which cost 15% there
       for 15% less on copies.
-- [ ] **Per-call-site method and property caches.** What a call still pays for
-      is resolution: a module key is built and hashed on every one. Copying the
-      procedure itself is no longer part of it.
+- [ ] **Per-call-site method and property caches.** Resolution used to be two
+      thirds of a call and is now a good deal less, but it is still repeated
+      work: the same call site resolves the same name every time it runs. A
+      cache on the site itself is what removes it, and is the same machinery an
+      inline cache in a VM would need.
 
 ## Phase 2: Bytecode VM
 

@@ -89,13 +89,16 @@ method body it declares included, to reach one member.
 
 ### Known rough edges
 
-- A frame costs roughly 25ms of work, against the 16ms the loop asks for, so
-  the game runs at about 25 frames a second. It started at 86ms and came down
-  in two steps: the interpreter stopped copying a class and a method body on
-  every call, and the collision scan stopped reaching for values it could hold.
-  SDL itself accounts for 6ms of that; the rest is the tree-walking
-  interpreter, which is what the
+- A frame costs roughly 16ms of work, which is what the loop asks for, so the
+  game is only just keeping up. It started at 86ms. The interpreter stopped
+  copying a class and a method body on every call, the collision scan stopped
+  reaching for values it could hold, and then a round of work on how names are
+  resolved took it from 24ms to 16ms. SDL itself accounts for 6ms of that; the
+  rest is the tree-walking interpreter, which is what the
   [bytecode VM](../docs/architecture/roadmap.md) on the roadmap is for.
+
+  Measured by timing a whole 900-frame run and subtracting the 16ms the loop
+  sleeps each frame, which is the only way to separate the work from the wait.
 
   Measuring this needs care: a single run on a developer machine varies by
   tens of percent, enough to show an improvement where there is none. Every
