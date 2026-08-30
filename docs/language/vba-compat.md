@@ -8,7 +8,7 @@ VB.NET.
 
 That rule decides the cases this document does not enumerate. `.bas` and `.cls`
 files load and run, VBA runtime functions and constants are available, and
-classic idioms such as `On Error` and function-name assignment work — but the
+classic idioms such as `On Error` and function-name assignment work. But the
 language those files are read as is Valo, and Valo's reference is VB.NET.
 
 This document outlines the bridge layer between `.valo` and `.bas`/`.cls` files,

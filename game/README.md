@@ -4,7 +4,7 @@ Programs written in Valo that exercise the language against something real.
 
 Unlike [`examples/`](../examples/README.md), which demonstrates one feature at a
 time, these are whole programs. They exist to find the gaps that only show up
-when features have to work together — and they have: every entry in "What this
+when features have to work together, and they have. Every entry in "What this
 found" below was a real defect, fixed in the commit that reports it.
 
 ## Breakout
@@ -48,21 +48,21 @@ and changed without knowing anything about SDL.
 
 ### What the language is doing here
 
-- **Native interop** — `Declare` for every SDL entry point, a `Type` passed
+- **Native interop**: `Declare` for every SDL entry point, a `Type` passed
   `ByRef` for `SDL_FRect`, and a 128-byte `Type` that the native side fills in
   for `SDL_Event`
-- **Classes and inheritance** — `Entity` with `Paddle`, `Ball`, and `Brick`
+- **Classes and inheritance**: `Entity` with `Paddle`, `Ball`, and `Brick`
   overriding `Advance`
-- **An interface** — the loop draws through `IDrawable` without knowing what
+- **An interface**: the loop draws through `IDrawable` without knowing what
   each thing is
-- **Events** — a brick announces its own destruction; scoring lives with the
+- **Events**: a brick announces its own destruction; scoring lives with the
   event rather than inside the brick
-- **Operator overloading** — `Vector2` addition and scaling, so the physics
+- **Operator overloading**: `Vector2` addition and scaling, so the physics
   reads as arithmetic
-- **Properties** — `Left`, `Right`, `Top`, `Bottom`, and `CenterX` derived from
+- **Properties**: `Left`, `Right`, `Top`, `Bottom`, and `CenterX` derived from
   a position and a size
-- **String interpolation** — the HUD, including a format specifier
-- **Shift operators** — colours packed into one value and unpacked to draw
+- **String interpolation**: the HUD, including a format specifier
+- **Shift operators**: colours packed into one value and unpacked to draw
 - **`Select Case`, `Enum`, `Continue For`, compound assignment, `Optional`
   parameters, object initializers, and `Collection` with `For Each`**
 
@@ -84,8 +84,8 @@ examples had not. All five are fixed:
    The `Me.` this file used to carry are gone, and the game plays the same.
 
 It also showed where the interpreter was slow. A method call cost five times
-what reading a field cost, because resolution copied the whole class — every
-method body it declares — to reach one member.
+what reading a field cost, because resolution copied the whole class, every
+method body it declares included, to reach one member.
 
 ### Known rough edges
 

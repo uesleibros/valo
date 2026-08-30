@@ -397,7 +397,7 @@ End Sub
 #[test]
 fn structure_constructor_and_private_member_diagnostics_work() {
     // `Sub New` and `Initialize` are two spellings of one constructor, so
-    // these are overloads of it -- and a Structure constructor that takes
+    // these are overloads of it, and a Structure constructor that takes
     // nothing is what is actually wrong here.
     let parameterless = source_error(
         r#"

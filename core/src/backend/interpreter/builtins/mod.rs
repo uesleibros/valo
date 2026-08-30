@@ -272,8 +272,8 @@ mod handler_tests {
     /// Two modules must not claim the same builtin.
     ///
     /// Dispatch tries the tables in order, so a name in two of them would be
-    /// answered by whichever happens to be tried first — a silent choice
-    /// between two implementations.
+    /// answered by whichever happens to be tried first, which is a silent
+    /// choice between two implementations.
     #[test]
     fn no_builtin_is_implemented_by_two_modules() {
         let mut owner = std::collections::HashMap::new();

@@ -1779,7 +1779,7 @@ pub(super) fn enum_member_value_type(name: &str, types: &TypeRegistry) -> Option
 /// Picks which of the procedures sharing a name a call means.
 ///
 /// Typing the arguments is only worth doing when there is a choice to make, so
-/// a name that means exactly one procedure returns it untouched -- and the
+/// a name that means exactly one procedure returns it untouched, and the
 /// argument checking that follows reports a mismatch far more precisely than
 /// "nothing fits" ever could.
 pub(super) fn resolve_overload<'a>(
@@ -3314,7 +3314,7 @@ fn ensure_visible(
 
 /// The type of `tuple.Member`.
 ///
-/// Every element answers to its position -- `Item1`, `Item2` -- and a named one
+/// Every element answers to its position (`Item1`, `Item2`), and a named one
 /// also answers to its name.
 fn tuple_member_type(
     elements: &[crate::runtime::TupleElement],
@@ -3729,7 +3729,7 @@ fn generic_bindings_for_type(
 
 /// Rejects, under `Option Strict`, a conversion that can lose something.
 ///
-/// Off -- the default, and what VBA source expects -- these all convert
+/// Off, which is the default and what VBA source expects, these all convert
 /// silently: `Dim n As Integer = 3.9` rounds, and `Dim n As Long = "7"` parses.
 /// On, each has to be asked for with `CInt`, `CLng`, and the rest, so that
 /// where a value changes shape is written down.

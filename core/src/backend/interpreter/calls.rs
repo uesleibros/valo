@@ -611,8 +611,8 @@ impl Interpreter {
     /// The types of arguments that have already been evaluated.
     ///
     /// These are exact, which is what makes a call through already-computed
-    /// values -- an extension method, a callback -- resolve better than one
-    /// still holding its arguments as expressions.
+    /// values, such as an extension method or a callback, resolve better than
+    /// one still holding its arguments as expressions.
     pub(crate) fn argument_types_of_values(args: &[Value]) -> Vec<Option<TypeName>> {
         args.iter().map(|value| Some(value.type_name())).collect()
     }
@@ -665,8 +665,8 @@ impl Interpreter {
     /// The procedure an `AddressOf` address was made for.
     ///
     /// A delegate holds whatever was assigned to it, and `AddressOf` yields an
-    /// address rather than a callable value -- the address is what a native
-    /// library needs. Calling one from Valo means going back the other way.
+    /// address rather than a callable value, since the address is what a
+    /// native library needs. Calling one from Valo means going the other way.
     pub(crate) fn procedure_at(&self, address: usize) -> Option<String> {
         self.callback_names.get(&address).cloned()
     }

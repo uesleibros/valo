@@ -1982,7 +1982,7 @@ impl Parser {
     /// Parses a tuple type: `(Long, String)` or `(X As Long, Y As String)`.
     ///
     /// Elements may be named or not, and the names do not have to be all or
-    /// nothing -- naming is for reading the elements back, not for identity.
+    /// nothing, since naming is for reading the elements back, not identity.
     fn parse_tuple_type(&mut self) -> Result<TypeName, Diagnostic> {
         let start = self
             .expect_simple(TokenKind::LeftParen, "Expected '(' in tuple type")?

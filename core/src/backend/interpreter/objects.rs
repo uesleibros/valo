@@ -1110,7 +1110,7 @@ impl Interpreter {
         self.write_object_member(&mut owner_value, field, value, span)
     }
 
-    /// Whether a bare name reads as a member of `owner` -- a field or a
+    /// Whether a bare name reads as a member of `owner`, as a field or as a
     /// property.
     fn instance_reads_member(&self, owner: &Value, name: &str) -> bool {
         if object_has_field(owner, name) {

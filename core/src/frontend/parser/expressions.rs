@@ -527,7 +527,7 @@ impl Parser {
             TokenKind::New if self.check_simple(&TokenKind::With) => {
                 // `New With { .X = 1 }` names no type, so there is none to
                 // construct. It is a value with named members, which is what a
-                // named-element tuple already is -- so it becomes one, and
+                // named-element tuple already is, so it becomes one, and
                 // member access, copying, and printing all follow from that.
                 let Some(inits) = self.parse_object_initializer_allowing_key(true)? else {
                     return Err(self.error_here("Expected '{' after 'New With'"));
@@ -1013,9 +1013,9 @@ impl Parser {
         while let Some(keyword) = self.peek_query_clause() {
             // After a projection the range variable no longer holds what the
             // query started from, so a clause that reads it has nothing to
-            // read. The ones that only reshape the sequence -- Distinct, Take,
-            // Skip -- are fine either side of it, and `Select x Distinct` is
-            // how that is usually written.
+            // read. The ones that only reshape the sequence, meaning Distinct,
+            // Take, and Skip, are fine either side of it, and `Select x
+            // Distinct` is how that is usually written.
             if selected && keyword.reads_the_range_variable() {
                 return Err(self.error_here(
                     "this clause reads the range variable, which Select has replaced; put it before the Select",

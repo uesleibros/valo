@@ -24,7 +24,7 @@ cargo test -p valo_core --test examples -- --nocapture
 
 Running an example only proves it does not crash. The transcripts make the
 current behaviour explicit, so an example that quietly changed what it prints
-fails instead of passing -- which is what makes them a safety net for work on the
+fails instead of passing, which is what makes them a safety net for work on the
 interpreter.
 
 After adding an example, or when a change to its output is intended, record it:
@@ -139,8 +139,8 @@ Every example's output is recorded in [`golden/`](golden/) and compared on each
 test run, so a change to what one prints has to be one someone meant to make.
 Run the suite with `VALO_BLESS=1` to record a new example or accept a change.
 
-An example whose output depends on where it runs -- the working directory, the
-platform, what is installed -- says so in a comment near the top:
+An example whose output depends on where it runs, on the working directory or
+the platform or what is installed, says so in a comment near the top:
 
 ```vb
 ' transcript: environment-dependent - prints the working directory.

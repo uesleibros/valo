@@ -120,7 +120,7 @@ fn has_sub_main(path: &Path) -> bool {
 /// here is a list of the cases someone thought of. Determinism and
 /// independence from the environment are not the same property, and an example
 /// that prints the same thing twice on one machine looks fine until it runs on
-/// another -- which is exactly when a central list turns out to be short.
+/// another, which is exactly when a central list turns out to be short.
 const ENVIRONMENT_DEPENDENT: &str = "transcript: environment-dependent";
 
 fn has_environment_dependent_output(path: &Path) -> bool {
@@ -189,8 +189,8 @@ fn check_transcript(
 ///
 /// Escaping matters: some examples print the VBA carriage-return constants, so
 /// a transcript can contain a CR that is *data*. Written raw it would be
-/// indistinguishable from a line ending, and any normalisation of line endings
-/// -- which a checkout may perform -- would silently corrupt it.
+/// indistinguishable from a line ending, and any normalisation of line endings,
+/// which a checkout may perform, would silently corrupt it.
 fn transcript(output: &[String]) -> String {
     let mut text = String::new();
     for line in output {

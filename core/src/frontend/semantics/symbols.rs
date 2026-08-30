@@ -176,9 +176,9 @@ pub(super) fn key(name: &str) -> String {
 /// every signature that only forwards it.
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct Options {
-    /// `Option Explicit` -- a variable has to be declared before it is used.
+    /// `Option Explicit`: a variable has to be declared before it is used.
     pub(super) explicit: bool,
-    /// `Option Strict` -- no conversion that can lose something, and no member
+    /// `Option Strict`: no conversion that can lose something, and no member
     /// reached on a value whose type is only known at run time.
     pub(super) strict: bool,
 }

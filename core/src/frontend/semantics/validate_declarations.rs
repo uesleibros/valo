@@ -10,7 +10,7 @@ pub(super) fn collect_types(program: &Program) -> Result<TypeRegistry, Diagnosti
 
 /// Collects a program's types, checking them against `outer` as well as itself.
 ///
-/// `outer` carries the types an enclosing scope already provides -- in practice
+/// `outer` carries the types an enclosing scope already provides, in practice
 /// the ones an `Imports` brings in. A member declared `As Thing` cannot be
 /// checked without them, since `Thing` may well be imported rather than
 /// declared here.
@@ -2238,7 +2238,7 @@ pub(super) fn collect_signatures(
 
 /// Adds one method to the set of members sharing its name.
 ///
-/// Methods may share a name -- that is overloading, and the call site picks
+/// Methods may share a name, which is overloading, and the call site picks
 /// between them. What they may not share is their parameter types, because
 /// then no call could choose. A method sharing a name with a field, an event,
 /// or a property is rejected where those are collected, since nothing at the
@@ -2272,7 +2272,7 @@ fn declare_method(
 
 /// Records that a name is used by a procedure, rejecting a real collision.
 ///
-/// Procedures may share a name -- that is overloading, and the call site picks
+/// Procedures may share a name, which is overloading, and the call site picks
 /// between them. Everything else may not: a `Sub` cannot share a name with a
 /// type, a module variable, or a constant, because nothing at the use site
 /// could tell which was meant. A `Sub` and a `Function` cannot share one

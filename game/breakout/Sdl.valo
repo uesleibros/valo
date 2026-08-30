@@ -3,7 +3,7 @@
 ' Every native entry point the game uses is declared here, so the rest of the
 ' program never mentions the library. The declarations use `Lib "SDL3"`, which
 ' the loader resolves against the current directory, the executable's directory,
-' and PATH -- see game/README.md for where to put the library.
+' and PATH. See game/README.md for where to put the library.
 
 ' -- Structures shared with the native ABI --------------------------------
 

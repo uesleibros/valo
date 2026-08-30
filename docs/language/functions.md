@@ -151,8 +151,9 @@ End Class
 ```
 
 `Overloads` may be written before `Sub` or `Function` to say the sharing is
-deliberate. It is optional -- Valo works overloading out from the declarations
-themselves -- and is accepted so VB.NET source carries over unchanged.
+deliberate. It is optional, since Valo works overloading out from the
+declarations themselves, and is accepted so VB.NET source carries over
+unchanged.
 
 ### How one is chosen
 
@@ -184,8 +185,8 @@ apart.
 
 ## Delegates
 
-A `Delegate` names a callable shape. It has no body -- what goes into a
-variable of that type is a lambda or the address of a procedure:
+A `Delegate` names a callable shape. It has no body: what goes into a variable
+of that type is a lambda or the address of a procedure.
 
 ```vb
 Delegate Function Transform(ByVal value As Long) As Long
@@ -216,8 +217,8 @@ End Function
 A closure fits a delegate as readily as a plain procedure does, so a delegate
 can carry state with it.
 
-`AddressOf` on a procedure whose parameters native code cannot marshal -- a
-`String`, or anything `ByRef` -- is allowed, because most addresses never leave
+`AddressOf` on a procedure whose parameters native code cannot marshal, such as
+a `String` or anything `ByRef`, is allowed, because most addresses never leave
 Valo. Handing one to a `Declare` is what gets refused, and the diagnostic points
 at the call that does it.
 

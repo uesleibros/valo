@@ -707,10 +707,65 @@ mod tests {
         }
     }
 
+    /// Prose in this repository does not use a dash to join clauses.
+    ///
+    /// Neither the long dash nor a doubled hyphen standing in for one. A comma,
+    /// a colon, a full stop, or a pair of parentheses says the same thing and
+    /// says which relation is meant; the dash leaves that to the reader.
+    ///
+    /// Applies to comments, documentation, and diagnostic text alike. Section
+    /// banners in comments are not prose and are left alone.
+    #[test]
+    fn prose_does_not_lean_on_a_dash() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut offenders = Vec::new();
+        collect_dashes(&root.join("src"), &mut offenders);
+        collect_dashes(&root.join("tests"), &mut offenders);
+
+        assert!(
+            offenders.is_empty(),
+            "these join clauses with a dash; rewrite the sentence so the \
+             relation between them is written out:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    fn collect_dashes(dir: &std::path::Path, offenders: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_dashes(&path, offenders);
+                continue;
+            }
+            if path.extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+            let Ok(source) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            for (index, line) in source.lines().enumerate() {
+                let trimmed = line.trim_start();
+                let is_comment = trimmed.starts_with("//");
+                // A run of hyphens is a banner, not a sentence.
+                let is_banner = trimmed.contains("---");
+                let joins_clauses = line.contains(" -- ") && !is_banner;
+                if line.contains(LONG_DASH) || (is_comment && joins_clauses) {
+                    offenders.push(format!("  {}:{}", path.display(), index + 1));
+                }
+            }
+        }
+    }
+
+    /// Written as an escape so this file does not contain the character it bans.
+    const LONG_DASH: char = '\u{2014}';
+
     /// The compiler may not print. Everything it has to say is a diagnostic.
     ///
     /// A stray `println!` from a debugging session is invisible until it turns
-    /// up in the middle of a program's own output -- and it did: the generic
+    /// up in the middle of a program's own output, and it did: the generic
     /// constraint checker printed a line for every constraint it looked at.
     /// The interpreter is exempt, since running a program is how `Debug.Print`
     /// and `MsgBox` reach a terminal in the first place.

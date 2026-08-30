@@ -26,7 +26,7 @@ pub enum TypeName {
     },
     Array(Box<TypeName>),
     Nullable(Box<TypeName>),
-    /// `(X As Long, Y As String)` -- a fixed group of values in one place.
+    /// `(X As Long, Y As String)`: a fixed group of values in one place.
     ///
     /// Tuples are structural: two of them are the same type when their
     /// elements are, whatever the elements happen to be called. Element names

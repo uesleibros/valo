@@ -1,6 +1,6 @@
 ' Overloads: several procedures sharing one name.
 '
-' Which one a call means is decided by the arguments -- how many there are and
+' Which one a call means is decided by the arguments: how many there are and
 ' what type they have. The `Overloads` keyword is optional; it says the sharing
 ' is deliberate, and Valo works the rest out from the declarations.
 

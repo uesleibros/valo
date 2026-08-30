@@ -2,8 +2,8 @@
 //!
 //! Each is a named function reached through [`HANDLERS`], rather than a branch
 //! in a chain of name comparisons. The table *is* the dispatch, so the set of
-//! builtins this module implements can be read off — and checked against the
-//! registry by a test — instead of being inferred by reading the code.
+//! builtins this module implements can be read off, and checked against the
+//! registry by a test, instead of being inferred by reading the code.
 //!
 //! Argument counts are checked against the registry before dispatch, so these
 //! functions index the arguments their registry entry guarantees.

@@ -150,8 +150,8 @@ Non-numeric unary operands are rejected with a type mismatch diagnostic.
 ## Queries
 
 A query filters, sorts, and projects in one expression. It starts with `From`,
-names a range variable, and walks anything `For Each` can walk -- an array, a
-`Collection`, or a class with an iterator:
+names a range variable, and walks anything `For Each` can walk: an array, a
+`Collection`, or a class with an iterator.
 
 ```vb
 Dim names = From p In people
@@ -177,7 +177,7 @@ values, not of the original ones.
 
 The range variable belongs to the query and is not in scope outside it. After a
 `Select` it no longer holds what the query started from, so `Where` and
-`Order By` cannot follow one -- `Distinct`, `Take`, and `Skip` can, since they
+`Order By` cannot follow one. `Distinct`, `Take`, and `Skip` can, since they
 only reshape the sequence.
 
 A projection can build a tuple, which keeps several pieces together without

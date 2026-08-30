@@ -25,8 +25,8 @@ pub struct RecordValue {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    /// Shared rather than owned: a `Value` is copied constantly -- into a
-    /// variable, an argument, an array element -- and copying the text each
+    /// Shared rather than owned: a `Value` is copied constantly, into a
+    /// variable, an argument, or an array element, and copying the text each
     /// time was the single largest cost of moving a string around.
     ///
     /// `Rc<String>` rather than `Rc<str>` because building one is as common as
@@ -74,7 +74,7 @@ pub struct LambdaValue {
 ///
 /// The cell is shared with that scope rather than copied, so the lambda sees
 /// later assignments to the variable and its own assignments are visible
-/// outside — which is how VB.NET closures behave.
+/// outside, which is how VB.NET closures behave.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapturedVariable {
     pub name: String,

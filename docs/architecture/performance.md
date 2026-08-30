@@ -49,8 +49,8 @@ because they recur.
 Indexed assignment (`data(i) = x`) needs to know whether the target is an array
 or an object with a default property. It answered that by cloning the variable's
 value and matching on it. Cloning `Value::Array` deep-copies every element, so a
-single element write was O(n) and filling an array was O(n²) — over three minutes
-to fill and read 100k elements.
+single element write was O(n) and filling an array was O(n²), which came to over
+three minutes to fill and read 100k elements.
 
 The fix is to inspect the value in place and clone only the cases where a clone
 is cheap. `Value::Object` and `Value::ComObject` are reference-counted, so
@@ -68,8 +68,8 @@ are short and ASCII in practice, so `runtime::with_folded` folds into a stack
 buffer and hands out a `&str`, falling back to allocation only for long or
 non-ASCII names.
 
-All three former copies of this logic — in the preprocessor, the semantic
-analyzer, and the interpreter — now delegate to
+All three former copies of this logic, in the preprocessor, the semantic
+analyzer, and the interpreter, now delegate to
 [`runtime::naming`](../../core/src/runtime/naming.rs), so the three layers cannot
 drift on what "the same name" means.
 
@@ -113,13 +113,13 @@ Smaller wins that remain available in the current design:
 
 ## Strings are shared, not copied
 
-`Value::String` holds an `Rc<String>`. A `Value` is copied constantly -- into a
-variable, an argument, an array element -- and copying the text each time was
+`Value::String` holds an `Rc<String>`. A `Value` is copied constantly, into a
+variable, an argument, or an array element, and copying the text each time was
 the largest cost of moving a string around. Copying one is now a refcount bump:
 four million copies of a 62-character string went from 1460ms to 999ms.
 
 `Rc<str>` was tried first, and was worse. It is eight bytes smaller, but
-building one from a `String` copies the bytes again -- and building is as common
+building one from a `String` copies the bytes again, and building is as common
 as copying, since every concatenation and every `Format` produces a `String`
 first. It cost 15% on concatenation to save a further 15% on copies.
 
@@ -132,7 +132,7 @@ than the noise around it.
 ## Calling a procedure does not copy it
 
 A procedure holds its body. Calling one used to copy that body, so the cost of a
-call was proportional to how much code the procedure contained -- 300,000 calls
+call was proportional to how much code the procedure contained. 300,000 calls
 to a function with 120 statements that never ran took 28.9 seconds, against 1.4
 for an empty one. Procedures, methods, and constructors are now shared
 (`Rc<Procedure>`, `Rc<Function>`), and the same benchmark takes 1.6 seconds:

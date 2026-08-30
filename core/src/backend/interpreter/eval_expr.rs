@@ -1104,7 +1104,8 @@ impl Interpreter {
                     }
                     // A sort has to compare pairs, and comparing two values can
                     // fail, so the ordering is worked out first and only then
-                    // used -- a comparator cannot report an error mid-sort.
+                    // used, since a comparator cannot report an error
+                    // mid-sort.
                     let mut failure = None;
                     keyed.sort_by(|left, right| {
                         match compare_for_order(&left.0, &right.0, compare, span) {

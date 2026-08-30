@@ -35,7 +35,7 @@ pub fn coerce_assignment(ty: &TypeName, value: Value, span: Span) -> Result<Valu
 
     // A delegate-typed place holds a lambda or a procedure address. Which
     // named type it is has already been checked by the analyzer, which is the
-    // only place the delegate's parameters are still known -- by here the type
+    // only place the delegate's parameters are still known. By here the type
     // is a name and the value is a callable, and all this can do is not stand
     // in the way.
     if matches!(ty, TypeName::User(_)) && matches!(value, Value::Lambda(_) | Value::FuncPtr(_)) {

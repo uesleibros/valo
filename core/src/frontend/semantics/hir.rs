@@ -293,7 +293,7 @@ fn push_function(
         // Procedures are allowed to share a name: a `Get` and a `Set` are one
         // property, and two `Sub`s with different parameters are overloads.
         // Whether they can actually be told apart is a question about their
-        // parameters, which this index does not carry -- `collect_signatures`
+        // parameters, which this index does not carry. `collect_signatures`
         // holds those and rejects the pairs no call could choose between. What
         // is rejected here is a procedure colliding with something that is not
         // one, such as a class of the same name.

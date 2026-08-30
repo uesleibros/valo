@@ -40,8 +40,8 @@ On Windows, Valo avoids emitting raw ANSI escapes in unsupported consoles. Moder
 
 ## Codes
 
-A diagnostic's code is its identity. Codes are stable — once released, a code
-keeps its meaning and a retired one is never reused — which is what makes them
+A diagnostic's code is its identity. Codes are stable: once released, a code
+keeps its meaning, and a retired one is never reused. That is what makes them
 safe to search for, to match on in tooling, and to cite in a bug report.
 
 They are declared once, by the `diagnostic_codes!` macro in

@@ -1,7 +1,7 @@
 ' Queries: filtering, sorting, and projecting in one expression.
 '
 ' A query starts with `From`, names a range variable, and walks anything
-' `For Each` can walk -- an array, a Collection, or a class with an iterator.
+' `For Each` can walk: an array, a Collection, or a class with an iterator.
 ' The clauses apply in the order they are written, so `Take 3` after an
 ' `Order By` means the first three of the sorted values.
 

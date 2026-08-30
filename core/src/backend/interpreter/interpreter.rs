@@ -20,7 +20,7 @@ pub struct Interpreter {
     /// Declared classes, shared rather than owned.
     ///
     /// A class carries the body of every method it declares, so cloning one is
-    /// expensive -- and resolution used to clone the whole class on every
+    /// expensive, and resolution used to clone the whole class on every
     /// method call and property read. Sharing makes that a refcount bump.
     pub(crate) classes: HashMap<String, Rc<RuntimeClass>>,
     pub(crate) shared_class_fields: HashMap<String, HashMap<String, Value>>,

@@ -17,9 +17,9 @@ have. Items other items depend on come first.
 | Tooling | CLI, REPL, diagnostics; no language server, formatter, or package manager |
 
 The language is well ahead of the ecosystem. Someone can write real VB.NET-shaped
-code today -- overloads, delegates, tuples, queries, generics with constraints,
-and `Option Strict` all work -- but nobody can distribute a library, edit with
-completion, or rely on VM-class performance.
+code today, since overloads, delegates, tuples, queries, generics with
+constraints, and `Option Strict` all work. But nobody can distribute a library,
+edit with completion, or rely on VM-class performance.
 
 ## Phase 1: Foundations for a new execution engine
 
@@ -31,14 +31,14 @@ two are worth doing even if the VM never happens.
       can be told apart from a broken one. `VALO_BLESS=1` records or updates
       them.
 - [ ] **Resolve identifiers to slot indices.** Every variable read hashes a
-      string today. A VM's locals are indices, so this is a hard prerequisite —
+      string today. A VM's locals are indices, so this is a hard prerequisite,
       and it speeds up the current interpreter immediately. The analyzer already
       computes scopes; it just does not record positions.
       *This is where `ProjectIndex` belongs.* It is built on every validation and
       the result is thrown away (`let _project_index = …` in `validate.rs`).
 - [x] **Make `Value` cheap to copy.** `Value::String` is now `Rc<String>`, so
       copying one is a refcount bump: 4 million string copies went from 1460ms
-      to 999ms. `Rc<str>` was tried first and was worse -- it saves eight bytes
+      to 999ms. `Rc<str>` was tried first and was worse: it saves eight bytes
       but copies the text again on every concatenation, which cost 15% there
       for 15% less on copies.
 - [ ] **Per-call-site method and property caches.** What a call still pays for
@@ -67,48 +67,48 @@ The parts that need a decision rather than an implementation:
 
 Deliberately after the VM, and driven by profiling rather than ambition.
 
-- [ ] Type feedback through inline caches — `Variant` is dynamic, so specialized
+- [ ] Type feedback through inline caches. `Variant` is dynamic, so specialized
       code has to know what actually flows through a site.
 - [ ] A deoptimization path for when speculation is wrong.
 
 Worth saying plainly: for a language whose programs are mostly I/O and native
-calls — the Breakout demo spends 6ms a frame inside SDL, which no JIT touches —
-a good VM likely captures most of the available win. JIT is the step after the
+calls, a good VM likely captures most of the available win. The Breakout demo
+spends 6ms a frame inside SDL, which no JIT touches. JIT is the step after the
 VM proves there is still a bottleneck.
 
 ## Phase 4: Finishing VB.NET
 
 None of this blocks the VM, and the VM blocks none of it.
 
-- [x] **`Overloads`** — several `Sub`s or `Function`s sharing a name, resolved
+- [x] **`Overloads`**: several `Sub`s or `Function`s sharing a name, resolved
       by argument count and type. Module procedures, class and structure
       methods, `Shared` methods, and the constructor. The rule and its ranking
       live in `runtime/overloads.rs`, which the analyzer and the interpreter
       both call so they cannot drift apart.
 - [ ] **Overloaded `Property` accessors**, the one member kind still limited to
       one signature per name.
-- [x] **`Delegate Sub` / `Delegate Function`** — named callable types, checked
+- [x] **`Delegate Sub` / `Delegate Function`**: named callable types, checked
       at the call. `AddressOf` values are now callable from Valo, not only
       passable to native code.
-- [x] **Tuples and tuple returns** — `(a, b)` literals, `As (X As Long, …)`
+- [x] **Tuples and tuple returns**: `(a, b)` literals, `As (X As Long, …)`
       types, and `Dim (a, b) = …` to name the elements.
-- [x] **Anonymous types** — `New With { Key .X = 1 }`, which is a tuple whose
+- [x] **Anonymous types**: `New With { Key .X = 1 }`, which is a tuple whose
       elements are all named.
-- [x] **Query syntax** — `From … Where … Order By … Select`, plus `Distinct`,
+- [x] **Query syntax**: `From … Where … Order By … Select`, plus `Distinct`,
       `Take`, and `Skip`. Evaluated directly rather than desugared, since there
       was no query-operator surface for it to desugar onto.
-- [x] **Generic constraints** — a bound is satisfied by inheriting from a type
+- [x] **Generic constraints**: a bound is satisfied by inheriting from a type
       *or implementing it*, a constrained parameter has its bound's members,
       and `Of T As New` allows `New T()`. Constraints are scoped to the
       declaration that writes them.
-- [x] **`Option Strict`** — no conversion that can lose something, and no
+- [x] **`Option Strict`**: no conversion that can lose something, and no
       member reached on a value whose type is only known at run time.
 - [ ] Jagged-array parity and the rest of the `My.*` surface, as they come up.
 
 ## Phase 5: Beyond VB.NET
 
-Things worth adding *because* Valo owns its runtime — the reason to be a
-successor rather than a reimplementation. Each came from a real obstacle, not
+Things worth adding *because* Valo owns its runtime, which is the reason to be
+a successor rather than a reimplementation. Each came from a real obstacle, not
 from a wish list.
 
 - [ ] **A memory buffer type.** The SDL demo needed a 128-byte `SDL_Event`, and
@@ -116,8 +116,8 @@ from a wish list.
       buffer with a defined layout would make native ABIs natural to describe.
 - [ ] **Reading and writing through a pointer.** `VarPtr` and `StrPtr` hand out
       addresses that nothing can then dereference, so an API returning a pointer
-      into an array — `SDL_GetKeyboardState` is the example — cannot be used at
-      all.
+      into an array cannot be used at all. `SDL_GetKeyboardState` is the
+      example.
 - [ ] **Native callbacks with checked signatures.** `AddressOf` works, but the
       shapes it accepts are not checked against what the native side expects.
 - [ ] **An embedding API**, so Valo can be hosted inside a Rust application.
@@ -126,7 +126,7 @@ from a wish list.
 
 ## Phase 6: Ecosystem
 
-- [ ] **Language server** — completion, go-to-definition, live diagnostics. The
+- [ ] **Language server**: completion, go-to-definition, live diagnostics. The
       diagnostics engine already carries codes and spans, which is the hard part.
 - [ ] **Formatter**, and a linter built on the same analysis.
 - [ ] **Package manager** for distributing Valo libraries.
@@ -137,32 +137,32 @@ from a wish list.
 
 Kept short; the detail lives in the commits.
 
-**Foundation** — lexer, parser, semantic validation, tree-walking interpreter,
+**Foundation**: lexer, parser, semantic validation, tree-walking interpreter,
 the object model, generics, modules and namespaces, diagnostics with stable
 codes, and the VBA `.bas` / `.cls` bridge. Whole-project validation now checks
 procedure bodies and resolves across modules; it used to stop at declarations,
 so `valo check` reported success on code that failed as soon as it ran.
 
-**VB.NET parity** — string interpolation with alignment and format specifiers,
+**VB.NET parity**: string interpolation with alignment and format specifiers,
 compound assignment, shift operators, `Continue`, `CType` / `DirectCast` /
 `TryCast` / `GetType` / `NameOf`, object initializers, multi-line lambdas,
 closures capturing by reference, null-conditional access, standalone `Inherits`,
 and bitwise operators over every integral width.
 
-**Architecture** — one builtin registry that the analyzer and interpreter both
+**Architecture**: one builtin registry that the analyzer and interpreter both
 read, with seven invariants held by tests; well-known names declared once;
 built-in types described declaratively; diagnostic codes generated from a single
 table alongside a reference page that cannot drift from it. Every diagnostic now
 names what went wrong: `V0001`, the code that means "no code was chosen", went
 from 67 uses to none, and a test keeps it that way.
 
-**Defects the Breakout demo found** — all five are fixed. Assigning through an
+**Defects the Breakout demo found**: all five are fixed. Assigning through an
 unqualified field or property; `Set` on a nested member; a property read against
 the wrong instance; `(a + b).Method()`; `Imports` not bringing a type into
 scope, including into a module that is itself imported. Conversions round the
 way VB.NET and VBA both do, rather than truncating.
 
-**Performance** — quadratic array writes removed, per-statement allocations
+**Performance**: quadratic array writes removed, per-statement allocations
 removed, and classes and method bodies no longer copied on every call. A method
 call went from 10.7µs to 4.9µs; the Breakout demo from 86ms of work per frame to
 24ms.
@@ -172,7 +172,7 @@ call went from 10.7µs to 4.9µs; the Breakout demo from 86ms of work per frame 
 Two things this codebase learned the hard way, both worth keeping:
 
 **Measure before optimizing, and measure more than once.** A single timing run on
-a developer machine varies by tens of percent — enough that one measurement here
+a developer machine varies by tens of percent, enough that one measurement here
 showed field access getting *slower* from a change that does not touch that path.
 Every performance figure quoted in this repository is the best of several runs.
 

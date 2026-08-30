@@ -1,7 +1,7 @@
 ' Delegates: named callable types.
 '
 ' A delegate declares a shape, not a body. What goes into a variable of that
-' type is a lambda or the address of a procedure -- and because the shape is
+' type is a lambda or the address of a procedure. Because the shape is
 ' declared, calls through it are checked like any other call.
 
 Public Delegate Function Transform(ByVal value As Long) As Long

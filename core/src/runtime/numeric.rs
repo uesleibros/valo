@@ -179,7 +179,7 @@ pub fn expect_numbers(left: Value, right: Value, span: Span) -> Result<(f64, f64
 /// Converts a value to an integer the way Basic does: by rounding.
 ///
 /// `CInt(3.9)` is 4, not 3. Ties go to the even neighbour, so `CInt(2.5)` is 2
-/// and `CInt(3.5)` is 4 -- VB.NET and VBA agree on this, so there is nothing to
+/// and `CInt(3.5)` is 4. VB.NET and VBA agree on this, so there is nothing to
 /// trade off between them. Use this wherever a conversion is what the program
 /// asked for; [`value_to_i64`] truncates, which is right for reading an index
 /// or a bit pattern out of a value that already holds one.

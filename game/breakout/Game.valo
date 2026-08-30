@@ -2,7 +2,7 @@
 '
 ' Geometry and entities live together because the entities are defined in terms
 ' of the geometry, and Valo cannot yet name an imported type from a module that
-' is itself imported -- see game/README.md.
+' is itself imported. See game/README.md.
 
 ' Geometry shared by the game's entities.
 

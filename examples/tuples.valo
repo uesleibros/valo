@@ -1,7 +1,7 @@
 ' Tuples: a fixed group of values in one place.
 '
 ' A tuple needs no declaration. Its type is written out where it is used, and
-' two tuples are the same type when their elements are -- element names are for
+' two tuples are the same type when their elements are. Element names are for
 ' reading, not for identity.
 
 ' A tuple return says what a function produces without inventing a Structure

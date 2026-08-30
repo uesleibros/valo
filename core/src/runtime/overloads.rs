@@ -1,8 +1,8 @@
 //! Picking which procedure a call means, out of the ones sharing its name.
 //!
 //! A name usually names one procedure. When it names several, the call site
-//! decides between them by the shape and types of its arguments -- what VB.NET
-//! calls overload resolution.
+//! decides between them by the shape and types of its arguments, which is what
+//! VB.NET calls overload resolution.
 //!
 //! The rule is the one VB.NET uses: a candidate wins if it is at least as good
 //! as every rival for every argument, and strictly better for at least one.
@@ -150,8 +150,8 @@ fn fit_of(argument: Option<&TypeName>, param: &ParamShape) -> Fit {
     match (numeric_rank(argument), numeric_rank(declared)) {
         (Some(from), Some(to)) if from <= to => Fit::Widening(to - from),
         (Some(from), Some(to)) => Fit::Narrowing(from - to),
-        // Anything else that converts at all -- a class to its base, a number
-        // to a string -- ranks as the furthest narrowing rather than as
+        // Anything else that converts at all, such as a class to its base or
+        // a number to a string, ranks as the furthest narrowing rather than as
         // unrelated, so a call that could be made still resolves; it just
         // loses to any candidate that converts less.
         _ => Fit::Narrowing(u8::MAX),

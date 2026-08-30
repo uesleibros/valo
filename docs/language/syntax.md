@@ -217,11 +217,11 @@ Dim rounded As Integer = 3.9    ' rejected: use CInt(3.9)
 Dim parsed As Long = "7"        ' rejected: use CLng("7")
 ```
 
-- **Conversions that can lose something** -- a narrower number, a string
+- **Conversions that can lose something**: a narrower number, a string
   becoming a number or the reverse, or anything out of a `Variant`. Widening is
   untouched, since nothing is gained by spelling out a conversion that cannot
   fail. `CInt`, `CLng`, `CStr`, `CType`, and the rest say it explicitly.
-- **Late binding** -- reaching a member of a `Variant` or an `Object`, where
+- **Late binding**: reaching a member of a `Variant` or an `Object`, where
   nothing at that point can say whether the member exists. `CType` says what
   the value is and brings the member back.
 

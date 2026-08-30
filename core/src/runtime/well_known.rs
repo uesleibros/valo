@@ -72,8 +72,8 @@ pub const HAS_VALUE: &str = "HasValue";
 /// Finds a type's constructor among its members, under either spelling.
 ///
 /// Native Valo writes `Initialize`; an exported VBA class module writes
-/// `Class_Initialize`. Both name the same hook, so every lookup has to try both
-/// — which is why it lives here rather than being spelled out at each call.
+/// `Class_Initialize`. Both name the same hook, so every lookup has to try
+/// both, which is why it lives here rather than being spelled out at each call.
 pub fn find_constructor<T>(members: &std::collections::HashMap<String, T>) -> Option<&T> {
     find_member(members, CONSTRUCTOR_KEYS)
 }

@@ -64,7 +64,7 @@ pub enum ExprKind {
     WithTarget,
     Missing,
     Variable(String),
-    /// `(1, 2)` or `(X := 1, Y := 2)` -- a fixed group of values in one place.
+    /// `(1, 2)` or `(X := 1, Y := 2)`: a fixed group of values in one place.
     TupleLiteral(Vec<TupleElementExpr>),
     /// `From n In numbers Where n > 2 Select n * 2`.
     Query {

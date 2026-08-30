@@ -59,8 +59,8 @@ interpreter performs.
 
 ## Cross-cutting: validation
 
-Both entry points — `validate` for a single program and `validate_project` for a
-loaded project — run the same body validation over every procedure, function,
+Both entry points (`validate` for a single program, `validate_project` for a
+loaded project) run the same body validation over every procedure, function,
 structure, and class. The project path additionally brings imported types,
 callables, and extension methods into scope, and completes a `Partial Class` from
 its halves in other modules.
@@ -74,9 +74,9 @@ Learn more in **[Performance](performance.md)** and **[Diagnostics](diagnostics.
 ## Cross-cutting: the builtin registry
 
 A builtin has a name, an arity, a result type, and an implementation. Those used
-to live in three places — name lists in `runtime::builtins`, arity and result
-type as `if` branches in the analyzer, and the implementation as more `if`
-branches in the interpreter — with nothing tying them together. Adding a builtin
+to live in three places, with nothing tying them together: name lists in
+`runtime::builtins`, arity and result type as `if` branches in the analyzer, and
+the implementation as more `if` branches in the interpreter. Adding a builtin
 meant three edits in three files, and nothing detected it when they disagreed.
 
 [`runtime::builtins`](../../core/src/runtime/builtins.rs) is now the single
@@ -91,7 +91,7 @@ grouped(f("DateAdd", 3, 3, BuiltinReturn::Date), BuiltinGroup::DateTime),
 The analyzer looks the name up, checks the arity, and reports the result type.
 The interpreter routes on the group. Neither keeps its own list.
 
-A handful of builtins constrain an argument beyond counting it — `LBound`,
+A handful of builtins constrain an argument beyond counting it. `LBound`,
 `UBound`, and `Filter` take an array; `IsMissing` takes an optional parameter;
 `IsArray` accepts anything by design. Those are named explicitly in the
 analyzer, so the exceptions are visible rather than buried in a chain of a
@@ -99,8 +99,8 @@ thousand lines.
 
 Tests in the interpreter's builtin module hold the registry to its promise:
 every declared builtin is reachable through the analyzer, and the arity a row
-declares is the arity actually enforced — checked once, before dispatch, so an
-implementation may index the arguments its own entry guarantees.
+declares is the arity actually enforced. It is checked once, before dispatch,
+so an implementation may index the arguments its own entry guarantees.
 
 ### Dispatching to an implementation
 
@@ -118,7 +118,7 @@ pub(super) const HANDLERS: &[(&str, ValueFn)] = &[
 ```
 
 There are two kinds of handler. Most builtins receive evaluated arguments. A few
-need them unevaluated — `IIf`, `Choose`, and `Switch` must not evaluate the
+need them unevaluated. `IIf`, `Choose`, and `Switch` must not evaluate the
 branch they do not take, and `VarPtr`, `StrPtr`, and `ObjPtr` need the storage an
 argument names rather than its value. Those are dispatched first, from their own
 table.
@@ -136,8 +136,8 @@ check is stale.
 
 That fifth test is the one the registry existed for. It was not checkable while
 dispatch was a chain of name comparisons, because an implementation could only be
-found by running it. Its exemption list — the record of what was still unchecked
-— is now empty: every builtin the language declares is reachable through a table.
+found by running it. Its exemption list, the record of what was still unchecked,
+is now empty: every builtin the language declares is reachable through a table.
 
 Some builtins are routed by group rather than by name: the file, date/time, and
 file-system dispatchers each own a table, and dispatch picks the table from the
@@ -150,7 +150,7 @@ with no handler for it.
 The implementation depends on a set of identifiers of its own: the implicit
 receiver `Me`, the lifecycle hooks, the pseudo-objects a call site can name
 (`VBA`, `Err`, `Console`, `Debug`), and the built-in type names. Each appeared
-as a bare string literal wherever it was needed — `"me"` alone in more than
+as a bare string literal wherever it was needed, with `"me"` alone in more than
 fifty places across the lexer, analyzer, and interpreter.
 
 Written that way they were invisible to the compiler. A typo in one comparison
@@ -164,7 +164,7 @@ stored both as written and folded, with a test asserting the two agree.
 It also owns the rules that were previously restated at each use:
 
 - `find_constructor` and `find_destructor` try both spellings of a lifecycle
-  hook — `Initialize` and `Class_Initialize` name the same thing, and every
+  hook. `Initialize` and `Class_Initialize` name the same thing, and every
   lookup has to know that.
 - `return_slot` builds the frame key holding a function's implicit result. The
   analyzer records it and the interpreter reads it back, so the two must derive
@@ -176,8 +176,8 @@ there, and a literal reads better among the other keywords than a constant would
 ## Cross-cutting: built-in types
 
 `Collection` has no source declaration, so its signature has to be written in
-Rust. It used to be 131 lines of nested struct literals — `HashMap::new()`,
-`Vec::new()`, and field-by-field initialization — sitting inside the routine
+Rust. It used to be 131 lines of nested struct literals (`HashMap::new()`,
+`Vec::new()`, and field-by-field initialization) sitting inside the routine
 that collects *user* types, which is not where a reader looks for it.
 
 [`semantics::builtin_types`](../../core/src/frontend/semantics/builtin_types.rs)
