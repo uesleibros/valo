@@ -671,6 +671,41 @@ impl Interpreter {
         self.callback_names.get(&address).cloned()
     }
 
+    /// The method this call site resolved to, if the receiver is the same class.
+    fn remembered_method(
+        &self,
+        span: Span,
+        class_name: &str,
+    ) -> Option<(Rc<RuntimeClass>, Rc<Function>)> {
+        let remembered = self.resolved_methods.get(&span)?;
+        if remembered.generation != self.registry_generation
+            || !remembered.class_name.eq_ignore_ascii_case(class_name)
+        {
+            return None;
+        }
+        Some((remembered.class.clone(), remembered.function.clone()))
+    }
+
+    /// Records the method a call site resolved to, against the class it is for.
+    fn remember_method(
+        &mut self,
+        span: Span,
+        class_name: String,
+        class: Rc<RuntimeClass>,
+        function: Rc<Function>,
+    ) {
+        let generation = self.registry_generation;
+        self.resolved_methods.insert(
+            span,
+            super::interpreter::ResolvedMethod {
+                generation,
+                class_name,
+                class,
+                function,
+            },
+        );
+    }
+
     /// What this call site resolved to last time, if that answer still holds.
     fn remembered<T: Clone>(
         remembered: Option<&super::interpreter::Resolved<T>>,
@@ -714,6 +749,112 @@ impl Interpreter {
                 target: procedure,
             },
         );
+    }
+
+    /// Runs a class method that has already been resolved.
+    ///
+    /// Shared by the two ways of getting here: resolving the method, and
+    /// finding that this call site resolved the same one last time.
+    fn run_class_function(
+        &mut self,
+        instance: Rc<std::cell::RefCell<crate::runtime::ObjectValue>>,
+        class: Rc<RuntimeClass>,
+        function: Rc<Function>,
+        args: &[Expr],
+        caller_frame: &mut Frame,
+        span: Span,
+    ) -> Result<Value, Diagnostic> {
+        let mut frame = Frame::default();
+        frame.inherit_modules_from(caller_frame)?;
+        if let Some((module_key, _)) = key(&class.name).split_once('.') {
+            frame.set_module_key(module_key.to_string());
+        }
+        frame.declare_object_alias(well_known::SELF_KEY, &class.name, instance, span)?;
+        self.bind_class_constants(&class, &mut frame)?;
+        self.bind_parameters(&function.params, args, caller_frame, &mut frame)?;
+        let return_type = self.resolve_type_name(&function.return_type, &frame, span)?;
+        if let Some(slot) = &function.return_slot {
+            frame.set_return_slot(
+                slot.clone(),
+                default_value(&return_type, self, function.span)?,
+            );
+        } else if !frame.has_variable(&function.name) {
+            frame.declare(
+                &function.name,
+                return_type.clone(),
+                None,
+                self.option_base,
+                function.span,
+                self,
+            )?;
+        }
+        self.scope_stack
+            .push(format!("{}.{}", class.name, function.name));
+        if function.is_iterator {
+            frame.set_yield_mode();
+        }
+        let result = self.exec_block(&function.body, &mut frame);
+        self.scope_stack.pop();
+        match result? {
+            ControlFlow::Return(value) => {
+                if function.is_iterator {
+                    return Err(Diagnostic::new(
+                        crate::runtime::DiagnosticCode::CONTROL_FLOW,
+                        "Return is not allowed inside Iterator; use Yield or Exit Function",
+                        Some(function.span),
+                    ));
+                }
+                if let Some(slot) = &function.return_slot {
+                    frame.set_return_slot(slot.clone(), value.clone());
+                }
+                coerce_assignment(&return_type, value, span)
+            }
+            ControlFlow::Continue | ControlFlow::ExitFunction => {
+                if function.is_iterator {
+                    let elements = frame.take_yielded_values().unwrap_or_default();
+                    let len = elements.len() as i64;
+                    Ok(Value::Array(Rc::new(ArrayValue {
+                        element_type: function.return_type.clone(),
+                        elements,
+                        bounds: vec![crate::runtime::ArrayBound {
+                            lower: self.option_base,
+                            upper: self.option_base + len - 1,
+                        }],
+                        allocated: true,
+                        dynamic: true,
+                    })))
+                } else if let Some(slot) = &function.return_slot {
+                    Ok(frame.get_return_slot(slot).ok_or_else(|| {
+                        Diagnostic::new(
+                            crate::runtime::DiagnosticCode::RUNTIME,
+                            "Return slot not found",
+                            Some(function.span),
+                        )
+                    })?)
+                } else {
+                    frame.get(&function.name, function.span)
+                }
+            }
+            ControlFlow::Terminate => Ok(Value::Empty),
+            ControlFlow::ExitSub => Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::CONTROL_FLOW,
+                "Exit Sub is only valid inside Sub",
+                Some(function.span),
+            )),
+            ControlFlow::ExitProperty
+            | ControlFlow::ExitFor
+            | ControlFlow::ExitWhile
+            | ControlFlow::ExitDo
+            | ControlFlow::ContinueFor
+            | ControlFlow::ContinueWhile
+            | ControlFlow::ContinueDo
+            | ControlFlow::GoTo(_)
+            | ControlFlow::Resume(_) => Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::CONTROL_FLOW,
+                "Exit statement escaped its block",
+                Some(span),
+            )),
+        }
     }
 
     pub(crate) fn bind_parameter_values(
@@ -2274,6 +2415,23 @@ impl Interpreter {
                 span,
             ),
             _ => {
+                // This site usually reaches the same class every time, and the
+                // answer it gave then holds. Checking that is one string
+                // comparison, against two folded lookups and an extension
+                // method search.
+                if let Value::Object(ref instance) = object
+                    && let Some((class, function)) =
+                        self.remembered_method(span, &instance.borrow().class_name)
+                {
+                    return self.run_class_function(
+                        instance.clone(),
+                        class,
+                        function,
+                        args,
+                        caller_frame,
+                        span,
+                    );
+                }
                 if let Some(val) =
                     self.call_extension_method(object.clone(), method, args, caller_frame, span)?
                 {
@@ -2293,6 +2451,7 @@ impl Interpreter {
                         })?
                 };
                 if let Some(candidates) = with_key(method, |k| class.functions.get(k)) {
+                    let only_one = candidates.len() == 1;
                     let function = self
                         .pick_overload(
                             "Function",
@@ -2303,103 +2462,21 @@ impl Interpreter {
                             span,
                         )?
                         .clone();
-                    let mut frame = Frame::default();
-                    frame.inherit_modules_from(caller_frame)?;
-                    if let Some((module_key, _)) = key(&class.name).split_once('.') {
-                        frame.set_module_key(module_key.to_string());
+                    // As with a procedure: only a name with one method behind
+                    // it, and not a generic one, gives the same answer every
+                    // time this site runs against this class.
+                    if only_one && function.type_params.is_empty() {
+                        let class_name = instance.borrow().class_name.clone();
+                        self.remember_method(span, class_name, class.clone(), function.clone());
                     }
-                    frame.declare_object_alias(
-                        well_known::SELF_KEY,
-                        &class.name,
+                    return self.run_class_function(
                         instance,
+                        class,
+                        function,
+                        args,
+                        caller_frame,
                         span,
-                    )?;
-                    self.bind_class_constants(&class, &mut frame)?;
-                    self.bind_parameters(&function.params, args, caller_frame, &mut frame)?;
-                    let return_type =
-                        self.resolve_type_name(&function.return_type, &frame, span)?;
-                    if let Some(slot) = &function.return_slot {
-                        frame.set_return_slot(
-                            slot.clone(),
-                            default_value(&return_type, self, function.span)?,
-                        );
-                    } else if !frame.has_variable(&function.name) {
-                        frame.declare(
-                            &function.name,
-                            return_type.clone(),
-                            None,
-                            self.option_base,
-                            function.span,
-                            self,
-                        )?;
-                    }
-                    self.scope_stack
-                        .push(format!("{}.{}", class.name, function.name));
-                    if function.is_iterator {
-                        frame.set_yield_mode();
-                    }
-                    let result = self.exec_block(&function.body, &mut frame);
-                    self.scope_stack.pop();
-                    return match result? {
-                        ControlFlow::Return(value) => {
-                            if function.is_iterator {
-                                return Err(Diagnostic::new(
-                                    crate::runtime::DiagnosticCode::CONTROL_FLOW,
-                                    "Return is not allowed inside Iterator; use Yield or Exit Function",
-                                    Some(function.span),
-                                ));
-                            }
-                            if let Some(slot) = &function.return_slot {
-                                frame.set_return_slot(slot.clone(), value.clone());
-                            }
-                            coerce_assignment(&return_type, value, span)
-                        }
-                        ControlFlow::Continue | ControlFlow::ExitFunction => {
-                            if function.is_iterator {
-                                let elements = frame.take_yielded_values().unwrap_or_default();
-                                let len = elements.len() as i64;
-                                Ok(Value::Array(Rc::new(ArrayValue {
-                                    element_type: function.return_type.clone(),
-                                    elements,
-                                    bounds: vec![crate::runtime::ArrayBound {
-                                        lower: self.option_base,
-                                        upper: self.option_base + len - 1,
-                                    }],
-                                    allocated: true,
-                                    dynamic: true,
-                                })))
-                            } else if let Some(slot) = &function.return_slot {
-                                Ok(frame.get_return_slot(slot).ok_or_else(|| {
-                                    Diagnostic::new(
-                                        crate::runtime::DiagnosticCode::RUNTIME,
-                                        "Return slot not found",
-                                        Some(function.span),
-                                    )
-                                })?)
-                            } else {
-                                frame.get(&function.name, function.span)
-                            }
-                        }
-                        ControlFlow::Terminate => Ok(Value::Empty),
-                        ControlFlow::ExitSub => Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::CONTROL_FLOW,
-                            "Exit Sub is only valid inside Sub",
-                            Some(function.span),
-                        )),
-                        ControlFlow::ExitProperty
-                        | ControlFlow::ExitFor
-                        | ControlFlow::ExitWhile
-                        | ControlFlow::ExitDo
-                        | ControlFlow::ContinueFor
-                        | ControlFlow::ContinueWhile
-                        | ControlFlow::ContinueDo
-                        | ControlFlow::GoTo(_)
-                        | ControlFlow::Resume(_) => Err(Diagnostic::new(
-                            crate::runtime::DiagnosticCode::CONTROL_FLOW,
-                            "Exit statement escaped its block",
-                            Some(span),
-                        )),
-                    };
+                    );
                 }
 
                 if class.properties.contains_key(&key(method)) {

@@ -46,6 +46,13 @@ pub struct Interpreter {
     /// differ between runs.
     pub(crate) resolved_calls: HashMap<crate::runtime::Span, Resolved<Rc<Function>>>,
     pub(crate) resolved_subs: HashMap<crate::runtime::Span, Resolved<Rc<Procedure>>>,
+    /// What each method call site resolved to, and for which class.
+    ///
+    /// A receiver at one site is usually the same class every time, but it does
+    /// not have to be: an `IDrawable` loop reaches three classes through one
+    /// call. The class the answer was found for is recorded so a different one
+    /// resolves again rather than running the wrong method.
+    pub(crate) resolved_methods: HashMap<crate::runtime::Span, ResolvedMethod>,
     /// Bumped whenever a procedure is registered.
     ///
     /// The REPL adds procedures between statements, so a remembered answer has
@@ -122,6 +129,7 @@ impl Default for Interpreter {
             functions: HashMap::new(),
             resolved_calls: HashMap::new(),
             resolved_subs: HashMap::new(),
+            resolved_methods: HashMap::new(),
             registry_generation: 0,
             declares: HashMap::new(),
             delegates: std::collections::HashSet::new(),
@@ -1419,4 +1427,13 @@ pub(crate) struct Resolved<T> {
     pub(crate) generation: u64,
     pub(crate) module_key: Option<String>,
     pub(crate) target: T,
+}
+
+/// A method a call site resolved to, and the class it was found on.
+#[derive(Clone)]
+pub(crate) struct ResolvedMethod {
+    pub(crate) generation: u64,
+    pub(crate) class_name: String,
+    pub(crate) class: Rc<RuntimeClass>,
+    pub(crate) function: Rc<Function>,
 }

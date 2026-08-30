@@ -194,6 +194,12 @@ The registry carries a generation that a remembered answer records. Adding a
 procedure bumps it and every remembered answer goes stale at once, which is
 what makes this safe in the REPL, where procedures arrive between statements.
 
+A method call site remembers the same way, with the class it found the method on
+recorded beside it. A receiver at one site is usually the same class every time,
+but it does not have to be: the Breakout demo draws three classes through one
+`IDrawable` call. A different class resolves again rather than running the wrong
+method. Four million method calls went down 11%.
+
 ## What a round of this is worth
 
 Every entry below came from measuring rather than from reading, and each one

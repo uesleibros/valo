@@ -45,10 +45,11 @@ two are worth doing even if the VM never happens.
       procedure its name meant, guarded by a registry generation and by the
       frame lookup that lets a local shadow it. Calling a function is 29%
       cheaper, a Sub 33%.
-- [ ] **The same for methods and properties.** A method call resolves a class
-      and then a member on every call, which is the same repeated work against
-      a receiver whose type is usually the same one. This is where an inline
-      cache belongs, and the shape a VM would reuse.
+- [x] **The same for methods**, guarded by the class the answer was found on, so
+      a site that reaches several classes resolves each of them. Method calls
+      are 11% cheaper.
+- [ ] **The same for properties**, which still resolve a class and an accessor
+      on every read and write.
 
 ## Phase 2: Bytecode VM
 

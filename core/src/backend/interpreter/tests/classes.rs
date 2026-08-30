@@ -3000,3 +3000,45 @@ End Sub
 
     assert_eq!(output, vec!["7"]);
 }
+
+#[test]
+fn one_call_site_reaching_several_classes_runs_each_of_them() {
+    let output = run_source(
+        r#"
+Interface IShape
+    Function Name_() As String
+End Interface
+
+Class Circle
+    Implements IShape
+    Public Function Name_() As String Implements IShape.Name_
+        Return "circle"
+    End Function
+End Class
+
+Class Square
+    Implements IShape
+    Public Function Name_() As String Implements IShape.Name_
+        Return "square"
+    End Function
+End Class
+
+Sub Main()
+    Dim shapes As New Collection()
+    shapes.Add(New Circle())
+    shapes.Add(New Square())
+    shapes.Add(New Circle())
+
+    ' One call site, three receivers, two classes between them.
+    Dim item As Variant
+    For Each item In shapes
+        Dim shape As IShape
+        Set shape = CType(item, IShape)
+        Console.WriteLine(shape.Name_())
+    Next item
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["circle", "square", "circle"]);
+}
