@@ -1301,7 +1301,11 @@ impl Interpreter {
                     return Ok(());
                 }
 
-                if let Some(owner_variable) = frame.variable_ref(well_known::SELF_KEY) {
+                // Only a method has an instance whose fields a bare name could
+                // reach, so outside one this costs nothing.
+                if frame.has_self()
+                    && let Some(owner_variable) = frame.variable_ref(well_known::SELF_KEY)
+                {
                     let is_record_field = {
                         let owner = owner_variable.borrow();
                         matches!(
@@ -1315,10 +1319,16 @@ impl Interpreter {
                         return self.assign_member_to_variable(owner_variable, name, value, span);
                     }
                 }
-                if frame.has_variable(name) {
-                    let old = frame.assign(name, value, span)?;
-                    self.maybe_terminate(old, span)
-                } else if let Ok(owner_variable) = frame.variable(well_known::SELF_KEY, span) {
+                // Writing to a local is the common case and takes one lookup.
+                // The value comes back when there is no such local, so the
+                // paths below still have it.
+                let value = match frame.assign_if_local(name, value, span)? {
+                    super::frame::LocalAssign::Written(old) => {
+                        return self.maybe_terminate(old, span);
+                    }
+                    super::frame::LocalAssign::NoSuchLocal(value) => value,
+                };
+                if let Ok(owner_variable) = frame.variable(well_known::SELF_KEY, span) {
                     if matches!(&*owner_variable.borrow(), Value::Record(_)) {
                         self.assign_member_to_variable(owner_variable, name, value, span)
                     } else {

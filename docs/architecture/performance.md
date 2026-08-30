@@ -148,6 +148,31 @@ names, which for a name with one procedure behind it was work with nothing to
 decide: doing it lazily took 18% off a benchmark that passes a string to a
 function 600,000 times.
 
+## Assigning to a local took five lookups
+
+Reading a variable cost about 38ns and assigning to one cost 185ns, five times
+as much for what should be less work. The ratio was the clue: assignment did
+five hash lookups where a read does one.
+
+It checked for a return slot, then for a field of the enclosing instance, then
+whether a local by that name existed, and then looked the local up twice more
+inside the write itself. Every one of those folds the name and hashes it.
+
+Now it is one. A frame knows whether `Me` is bound without looking, so outside
+a method the instance-field check is free; the write does its own single lookup
+and hands the value back when there is no such local, so the caller can try
+elsewhere without having cloned it.
+
+| | before | after |
+|---|---|---|
+| `a = 1`, five million times | 1415ms | 902ms |
+| `a = b + c`, five million times | 2271ms | 1632ms |
+| an empty `For` loop, five million times | 377ms | 294ms |
+| twenty million reads and writes | 21.4s | 15.7s |
+
+The empty loop improved because a `For` assigns its counter through the same
+path, which is a fair summary of how much of a program this is.
+
 ## The hash is not what a variable read costs
 
 Rust's default hasher is SipHash, chosen to resist an attacker who controls the

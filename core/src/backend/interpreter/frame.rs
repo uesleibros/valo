@@ -89,6 +89,13 @@ fn previous_for_termination(current: &Value) -> Value {
 #[derive(Debug, Default, Clone)]
 pub struct Frame {
     variables: HashMap<String, Variable>,
+    /// Whether `Me` is bound in this frame.
+    ///
+    /// Every assignment to a bare name has to consider that the name is a
+    /// member of the enclosing instance. Outside a method there is no
+    /// instance, and knowing that without a lookup is what keeps assigning to
+    /// a local down to one.
+    has_self: bool,
     return_slots: HashMap<String, Value>,
     module_key: Option<String>,
     class_context: Option<String>,
@@ -114,6 +121,50 @@ impl Frame {
     /// Every plain assignment asks this question, so short-circuit on the
     /// common case (a frame with no return slots at all) before paying for the
     /// `__return_<name>` key.
+    /// Records a variable, keeping [`Frame::has_self`] in step.
+    ///
+    /// Every insertion goes through here so the flag cannot drift from what
+    /// the map holds.
+    fn insert_variable(&mut self, key: String, variable: Variable) {
+        if key == well_known::SELF_KEY {
+            self.has_self = true;
+        }
+        self.variables.insert(key, variable);
+    }
+
+    /// Whether `Me` is bound here.
+    pub(crate) fn has_self(&self) -> bool {
+        self.has_self
+    }
+
+    /// Writes to a local if there is one, in a single lookup.
+    ///
+    /// Hands the value back when the name is not a local. The caller has other
+    /// places to look, and returning the value means it does not have to be
+    /// cloned for a path that is usually not taken.
+    pub(crate) fn assign_if_local(
+        &mut self,
+        name: &str,
+        value: Value,
+        span: Span,
+    ) -> Result<LocalAssign, Diagnostic> {
+        let Some(variable) = with_key(name, |k| self.variables.get_mut(k)) else {
+            return Ok(LocalAssign::NoSuchLocal(value));
+        };
+        if variable.is_const {
+            return Err(Diagnostic::new(
+                crate::runtime::DiagnosticCode::INVALID_ASSIGNMENT,
+                format!("Constant '{}' cannot be assigned", name),
+                Some(span),
+            )
+            .with_primary_label("assignment to constant")
+            .with_help("remove the assignment or use a non-Const variable"));
+        }
+        let old = previous_for_termination(&variable.borrow());
+        *variable.borrow_mut() = coerce_assignment(&variable.ty, value, span)?;
+        Ok(LocalAssign::Written(old))
+    }
+
     pub(crate) fn has_return_slot_for(&self, name: &str) -> bool {
         !self.return_slots.is_empty() && self.return_slots.contains_key(&return_slot_key(name))
     }
@@ -218,7 +269,7 @@ impl Frame {
             default_value(&ty, interpreter, span)?
         };
 
-        self.variables.insert(
+        self.insert_variable(
             key,
             Variable {
                 name: name.to_string(),
@@ -278,7 +329,7 @@ impl Frame {
                 Some(span),
             ));
         }
-        self.variables.insert(
+        self.insert_variable(
             key,
             Variable {
                 name: name.to_string(),
@@ -378,14 +429,14 @@ impl Frame {
             ));
         }
 
-        self.variables.insert(key, variable);
+        self.insert_variable(key, variable);
         Ok(())
     }
 
     pub(crate) fn inherit_modules_from(&mut self, source: &Frame) -> Result<(), Diagnostic> {
         for (name, variable) in &source.variables {
             if variable.module_level && !self.variables.contains_key(name) {
-                self.variables.insert(name.clone(), variable.clone());
+                self.insert_variable(name.clone(), variable.clone());
             }
         }
         Ok(())
@@ -406,7 +457,7 @@ impl Frame {
                 Some(span),
             ));
         }
-        self.variables.insert(
+        self.insert_variable(
             key,
             Variable {
                 name: name.to_string(),
@@ -428,10 +479,9 @@ impl Frame {
         value: Value,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        if with_key(name, |k| !self.variables.contains_key(k)) {
+        let Some(variable) = with_key(name, |k| self.variables.get_mut(k)) else {
             return Err(self.unknown_variable(name, span));
-        }
-        let variable = with_key(name, |k| self.variables.get_mut(k)).expect("checked above");
+        };
         if variable.is_const {
             return Err(Diagnostic::new(
                 crate::runtime::DiagnosticCode::INVALID_ASSIGNMENT,
@@ -464,10 +514,9 @@ impl Frame {
     }
 
     pub(crate) fn assign_missing(&mut self, name: &str, span: Span) -> Result<(), Diagnostic> {
-        if with_key(name, |k| !self.variables.contains_key(k)) {
+        let Some(variable) = with_key(name, |k| self.variables.get_mut(k)) else {
             return Err(self.unknown_variable(name, span));
-        }
-        let variable = with_key(name, |k| self.variables.get_mut(k)).expect("checked above");
+        };
         *variable.borrow_mut() = Value::Missing;
         Ok(())
     }
@@ -483,7 +532,7 @@ impl Frame {
     /// The cell is shared, not copied, so the lambda and the defining scope see
     /// each other's assignments.
     pub(crate) fn bind_captured(&mut self, captured: &crate::runtime::CapturedVariable) {
-        self.variables.insert(
+        self.insert_variable(
             key(&captured.name),
             Variable {
                 name: captured.name.clone(),
@@ -552,7 +601,11 @@ impl Frame {
     }
 
     pub(crate) fn remove_variable(&mut self, name: &str) -> Option<Variable> {
-        with_key(name, |k| self.variables.remove(k))
+        let removed = with_key(name, |k| self.variables.remove(k));
+        if removed.is_some() && with_key(name, |k| k == well_known::SELF_KEY) {
+            self.has_self = false;
+        }
+        removed
     }
 
     /// Whether a name is a variable that currently holds an array.
@@ -764,4 +817,12 @@ impl Variable {
     pub fn borrow_mut(&self) -> RefMut<'_, Value> {
         self.cell.borrow_mut()
     }
+}
+
+/// What [`Frame::assign_if_local`] did.
+pub(crate) enum LocalAssign {
+    /// Written. Carries what was there, which may need terminating.
+    Written(Value),
+    /// There is no local by that name; the value is handed back untouched.
+    NoSuchLocal(Value),
 }
