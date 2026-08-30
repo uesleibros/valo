@@ -11,6 +11,44 @@ use crate::runtime::compare::RuntimeOptionCompare;
 use crate::runtime::ops::{RuntimeBinaryOp, eval_binary};
 
 impl Interpreter {
+    /// The value of a name that means something without being declared.
+    ///
+    /// `Timer` and `Now` read as calls; `VBA`, `Console`, and `Err` are
+    /// pseudo-objects that carry nothing themselves. Only reached once the
+    /// frame has been asked, so a variable of the same name wins.
+    fn bare_builtin_value(
+        &mut self,
+        name: &str,
+        frame: &mut Frame,
+        span: Span,
+    ) -> Result<Option<Value>, Diagnostic> {
+        // One match over the folded name rather than a run of comparisons.
+        enum Bare {
+            Erl,
+            FreeFile,
+            Called,
+            PseudoObject,
+        }
+        let bare = crate::runtime::with_folded(name, |folded| match folded {
+            "erl" => Some(Bare::Erl),
+            "freefile" => Some(Bare::FreeFile),
+            "timer" | "now" | "date" | "time" | "rnd" => Some(Bare::Called),
+            "vba" | "console" | "err" => Some(Bare::PseudoObject),
+            _ => None,
+        });
+
+        Ok(match bare {
+            Some(Bare::Erl) => Some(Value::Int64(self.erl)),
+            Some(Bare::FreeFile) => Some(Value::Int64(i64::from(self.free_file_number()))),
+            Some(Bare::Called) => Some(
+                super::builtins::dispatch_function(self, name, &[], frame, span)?
+                    .expect("bare zero-argument builtin should dispatch"),
+            ),
+            Some(Bare::PseudoObject) => Some(Value::Empty),
+            None => None,
+        })
+    }
+
     /// Assigns each `.Member = value` entry of an object initializer.
     ///
     /// The object is fully constructed first, so an initializer can reference
@@ -307,25 +345,18 @@ impl Interpreter {
                 self.eval_index_expr(target_val, args, frame, expr.span)
             }
             ExprKind::Variable(name) => {
-                if name.eq_ignore_ascii_case("Erl") {
-                    Ok(Value::Int64(self.erl))
-                } else if name.eq_ignore_ascii_case("FreeFile") {
-                    Ok(Value::Int64(i64::from(self.free_file_number())))
-                } else if name.eq_ignore_ascii_case("Timer")
-                    || name.eq_ignore_ascii_case("Now")
-                    || name.eq_ignore_ascii_case("Date")
-                    || name.eq_ignore_ascii_case("Time")
-                    || name.eq_ignore_ascii_case("Rnd")
-                {
-                    match super::builtins::dispatch_function(self, name, &[], frame, expr.span)? {
-                        Some(value) => Ok(value),
-                        None => unreachable!("bare zero-argument builtin should dispatch"),
-                    }
-                } else if name.eq_ignore_ascii_case(well_known::VBA)
-                    || name.eq_ignore_ascii_case(well_known::CONSOLE)
-                    || name.eq_ignore_ascii_case(well_known::ERR)
-                {
-                    Ok(Value::Empty)
+                // A declared name is what a bare name almost always is, so it
+                // is looked up first. Doing it the other way round meant ten
+                // case-insensitive comparisons against builtin names before
+                // every single variable read, all of which failed.
+                //
+                // It also decides what `Dim Timer As Long` means: the variable
+                // the program declared, rather than the builtin it shadows.
+                if let Some(variable) = frame.variable_ref(name) {
+                    return Ok(variable.borrow().clone());
+                }
+                if let Some(value) = self.bare_builtin_value(name, frame, expr.span)? {
+                    Ok(value)
                 } else {
                     match frame.get(name, expr.span) {
                         Ok(value) => Ok(value),

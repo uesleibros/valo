@@ -860,3 +860,22 @@ End Sub
         crate::runtime::DiagnosticCode::DUPLICATE_DECLARATION
     );
 }
+
+#[test]
+fn a_declared_name_wins_over_the_builtin_it_shadows() {
+    let output = run_source(
+        r#"
+Sub Main()
+    ' Timer is a builtin. Declaring one means the program wants its own.
+    Dim Timer As Long
+    Timer = 42
+    Console.WriteLine(Timer)
+
+    ' Without a declaration it still reads as the builtin.
+    Console.WriteLine(Now() > 0)
+End Sub
+"#,
+    );
+
+    assert_eq!(output, vec!["42", "True"]);
+}

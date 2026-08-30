@@ -173,6 +173,24 @@ elsewhere without having cloned it.
 The empty loop improved because a `For` assigns its counter through the same
 path, which is a fair summary of how much of a program this is.
 
+## A variable read asked ten questions first
+
+Reading a bare name compared it against `Erl`, `FreeFile`, `Timer`, `Now`,
+`Date`, `Time`, `Rnd`, `VBA`, `Console`, and `Err` before looking in the frame.
+Ten case-insensitive comparisons, on every read, essentially all of which fail.
+
+The frame is asked first now, and the builtin names are one match over the
+folded name rather than a run of comparisons. Twenty-five million reads went
+from 7541ms to 5816ms.
+
+It also settles what `Dim Timer As Long` means: the variable the program
+declared, rather than the builtin it shadows.
+
+Worth noting how nearly this was missed. At five million iterations the change
+measured as noise, and only a run four times longer showed the 23%. A
+difference this size needs the benchmark to run for seconds, not fractions of
+one.
+
 ## The hash is not what a variable read costs
 
 Rust's default hasher is SipHash, chosen to resist an attacker who controls the
