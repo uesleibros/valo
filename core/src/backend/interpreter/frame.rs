@@ -521,6 +521,17 @@ impl Frame {
         Ok(())
     }
 
+    /// The value held under a name, or `None` when there is no such variable.
+    ///
+    /// [`Frame::get`] builds a diagnostic when the name is unknown, and that
+    /// diagnostic suggests a near-miss by comparing the name against every
+    /// variable in scope. Callers that treat a miss as an ordinary answer, such
+    /// as a call site checking whether a name holds a lambda, were paying for
+    /// that on every hit as well as every miss.
+    pub(crate) fn peek(&self, name: &str) -> Option<Value> {
+        with_key(name, |k| self.variables.get(k)).map(|variable| variable.borrow().clone())
+    }
+
     pub(crate) fn get(&self, name: &str, span: Span) -> Result<Value, Diagnostic> {
         with_key(name, |k| self.variables.get(k))
             .map(|variable| variable.borrow().clone())

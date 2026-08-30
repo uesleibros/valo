@@ -177,6 +177,21 @@ elsewhere without having cloned it.
 The empty loop improved because a `For` assigns its counter through the same
 path, which is a fair summary of how much of a program this is.
 
+## Every call built a diagnostic and threw it away
+
+Calling a procedure starts by asking whether the name holds a lambda, because a
+variable can. That question was asked with the frame lookup that reports an
+unknown variable, and reporting one means building a diagnostic: three formatted
+strings, and a suggestion found by lowercasing every variable in scope and
+computing its edit distance against the name.
+
+All of that ran on every call, for an answer the caller discarded. A lookup that
+returns nothing when the name is not a variable does the same job. The recursive
+call benchmark went from 5917ms to 2950ms.
+
+The same shape appeared wherever code asked whether `Me` was bound: an ordinary
+question, asked through the call that treats a miss as an error worth explaining.
+
 ## A variable read asked ten questions first
 
 Reading a bare name compared it against `Erl`, `FreeFile`, `Timer`, `Now`,

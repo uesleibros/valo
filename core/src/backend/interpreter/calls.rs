@@ -755,8 +755,7 @@ impl Interpreter {
         caller_frame: &mut Frame,
         span: Span,
     ) -> Result<Value, Diagnostic> {
-        if let Ok(variable) = caller_frame.variable(name, span) {
-            let value = variable.borrow().clone();
+        if let Some(value) = caller_frame.peek(name) {
             if let Value::Lambda(lambda) = value {
                 let mut eval_args = Vec::with_capacity(args.len());
                 for arg in args {
@@ -1251,8 +1250,7 @@ impl Interpreter {
         caller_frame: &mut Frame,
         span: Span,
     ) -> Result<(), Diagnostic> {
-        if let Ok(variable) = caller_frame.variable(name, span) {
-            let value = variable.borrow().clone();
+        if let Some(value) = caller_frame.peek(name) {
             if let Value::Lambda(lambda) = value {
                 let mut eval_args = Vec::with_capacity(args.len());
                 for arg in args {

@@ -361,7 +361,7 @@ impl Interpreter {
                     match frame.get(name, expr.span) {
                         Ok(value) => Ok(value),
                         Err(error) => {
-                            if let Ok(me) = frame.get(well_known::SELF_KEY, expr.span) {
+                            if let Some(me) = frame.peek(well_known::SELF_KEY) {
                                 if let Ok(value) = self.read_member(&me, name, frame, expr.span) {
                                     return Ok(value);
                                 }
@@ -673,7 +673,7 @@ impl Interpreter {
                         }
                     }
                 }
-                if let Ok(me) = frame.get(well_known::SELF_KEY, expr.span) {
+                if let Some(me) = frame.peek(well_known::SELF_KEY) {
                     if let Ok(field_value) = self.read_member(&me, name, frame, expr.span)
                         && matches!(field_value, Value::Array(_))
                     {

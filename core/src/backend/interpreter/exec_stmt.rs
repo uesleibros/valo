@@ -274,7 +274,7 @@ impl Interpreter {
                     return Ok(flow);
                 }
 
-                if let Ok(me) = frame.get(well_known::SELF_KEY, *span)
+                if let Some(me) = frame.peek(well_known::SELF_KEY)
                     && let Value::Object(ref obj) = me
                 {
                     let class_name = obj.borrow().class_name.clone();
@@ -409,8 +409,7 @@ impl Interpreter {
                         ExprKind::Variable(name) => {
                             // If it's a simple variable name, we check if it's a member of "me".
                             // If so, it's a method call. Otherwise it's global.
-                            if let Ok(Value::Object(me_rc)) = frame.get(well_known::SELF_KEY, *span)
-                            {
+                            if let Some(Value::Object(me_rc)) = frame.peek(well_known::SELF_KEY) {
                                 let class_name = me_rc.borrow().class_name.clone();
                                 if let Some(class) = self.classes.get(&key(&class_name)) {
                                     if class.subs.contains_key(&key(name))
@@ -465,8 +464,7 @@ impl Interpreter {
                             (Value::Object(obj_rc), field.clone())
                         }
                         ExprKind::Variable(name) => {
-                            if let Ok(Value::Object(me_rc)) = frame.get(well_known::SELF_KEY, *span)
-                            {
+                            if let Some(Value::Object(me_rc)) = frame.peek(well_known::SELF_KEY) {
                                 let class_name = me_rc.borrow().class_name.clone();
                                 if let Some(class) = self.classes.get(&key(&class_name)) {
                                     if class.subs.contains_key(&key(name))
